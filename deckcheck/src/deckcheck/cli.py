@@ -257,8 +257,12 @@ def fix_md(deck_path: Path, out: Path, rules: RuleSet, result: FixResult) -> str
 
 
 def cmd_render(deck: Path, out: Path) -> int:
-    for png in render(deck, out):
+    pngs, fonts = render(deck, out)
+    for png in pngs:
         print(png)
+    for typeface, match in fonts.items():
+        if match.substituted:
+            print(f"substituted: {typeface} -> {match.family}")
     return OK
 
 
