@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.xmlchemy import OxmlElement
-from pptx.util import Inches
+from pptx.util import Emu, Inches, Pt
 
 from deckcheck.cli import main
 from make_sample_decks import build_clean, build_clean_v2, build_dirty
@@ -24,6 +25,83 @@ def write_rules(tmp_path: Path, body: str) -> Path:
     path = tmp_path / "rules.yaml"
     path.write_text(body)
     return path
+
+
+def violations(deck: Path, rules: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, list]:
+    code, _, _ = run(["check", str(deck), "--rules", str(rules), "--out", str(tmp_path / "report")], capsys)
+    report = json.loads((tmp_path / "report" / "report.json").read_text())
+    return code, [(v["slide"], v["rule"]) for v in report["violations"]]
+
+
+BOUNDS_RULES = "rules:\n  within-slide-bounds:\n    tolerance_pt: 18\n"
+BLANK, TITLE_ONLY = 6, 5
+
+
+def deck_of_boxes(path: Path, boxes: list[tuple[Emu, Emu, Emu, Emu, str]]) -> Path:
+    prs = Presentation()
+    for left, top, width, height, text in boxes:
+        slide = prs.slides.add_slide(prs.slide_layouts[BLANK])
+        shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
+        shape.text_frame.text = text
+    prs.save(str(path))
+    return path
+
+
+def test_within_slide_bounds_ignores_shapes_without_text(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    deck = deck_of_boxes(
+        tmp_path / "bleed.pptx",
+        [
+            (Inches(-1), Inches(-1), Inches(12), Inches(9.5), ""),
+            (Inches(-1), Inches(-1), Inches(12), Inches(9.5), "Full-bleed caption"),
+        ],
+    )
+
+    assert violations(deck, write_rules(tmp_path, BOUNDS_RULES), tmp_path, capsys) == (
+        1,
+        [(2, "within-slide-bounds")],
+    )
+
+
+def test_within_slide_bounds_allows_overhang_up_to_tolerance(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    deck = deck_of_boxes(
+        tmp_path / "overhang.pptx",
+        [
+            (Inches(6) + Pt(18), Inches(1), Inches(4), Inches(1), "Wide text box"),
+            (Inches(6) + Pt(19), Inches(1), Inches(4), Inches(1), "Wide text box"),
+        ],
+    )
+
+    assert violations(deck, write_rules(tmp_path, BOUNDS_RULES), tmp_path, capsys) == (
+        1,
+        [(2, "within-slide-bounds")],
+    )
+
+
+def test_within_slide_bounds_requires_tolerance(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    deck = tmp_path / "clean.pptx"
+    build_clean(deck)
+    rules = write_rules(tmp_path, "rules:\n  within-slide-bounds: {}\n")
+
+    assert run(["check", str(deck), "--rules", str(rules)], capsys) == (
+        2,
+        "",
+        f"error: {rules}: within-slide-bounds: missing params tolerance_pt\n",
+    )
+
+
+def test_slide_has_title_exempts_layouts_without_a_title_placeholder(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prs = Presentation()
+    prs.slides.add_slide(prs.slide_layouts[BLANK])
+    prs.slides.add_slide(prs.slide_layouts[TITLE_ONLY])
+    deck = tmp_path / "titles.pptx"
+    prs.save(str(deck))
+    rules = write_rules(tmp_path, "rules:\n  slide-has-title:\n    exempt_layouts: []\n")
+
+    assert violations(deck, rules, tmp_path, capsys) == (1, [(2, "slide-has-title")])
 
 
 def test_clean_deck_passes_house_style(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

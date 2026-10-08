@@ -8,6 +8,8 @@
 - `check-fail` prints `FAIL <deck>: K violations`, one line per violation, and exits 1.
 - `check-report` writes `report.json` and `outline.md` with `--out`.
 - `check-rules` enforces `max-fonts-per-slide`, `no-bullet-end-punctuation`, `slide-has-title`, `title-max-chars`, `min-font-size`, `no-placeholder-text`, `within-slide-bounds`, and `source-on-data-slides`.
+- `slide-has-title` skips slides whose layout has no title placeholder, such as Blank or End layouts, and layouts listed in `exempt_layouts`.
+- `within-slide-bounds` checks only shapes that carry text. It allows an overhang up to `tolerance_pt`.
 - `check-config-error` exits 2 on an unknown rule id, a missing or unknown param, or an invalid regex.
 - `check-bad-deck` exits 2 on a file that is not a .pptx.
 
@@ -36,4 +38,6 @@ Preconditions:
 - Body and object placeholders count as bullets unless the paragraph sets `buNone`. Templates that set `buNone` in the master get false bullet hits.
 - `min-font-size` sees only explicit run sizes. Inherited sizes and shrink-to-fit text are not checked.
 - `source-on-data-slides` matches the prefix case-sensitively and detects only native charts and tables. A pasted chart image or a think-cell chart passes unseen.
-- `within-slide-bounds` ignores rotation and flags intentional full-bleed shapes.
+- `within-slide-bounds` ignores rotation. A rotated text box is measured as if unrotated.
+- `within-slide-bounds` measures the text box, not the text. A centred label in a box wider than the slide edge fails even when every glyph is visible. Check the render before you fix it.
+- `slide-has-title` reads only the title placeholder. A title typed into a plain text box is not recognised, so that slide fails. The pipeline needs the placeholder to find slides.

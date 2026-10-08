@@ -131,7 +131,8 @@ def no_bullet_end_punctuation(deck: Deck, params: dict[str, Any]) -> Iterator[Vi
 @rule("slide-has-title", exempt_layouts=_str_list)
 def slide_has_title(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
-        if slide.layout_name not in params["exempt_layouts"] and not slide.title:
+        exempt = not slide.layout_has_title or slide.layout_name in params["exempt_layouts"]
+        if not exempt and not slide.title:
             yield Violation("slide-has-title", slide.index, None, "slide has no title", f"layout {slide.layout_name}")
 
 
@@ -182,18 +183,26 @@ def no_placeholder_text(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
                     )
 
 
-@rule("within-slide-bounds")
+EMU_PER_PT = 12700
+
+
+@rule("within-slide-bounds", tolerance_pt=_number)
 def within_slide_bounds(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
+    tolerance = params["tolerance_pt"] * EMU_PER_PT
     for slide in deck.slides:
         for s in slide.shapes:
-            if s.left < 0 or s.top < 0 or s.left + s.width > deck.slide_width or s.top + s.height > deck.slide_height:
+            if not s.paragraphs:
+                continue
+            left, top, right, bottom = s.left, s.top, s.left + s.width, s.top + s.height
+            overhang = max(-left, -top, right - deck.slide_width, bottom - deck.slide_height)
+            if overhang > tolerance:
                 yield Violation(
                     "within-slide-bounds",
                     slide.index,
                     s.name,
-                    "shape extends past the slide edge",
-                    f"box ({s.left}, {s.top}, {s.left + s.width}, {s.top + s.height}) "
-                    f"vs slide ({deck.slide_width}, {deck.slide_height}) EMU",
+                    f"text shape extends {overhang / EMU_PER_PT:.0f}pt past the slide edge, "
+                    f"tolerance {params['tolerance_pt']:g}pt",
+                    f"box ({left}, {top}, {right}, {bottom}) vs slide ({deck.slide_width}, {deck.slide_height}) EMU",
                 )
 
 

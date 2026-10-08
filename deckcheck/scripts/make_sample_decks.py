@@ -62,7 +62,7 @@ def _build(path: Path, *, dirty: bool, v2: bool) -> None:
     s3 = prs.slides.add_slide(prs.slide_layouts[TITLE_ONLY])
     s3.shapes.title.text = (
         "Mid-market share doubled since 2022 as enterprise buyers consolidated vendors and three "
-        "regional competitors exited the segment entirely"
+        "regional competitors exited the segment entirely, while list prices held steady"
         if dirty
         else "Mid-market share doubled since 2022"
     )
@@ -81,7 +81,7 @@ def _build(path: Path, *, dirty: bool, v2: bool) -> None:
     for r, row in enumerate([["Segment", "Revenue", "Margin"], ["Mid-market", "$42M", "31%"], ["Enterprise", "$88M", "22%"]]):
         for c, value in enumerate(row):
             table.cell(r, c).text = value
-    _text_box(s4, "Source: Internal finance data, FY2025", Pt(8) if dirty else Pt(12))
+    _text_box(s4, "Source: Internal finance data, FY2025", Pt(6) if dirty else Pt(12))
 
     if v2:
         s5 = prs.slides.add_slide(prs.slide_layouts[TITLE_AND_CONTENT])

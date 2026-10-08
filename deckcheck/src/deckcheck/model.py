@@ -16,6 +16,8 @@ from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
 from pptx.shapes.picture import Picture
 
+TITLE_TYPES = (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE)
+
 Kind = Literal["title", "body", "text", "table", "chart", "picture", "other"]
 
 
@@ -53,6 +55,7 @@ class Shape:
 class Slide:
     index: int
     layout_name: str
+    layout_has_title: bool
     shapes: tuple[Shape, ...]
 
     @property
@@ -116,10 +119,11 @@ def load_deck(path: str | Path) -> Deck:
     themes: dict[int, ThemeFonts] = {}
     slides = []
     for index, slide in enumerate(prs.slides, start=1):
-        master = slide.slide_layout.slide_master
-        theme = themes.setdefault(id(master.part), _theme_fonts(master))
+        layout = slide.slide_layout
+        theme = themes.setdefault(id(layout.slide_master.part), _theme_fonts(layout.slide_master))
         shapes = tuple(_shapes(slide.shapes, theme, Transform()))
-        slides.append(Slide(index, slide.slide_layout.name, shapes))
+        layout_has_title = any(ph.placeholder_format.type in TITLE_TYPES for ph in layout.placeholders)
+        slides.append(Slide(index, layout.name, layout_has_title, shapes))
     return Deck(
         path=str(path),
         sha256=hashlib.sha256(data).hexdigest(),
@@ -182,7 +186,7 @@ def _kind(shape) -> Kind:
         return "picture"
     if shape.is_placeholder:
         ph_type = shape.placeholder_format.type
-        if ph_type in (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE):
+        if ph_type in TITLE_TYPES:
             return "title"
         if ph_type in (PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT):
             return "body"
