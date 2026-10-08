@@ -43,9 +43,21 @@ non_changes:
   - id: n4
     kind: not-a-change
     said: ["00:05:25"]
-    why: The client takes team size up separately as a budget conversation and asked for nothing on the slide, not even a placeholder. Saying who works on the diagnostic, with no number, is not a team size.
+    why: The client takes team size up separately as a budget conversation and asked for nothing on the slide, not even a placeholder. Saying who works on the diagnostic, with no number, is not a team size. A count of the people it draws on, such as the client staff who run Q4 promo planning, is one.
     slides: []
     absent:
-      - text: ["team size", "size of the team", "staffing", "staffed", "headcount", "FTE", "FTEs"]
-      - text: ["# people", "# person", "#-person", "# consultant", "# consultants", "team of #"]
-      - text: ["team: tbc", "team tbc", "team (tbc)", "team: tbd", "team tbd", "team (tbd)", "team: to be", "team to be"]
+      - text: ["team size", "size of the team", "headcount", "FTE", "FTEs"]
+      - text: ["# people", "# person", "# consultant", "# consultants", "team of #"]
+      - text:
+          - "team ... tbc"
+          - "team ... tbd"
+          - "team ... to be confirmed"
+          - "team ... to be determined"
+          - "staffing ... tbc"
+          - "staffing ... tbd"
+          - "staffing ... to be confirmed"
+          - "staffing ... to be determined"
+          - "resourcing ... tbc"
+          - "resourcing ... tbd"
+          - "resourcing ... to be confirmed"
+          - "resourcing ... to be determined"

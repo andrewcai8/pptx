@@ -44,9 +44,14 @@ PERCENT_RANGE = re.compile(rf"{START}(?P<low>{NUMBER})(?:{PERCENT_UNIT})?(?:{RAN
 NUMBER_WORD = rf"(?:{'|'.join(NUMBER_WORDS)})(?![a-z])"
 COUNT_WORD = rf"\d+|{'|'.join(NUMBER_WORDS)}"
 COUNT_SPEC = re.compile(rf"(?P<number>{COUNT_WORD})[\s-](?P<unit>[a-z]+?)s?")
-# Up to three words may sit between a count and its noun ("all 10 of the levers"), but not another number, and not a
-# plural that already ends the phrase, so "6 days and then weeks" is not 6 weeks.
-COUNT_GAP = rf"(?:(?!{NUMBER_WORD})(?![a-z-]*[^s]s[\s-])[a-z][a-z-]*[\s-]){{0,3}}"
+MONTHS = "january|february|march|april|may|june|july|august|september|october|november|december"
+# Up to three words may sit between a count and its noun ("all 10 of the levers"), but not another number, not a
+# plural that already ends the phrase, so "6 days and then weeks" is not 6 weeks, and not a month, so "2 December by
+# the consultants" is a date and not 2 consultants.
+COUNT_GAP = rf"(?:(?!{NUMBER_WORD})(?!(?:{MONTHS})[\s-])(?![a-z-]*[^s]s[\s-])[a-z][a-z-]*[\s-]){{0,3}}"
+# In a text fact, " ... " stands for up to three words and the punctuation around them, so "team ... tbc" matches
+# "Team: TBC" and "Team size still TBC".
+WORD_GAP = r"\W+(?:\w+\W+){0,3}"
 
 
 def normalize(text: str) -> str:
@@ -201,10 +206,19 @@ def _count(word: str) -> int:
 
 
 # A phrase cannot start or end inside a longer word or number. A # in it stands for any count, in digits or in words
-# up to twenty, so "# consultants" matches "2 consultants" and "two consultants".
+# up to twenty, with the same gap before the next word as a count, so "# consultants" matches "2 consultants", "two
+# consultants", and "2 senior consultants".
 @cache
 def _phrase(fact: str) -> re.Pattern[str]:
-    body = rf"(?:{COUNT_WORD})".join(re.escape(part) for part in fact.split("#"))
+    body = WORD_GAP.join(_counted(part) for part in fact.split(" ... "))
     head = (r"(?<![^\W_])" if fact[0].isalnum() or fact[0] == "#" else "") + (r"(?<!\d[.,])" if fact[0].isdigit() or fact[0] == "#" else "")
     tail = (r"(?![^\W_])" if fact[-1].isalnum() or fact[-1] == "#" else "") + (r"(?![.,]\d)" if fact[-1].isdigit() or fact[-1] == "#" else "")
     return re.compile(head + body + tail)
+
+
+def _counted(part: str) -> str:
+    first, *rest = part.split("#")
+    body = re.escape(first)
+    for piece in rest:
+        body += rf"(?:{COUNT_WORD})" + (rf"[\s-]{COUNT_GAP}{re.escape(piece[1:])}" if piece[:1] in (" ", "-") else re.escape(piece))
+    return body
