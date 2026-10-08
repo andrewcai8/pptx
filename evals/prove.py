@@ -71,21 +71,23 @@ def prove_scenario(sc: Scenario, run_dir: Path, rules) -> tuple[list[str], tuple
     for v, path in built:
         verdict = run(sc, path, rules, path.parent)
         got = "PASS" if verdict.passed else f"FAIL {pairs_text(verdict.pairs)}"
-        ok = verdict.passed if not v.fails else (not verdict.passed and verdict.pairs == v.fails)
-        print(f"{'ok  ' if ok else 'BAD '} {sc.name}/{v.name}  {got}")
+        check = next((text for i, text in sc.deferred if v.intent and i == v.intent[0] and v.intent[1] in text), None)
+        ok = (not verdict.passed and verdict.pairs == v.fails) if v.fails else verdict.passed and (v.intent is None or check is not None)
+        print(f"{'ok  ' if ok else 'BAD '} {sc.name}/{v.name}  {got}" + (f"  (intent {v.intent[0]}: {check})" if check else ""))
         if not ok:
-            want = pairs_text(v.fails) if v.fails else "PASS"
+            want = pairs_text(v.fails) if v.fails else f"PASS, left to an intent check of {v.intent[0]} saying {v.intent[1]!r}" if v.intent else "PASS"
             print(f"     declared {want}; {line(sc.name, verdict, len(sc.deferred))}")
             problems.append(f"{sc.name}/{v.name} scored {got}, declared {want}")
-    passing = [v for v in variants if not v.fails]
+    passing = [v for v in variants if not v.fails and not v.intent]
+    failing = [v for v in variants if v.fails]
     if not passing:
         problems.append(f"{sc.name} has no passing variant")
-    if len(variants) - len(passing) < 2:
-        problems.append(f"{sc.name} has {len(variants) - len(passing)} failing variants, expected at least 2")
+    if len(failing) < 2:
+        problems.append(f"{sc.name} has {len(failing)} failing variants, expected at least 2")
     paths = {v.name: p for v, p in built}
     references = {"the source deck": zip_entries(sc.source_path)} | {v.name: zip_entries(paths[v.name]) for v in passing}
     for v in variants:
-        if v.fails:
+        if v.fails or v.intent:
             entries = zip_entries(paths[v.name])
             problems += [f"{sc.name}/{v.name} has the same content as {name}" for name, ref in references.items() if entries == ref]
     return problems + own_composition(sc), variants
@@ -170,7 +172,8 @@ def main(argv: list[str] | None = None) -> int:
         print("PROOF FAIL: " + "; ".join(problems))
     else:
         n_variants = sum(len(p.variants) for p in proven)
-        print(f"PROOF PASS ({len(proven)} scenarios, {n_variants} variants, {len({p.scenario.ref for p in proven})} decks)")
+        n_intent = sum(1 for p in proven for v in p.variants if v.intent)
+        print(f"PROOF PASS ({len(proven)} scenarios, {n_variants} variants, {n_intent} of them left to intent checks, {len({p.scenario.ref for p in proven})} decks)")
     print(f"evidence: {run_dir}")
     return status
 

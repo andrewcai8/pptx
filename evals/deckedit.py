@@ -134,11 +134,15 @@ def _splice(runs: list, start: int, end: int, new: str) -> None:
 
 @dataclass(frozen=True)
 class Variant:
+    """An output and its declared verdict: the script passes it, fails it with exactly `fails`, or passes a deck that
+    is wrong only in what it adds, which the `intent` check, an (id, phrase in its text) pair, must catch."""
+
     name: str
     build: Callable[[DeckEdit], None]
     base: Variant | None
     fails: frozenset[tuple[Code, int | str]]
     doc: str
+    intent: tuple[str, str] | None = None
 
     def apply(self, d: DeckEdit) -> None:
         if self.base:
@@ -146,14 +150,16 @@ class Variant:
         self.build(d)
 
 
-def variant(*, base: Variant | None = None, fails: Iterable[tuple[str, int | str]] = ()) -> Callable[[Callable[[DeckEdit], None]], Variant]:
+def variant(*, base: Variant | None = None, fails: Iterable[tuple[str, int | str]] = (), intent: tuple[str, str] | None = None) -> Callable[[Callable[[DeckEdit], None]], Variant]:
     parsed = frozenset((Code(code), slide) for code, slide in fails)
+    if parsed and intent:
+        raise ValueError("a variant either fails by script or is left to an intent check, not both")
 
     def wrap(fn: Callable[[DeckEdit], None]) -> Variant:
         doc = (fn.__doc__ or "").strip()
         if not doc or "\n" in doc:
             raise ValueError(f"variant {fn.__name__} needs a one-line docstring naming what it gets right or wrong")
-        return Variant(fn.__name__, fn, base, parsed, doc)
+        return Variant(fn.__name__, fn, base, parsed, doc, intent)
 
     return wrap
 

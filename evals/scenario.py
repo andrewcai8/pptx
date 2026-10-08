@@ -170,6 +170,7 @@ class NotAChange:
     why: str
     slides: tuple[int, ...]
     absent: tuple[Value, ...]
+    intent_checks: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -179,6 +180,7 @@ class Ambiguous:
     why: str
     slides: tuple[int, ...]
     absent: tuple[Value, ...]
+    intent_checks: tuple[str, ...]
     flag: str
     flag_slides: tuple[int, ...]
 
@@ -300,7 +302,7 @@ class Scenario:
 
     @cached_property
     def deferred(self) -> tuple[tuple[str, str], ...]:
-        checks = [(c.id, line) for c in self.changes for line in c.intent_checks]
+        checks = [(item.id, line) for item in (*self.changes, *self.non_changes) for line in item.intent_checks]
         flags = [(nc.id, nc.flag) for nc in self.non_changes if isinstance(nc, Ambiguous)]
         return tuple(checks + flags)
 
@@ -681,17 +683,18 @@ def _non_change(raw: Any, where: str) -> NonChange:
     where = f"{where} ({nid})"
     if kind not in ("not-a-change", "ambiguous"):
         raise BadScenario(f"{where}.kind: expected not-a-change or ambiguous")
-    raw = _keys(raw, where, ("id", "kind", "said", "why"), ("slides", "absent", "flag", "flag_slides") if kind == "ambiguous" else ("slides", "absent"))
+    raw = _keys(raw, where, ("id", "kind", "said", "why"), ("slides", "absent", "intent_checks", "flag", "flag_slides") if kind == "ambiguous" else ("slides", "absent", "intent_checks"))
     said = _stamps(raw["said"], f"{where}.said")
     why = _str(raw["why"], f"{where}.why")
     slides = tuple(_int(s, f"{where}.slides[{i}]") for i, s in enumerate(_list(raw.get("slides") or [], f"{where}.slides")))
     absent = tuple(_fact(a, f"{where}.absent[{i}]")[0] for i, a in enumerate(_list(raw.get("absent") or [], f"{where}.absent")))
+    checks = _strs(raw.get("intent_checks"), f"{where}.intent_checks")
     if kind == "not-a-change":
-        return NotAChange(nid, said, why, slides, absent)
+        return NotAChange(nid, said, why, slides, absent, checks)
     if "flag" not in raw:
         raise BadScenario(f"{where}: an ambiguous non-change needs the flag the maker should raise")
     flag_slides = tuple(_int(s, f"{where}.flag_slides[{i}]") for i, s in enumerate(_list(raw.get("flag_slides") or [], f"{where}.flag_slides")))
-    return Ambiguous(nid, said, why, slides, absent, _str(raw["flag"], f"{where}.flag"), flag_slides)
+    return Ambiguous(nid, said, why, slides, absent, checks, _str(raw["flag"], f"{where}.flag"), flag_slides)
 
 
 def _source_path(name: str, ref: DeckRef, d: Path) -> Path:
