@@ -6,7 +6,7 @@ A scenario directory holds these files:
 
 - `transcript.md` is the meeting. It has a short header, then one turn per line in the form `[00:04:10] Name (Role, Org): text`.
 - `expected.yaml` lists the changes, the things discussed that must not become edits, and the facts the output must and must not contain.
-- `build.py` declares the outputs as `@variant` functions. Exactly one passes. At least two fail, each with its exact set of `(code, slide)` failures.
+- `build.py` declares the outputs as `@variant` functions. At least one passes, such as the edit the meeting settled on and faithful rewordings of it. At least two fail, each with its exact set of `(code, slide)` failures.
 - `data/*.csv` holds synthetic client data that a number can cite.
 
 Source decks are never committed. A public scenario names a deck in `.claude/skills/verify-pptx/corpus/known-good.yaml` by id and sha256, and the scorer reads it from the corpus cache. Generated decks and `score.json` files go under `artifacts/evals/`.

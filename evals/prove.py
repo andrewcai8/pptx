@@ -75,14 +75,12 @@ def prove_scenario(sc: Scenario, run_dir: Path, rules) -> tuple[list[str], tuple
             print(f"     declared {want}; {line(sc.name, verdict, len(sc.deferred))}")
             problems.append(f"{sc.name}/{v.name} scored {got}, declared {want}")
     passing = [v for v in variants if not v.fails]
-    if len(passing) != 1:
-        problems.append(f"{sc.name} has {len(passing)} passing variants, expected exactly 1")
+    if not passing:
+        problems.append(f"{sc.name} has no passing variant")
     if len(variants) - len(passing) < 2:
         problems.append(f"{sc.name} has {len(variants) - len(passing)} failing variants, expected at least 2")
     paths = {v.name: p for v, p in built}
-    references = {"the source deck": zip_entries(sc.source_path)}
-    if len(passing) == 1:
-        references[passing[0].name] = zip_entries(paths[passing[0].name])
+    references = {"the source deck": zip_entries(sc.source_path)} | {v.name: zip_entries(paths[v.name]) for v in passing}
     for v in variants:
         if v.fails:
             entries = zip_entries(paths[v.name])

@@ -38,6 +38,9 @@ class DeckEdit:
             raise ValueError(f"slide {slide} was deleted")
         return self._slides[slide]
 
+    def slides(self) -> list[PptxSlide]:
+        return [s for k, s in self._slides.items() if k not in self._deleted] + list(self._new.values())
+
     def replace(self, slide: int, old: str, new: str, *, count: int = 1) -> None:
         if not old:
             raise ValueError("replace needs a non-empty string to find")

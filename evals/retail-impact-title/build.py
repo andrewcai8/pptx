@@ -48,3 +48,9 @@ def trimmed_quote(d: DeckEdit) -> None:
 def cleaned_slide_6_dots(d: DeckEdit) -> None:
     """The deliberate four-dot continuation bullets on slide 6 are rewritten."""
     d.replace(6, "....", "Further use cases", count=4)
+
+
+@variant()
+def spelled_out_million(d: DeckEdit) -> None:
+    """The action title writes the revenue as $100 million in year one, the same figure as the slide's +$100M."""
+    d.replace(15, OLD_TITLE, "Starbucks personalization lifted marketing engagement by 150% and added $100 million in year one")

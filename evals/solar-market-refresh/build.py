@@ -87,3 +87,9 @@ def frozen_chart_value(d: DeckEdit) -> None:
     chart = next(s.chart for s in d.slide(12).shapes if s.has_chart)
     point = next(v for v in chart._chartSpace.iter(qn("c:v")) if v.text.replace(".", "", 1).isdigit())
     point.text = str(float(point.text) * 2)
+
+
+@variant(base=good, fails={("missing", 10), ("forbidden", 10)})
+def chart_bar_left_at_380(d: DeckEdit) -> None:
+    """Every slide 10 label moves to $410m but the 2022 bar's chart data stays at 380, though Daniel asked for the chart data too."""
+    _chart_2022_bar(d, "410", "380")

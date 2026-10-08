@@ -1,5 +1,7 @@
 import copy
 
+from pptx.enum.text import MSO_AUTO_SIZE
+
 from deckedit import DeckEdit, variant
 
 SURVEY_NOTE = "3. Insurers' Association member survey 2026, 2027 projection"
@@ -90,3 +92,15 @@ def moved_after_wrong_slide(d: DeckEdit) -> None:
 def moved_edited_slide(d: DeckEdit) -> None:
     """The generations slide gets the survey figure and is also moved after slide 6, which nobody asked for."""
     d.move_slide(5, after=6)
+
+
+@variant(base=good, fails={("guessed", 18)})
+def cleared_regulator_panel(d: DeckEdit) -> None:
+    """The white panel behind slide 18's cartoon is made transparent, a guess at making "the regulator slide" land harder."""
+    next(s for s in d.slide(18).shapes if s.name == "Rectangle 5").fill.background()
+
+
+@variant(base=good, fails={("non-change", 17)})
+def autofit_sandbox_title(d: DeckEdit) -> None:
+    """Slide 17's title is set to shrink on overflow, which renders it smaller on the sandbox page Marko called fine."""
+    d.slide(17).shapes.title.text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
