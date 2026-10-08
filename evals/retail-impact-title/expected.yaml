@@ -1,0 +1,44 @@
+deck:
+  corpus: retail-analytics-2018
+  sha256: 05240a7c5d236fd9b5934219ca978fa44c1fb6be54945b52980677a6a568f951
+
+changes:
+  - id: c1
+    kind: edit-text
+    intent: Replace slide 15's topic title with an action title that states the Starbucks result using the engagement and revenue figures already on the slide.
+    said: ["00:01:36", "00:02:42", "00:02:52", "00:05:20", "00:05:46"]
+    slides:
+      15:
+        require:
+          - text: "150%"
+            where: title
+            from: {slide: 15}
+          - text: "$100M"
+            where: title
+            from: {slide: 15}
+        forbid:
+          - {text: "Significant impact was achieved", where: title}
+          - {text: ["tripled", "triple", "tripling", "3x"], superseded: "00:01:59"}
+    intent_checks:
+      - The title reads as one sentence stating what personalization delivered, a result the board could repeat, not a claim that impact was significant.
+      - The 150% is attached to marketing engagement and the $100M to net incremental revenue in year 1; neither figure is described as a tripling.
+      - The title names Starbucks so the page stands on its own when read out of sequence.
+      - The title fits on one line, two at most, on the slide as rendered.
+
+non_changes:
+  - id: n1
+    kind: not-a-change
+    said: ["00:04:25", "00:04:36", "00:04:47"]
+    why: Slide 14's title is weak too, but the client wants to rework it next week after settling what the propensity table shows.
+    slides: [14]
+  - id: n2
+    kind: not-a-change
+    said: ["00:03:36", "00:04:05"]
+    why: Running the email-offer analysis on the client's own loyalty data is a follow-up scoping piece after the board, and the deck stays about the sector.
+    slides: [12]
+    absent: [{text: "Norrmark"}]
+  - id: n3
+    kind: not-a-change
+    said: ["00:04:52", "00:05:01", "00:05:17"]
+    why: The four-dot last bullets on slide 6 are deliberate continuation marks and the client chose to leave them.
+    slides: [6]
