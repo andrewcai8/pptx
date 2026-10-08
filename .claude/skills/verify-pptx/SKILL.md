@@ -49,6 +49,8 @@ Require `SELFTEST PASS` and `CORPUS PASS` both. `CORPUS INCOMPLETE` means a deck
 
 ## Drive
 
+A client deck is confidential. Everything you read, including command output and rendered PNGs, goes to the model provider. Ask the user before you run any step on a client deck, and follow the confidentiality rules in the repo's `CLAUDE.md`.
+
 To prove a deck that the pipeline produced from a source deck:
 
 1. Record the source hash before the pipeline runs. Run `shasum -a 256 <source.pptx> > $RUN/source.sha256`.
