@@ -58,6 +58,7 @@ class Shape:
     top: int
     width: int
     height: int
+    rotation: float
     paragraphs: tuple[Paragraph, ...]
 
 
@@ -173,6 +174,7 @@ def _shapes(shapes, layout, theme: ThemeFonts, t: Transform):
             top=round(top * t.sy + t.dy),
             width=round(width * t.sx),
             height=round(height * t.sy),
+            rotation=shape.rotation,
             paragraphs=tuple(_paragraphs(shape, kind, theme, _bullet_styles(shape, layout))),
         )
 

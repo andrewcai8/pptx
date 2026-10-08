@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -128,10 +129,15 @@ def no_bullet_end_punctuation(deck: Deck, params: dict[str, Any]) -> Iterator[Vi
                     )
 
 
+# PowerPoint names a copied layout "1_Title Slide".
+COPY_PREFIX = re.compile(r"^\d+_")
+
+
 @rule("slide-has-title", exempt_layouts=_str_list)
 def slide_has_title(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
-        exempt = not slide.layout_has_title or slide.layout_name in params["exempt_layouts"]
+        layout = COPY_PREFIX.sub("", slide.layout_name)
+        exempt = not slide.layout_has_title or layout in params["exempt_layouts"]
         if not exempt and not slide.title:
             yield Violation("slide-has-title", slide.index, None, "slide has no title", f"layout {slide.layout_name}")
 
@@ -186,6 +192,15 @@ def no_placeholder_text(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
 EMU_PER_PT = 12700
 
 
+# The axis-aligned box a shape covers once rotated about its centre.
+def _visual_box(s: Shape) -> tuple[int, int, int, int]:
+    angle = math.radians(s.rotation)
+    cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
+    width, height = s.width * cos + s.height * sin, s.width * sin + s.height * cos
+    cx, cy = s.left + s.width / 2, s.top + s.height / 2
+    return round(cx - width / 2), round(cy - height / 2), round(cx + width / 2), round(cy + height / 2)
+
+
 @rule("within-slide-bounds", tolerance_pt=_number)
 def within_slide_bounds(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     tolerance = params["tolerance_pt"] * EMU_PER_PT
@@ -193,7 +208,9 @@ def within_slide_bounds(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
         for s in slide.shapes:
             if not s.paragraphs:
                 continue
-            left, top, right, bottom = s.left, s.top, s.left + s.width, s.top + s.height
+            left, top, right, bottom = _visual_box(s)
+            if right <= 0 or bottom <= 0 or left >= deck.slide_width or top >= deck.slide_height:
+                continue
             overhang = max(-left, -top, right - deck.slide_width, bottom - deck.slide_height)
             if overhang > tolerance:
                 yield Violation(

@@ -8,8 +8,8 @@
 - `check-fail` prints `FAIL <deck>: K violations`, one line per violation, and exits 1.
 - `check-report` writes `report.json` and `outline.md` with `--out`.
 - `check-rules` enforces `max-fonts-per-slide`, `no-bullet-end-punctuation`, `slide-has-title`, `title-max-chars`, `min-font-size`, `no-placeholder-text`, `within-slide-bounds`, and `source-on-data-slides`.
-- `slide-has-title` skips slides whose layout has no title placeholder, such as Blank or End layouts, and layouts listed in `exempt_layouts`.
-- `within-slide-bounds` checks only shapes that carry text. It allows an overhang up to `tolerance_pt`.
+- `slide-has-title` skips slides whose layout has no title placeholder, such as Blank or End layouts, and layouts listed in `exempt_layouts`. A copied layout such as `1_Title Slide` matches the name without its `1_` prefix.
+- `within-slide-bounds` checks only shapes that carry text. It measures the box after the shape's rotation about its centre and allows an overhang up to `tolerance_pt`. A text shape wholly off the slide is never visible, so it is skipped.
 - `no-bullet-end-punctuation` resolves each paragraph's bullet the way PowerPoint does. It reads the paragraph, the shape's list style, the matching layout placeholder, the matching master placeholder, and then the master text style. A bullet character that is blank or zero-width counts as no bullet.
 - `title-max-chars` counts only the headline, the title text before the first line or paragraph break. A subheadline below it does not count.
 - `source-on-data-slides` reads every line of every paragraph, so a `Source` line may follow a note or a numbered footnote in the same box. A chart always needs a source. A table needs one only when a cell holds a number-like value, such as a percent, a currency symbol, or a number like 3.5 or 1,200.
@@ -43,6 +43,6 @@ Preconditions:
 - `source-on-data-slides` matches the prefix case-sensitively and detects only native charts and tables. A pasted chart image or a think-cell chart passes unseen.
 - `source-on-data-slides` finds a source only at the start of a line. A footnote that runs `Note: ...    Source: ...` on one line fails. Put the source on its own line.
 - A table of words or bare integers counts as layout, not data, and needs no source.
-- `within-slide-bounds` ignores rotation. A rotated text box is measured as if unrotated.
+- `within-slide-bounds` applies a shape's own rotation but not its group's. A text box inside a rotated group is measured as if the group were upright.
 - `within-slide-bounds` measures the text box, not the text. A centred label in a box wider than the slide edge fails even when every glyph is visible. Check the render before you fix it.
 - `slide-has-title` reads only the title placeholder. A title typed into a plain text box is not recognised, so that slide fails. The pipeline needs the placeholder to find slides.

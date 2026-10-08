@@ -292,3 +292,58 @@ def test_title_length_counts_only_the_headline(tmp_path: Path, capsys: pytest.Ca
     rules = write_rules(tmp_path, "rules:\n  title-max-chars:\n    max: 150\n")
 
     assert violations(deck, rules, tmp_path, capsys) == (1, [(2, "title-max-chars")])
+
+
+def deck_of_text_boxes(path: Path, boxes: list[tuple[Emu, Emu, Emu, Emu, float]]) -> Path:
+    prs = Presentation()
+    for left, top, width, height, rotation in boxes:
+        box = prs.slides.add_slide(prs.slide_layouts[BLANK]).shapes.add_textbox(left, top, width, height)
+        box.text_frame.text = "Share of stores open"
+        box.rotation = rotation
+    prs.save(str(path))
+    return path
+
+
+def test_within_slide_bounds_measures_a_rotated_box(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    deck = deck_of_text_boxes(
+        tmp_path / "axis.pptx",
+        [
+            (Inches(-1.2), Inches(3), Inches(3), Inches(0.5), 270.0),
+            (Inches(-1.2), Inches(3), Inches(3), Inches(0.5), 0.0),
+        ],
+    )
+
+    assert violations(deck, write_rules(tmp_path, BOUNDS_RULES), tmp_path, capsys) == (
+        1,
+        [(2, "within-slide-bounds")],
+    )
+
+
+def test_within_slide_bounds_skips_a_box_parked_off_the_slide(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    deck = deck_of_text_boxes(
+        tmp_path / "parked.pptx",
+        [
+            (Inches(0), Inches(-1), Inches(1.4), Inches(0.5), 0.0),
+            (Inches(0), Inches(-0.3), Inches(1.4), Inches(0.5), 0.0),
+        ],
+    )
+
+    assert violations(deck, write_rules(tmp_path, BOUNDS_RULES), tmp_path, capsys) == (
+        1,
+        [(2, "within-slide-bounds")],
+    )
+
+
+def test_slide_has_title_exempts_a_copied_layout(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prs = Presentation()
+    copied = prs.slide_layouts[0]
+    copied.element.cSld.set("name", "1_Title Slide")
+    prs.slides.add_slide(copied)
+    prs.slides.add_slide(prs.slide_layouts[1])
+    deck = tmp_path / "copied.pptx"
+    prs.save(str(deck))
+    rules = write_rules(tmp_path, 'rules:\n  slide-has-title:\n    exempt_layouts: ["Title Slide"]\n')
+
+    assert violations(deck, rules, tmp_path, capsys) == (1, [(2, "slide-has-title")])
