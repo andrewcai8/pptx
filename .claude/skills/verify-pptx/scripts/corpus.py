@@ -4,7 +4,7 @@ deckcheck fix changes only the slides with waived fixable violations.
 Usage, from the repo root:
     uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py [RUN_DIR]
 
-Exit 0 on CORPUS PASS, 1 on a waiver mismatch or a fix outside its scope, 2 on a hash mismatch or unreadable deck, 3 on an unreachable deck.
+Exit 0 on CORPUS PASS, 1 on a waiver mismatch, a fix outside its scope, or a failed fix, 2 on a hash mismatch or unreadable deck, 3 on an unreachable deck.
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ import os
 import sys
 import time
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import yaml
-from lxml import etree
 from pptx import Presentation
 
 from deckcheck.cli import main as deckcheck
@@ -91,8 +91,9 @@ def fired_pairs(deck_path: Path, out: Path) -> set[tuple[int, str]]:
     return {(v["slide"], v["rule"]) for v in report["violations"]}
 
 
-def slide_xml(path: Path) -> list[bytes]:
-    return [etree.tostring(s._element, method="c14n") for s in Presentation(str(path)).slides]
+def zip_entries(path: Path) -> dict[str, bytes]:
+    with zipfile.ZipFile(path) as z:
+        return {info.filename: z.read(info) for info in z.infolist()}
 
 
 def fix_scope(deck: dict, deck_path: Path, out: Path) -> tuple[int, list[str]]:
@@ -102,19 +103,18 @@ def fix_scope(deck: dict, deck_path: Path, out: Path) -> tuple[int, list[str]]:
         out / "fix.txt",
     )
     if code not in (0, 1):
-        raise BadDeck(f"deckcheck fix exited {code} (see {out / 'fix.txt'})")
+        return 0, [f"CORPUS FAIL: {deck['id']} deckcheck fix exited {code} (see {out / 'fix.txt'})"]
     if sha256(deck_path) != deck["sha256"]:
         return 0, [f"CORPUS FAIL: {deck['id']} fix changed its input {deck_path}"]
-    quiet(["diff", str(deck_path), str(fixed), "--out", str(out / "diff")], out / "diff.txt")
-    text = {
-        s["slide"] for s in json.loads((out / "diff" / "diff.json").read_text())["slides"] if s["status"] != "unchanged"
-    }
-    old, new = slide_xml(deck_path), slide_xml(fixed)
-    xml = {i for i, (a, b) in enumerate(zip(old, new), start=1) if a != b} | set(range(len(old) + 1, len(new) + 1))
+    old, new = zip_entries(deck_path), zip_entries(fixed)
+    if old.keys() != new.keys():
+        return 0, [f"CORPUS FAIL: {deck['id']} fix changed the package entries {sorted(old.keys() ^ new.keys())}"]
+    slides = {s.part.partname.membername: i for i, s in enumerate(Presentation(str(deck_path)).slides, start=1)}
     allowed = {slide for w in deck.get("waivers", []) if w["rule"] in FIXERS for slide in w["slides"]}
     lines = [
-        f"CORPUS FAIL: {deck['id']} fix changed slide {s} outside its waived fixable slides"
-        for s in sorted((text | xml) - allowed)
+        f"CORPUS FAIL: {deck['id']} fix changed {name} outside its waived fixable slides"
+        for name in sorted(old)
+        if old[name] != new[name] and slides.get(name) not in allowed
     ]
     return len(json.loads((out / "fix" / "fix.json").read_text())["fixed"]), lines
 

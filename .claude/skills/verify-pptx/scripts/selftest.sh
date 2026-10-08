@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Proves deckcheck catches every house-style rule on known decks and that fix leaves only the report-only ones.
-# Evidence survives in artifacts/verify-pptx/<run>/.
 set -euo pipefail
 
 ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
@@ -46,8 +44,10 @@ rm "$EVIDENCE/dirty-mismatch.diff"
 statuses="$(python3 -c 'import json,sys; print(" ".join(f"{s["slide"]}:{s["status"]}" for s in json.load(open(sys.argv[1]))["slides"]))' "$EVIDENCE/diff/diff.json")"
 [ "$statuses" = "1:unchanged 2:changed 3:unchanged 4:unchanged 5:added" ] || fail "diff statuses were '$statuses'"
 
-sed -n 's/^fixable rule ids: //p' "$EVIDENCE/doctor.txt" | tr -d ' ' | tr ',' '\n' > "$EVIDENCE/fixable.txt"
-awk 'NR == FNR { fixable[$0] = 1; next } !($2 in fixable)' "$EVIDENCE/fixable.txt" "$EVIDENCE/expected-dirty.txt" \
+fix_header="$(head -n 1 "$EVIDENCE/fix/stdout.txt")"
+[ "$fix_header" = "FAIL $EVIDENCE/decks/dirty.pptx -> $EVIDENCE/fix/dirty-fixed.pptx: 4 fixed in 1 pass, 4 remain" ] \
+	|| fail "dirty.pptx fix header was '$fix_header'"
+printf '%s\n' '1 no-placeholder-text' '3 source-on-data-slides' '3 title-max-chars' '4 slide-has-title' \
 	> "$EVIDENCE/expected-fixed.txt"
 python3 -c 'import json,sys; [print(v["slide"], v["rule"]) for v in json.load(open(sys.argv[1]))["violations"]]' \
 	"$EVIDENCE/fixed/report.json" | sort > "$EVIDENCE/actual-fixed.txt"
@@ -56,5 +56,5 @@ diff -u "$EVIDENCE/expected-fixed.txt" "$EVIDENCE/actual-fixed.txt" > "$EVIDENCE
 rm "$EVIDENCE/fixed-mismatch.diff"
 
 echo "SELFTEST PASS ($(wc -l < "$EVIDENCE/expected-dirty.txt" | tr -d ' ') rules caught, diff scoped to slides 2 and 5," \
-	"fix left the $(wc -l < "$EVIDENCE/expected-fixed.txt" | tr -d ' ') report-only violations)"
+	"fix fixed 4 and left the 4 report-only violations)"
 echo "evidence: $EVIDENCE"
