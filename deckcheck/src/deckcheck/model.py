@@ -4,7 +4,7 @@ import hashlib
 import io
 import re
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
@@ -17,6 +17,7 @@ from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
 from pptx.oxml.shapes.shared import BaseShapeElement
 from pptx.oxml.text import CT_RegularTextRun, CT_TextParagraph
+from pptx.presentation import Presentation as PresentationT
 from pptx.shapes.picture import Picture
 
 TITLE_TYPES = (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE)
@@ -126,21 +127,37 @@ class ThemeFonts:
         return typeface
 
 
-# x' = x * sx + dx, y' = y * sy + dy: maps group-child coordinates onto the slide.
+# x' = x * sx + dx, y' = y * sy + dy: maps group-child coordinates onto the slide. The map ignores group
+# rotation and flips, so `rotated` marks children whose slide box it gets wrong.
 @dataclass(frozen=True)
 class Transform:
     sx: float = 1.0
     dx: float = 0.0
     sy: float = 1.0
     dy: float = 0.0
+    rotated: bool = False
+
+
+def read_bytes(path: str | Path) -> bytes:
+    try:
+        return Path(path).read_bytes()
+    except OSError as e:
+        raise DeckError(f"cannot read deck {path}: {e}") from e
+
+
+def open_presentation(data: bytes, path: str | Path) -> PresentationT:
+    try:
+        return Presentation(io.BytesIO(data))
+    except (PackageNotFoundError, zipfile.BadZipFile, KeyError, ValueError, XMLSyntaxError) as e:
+        raise DeckError(f"cannot read deck {path}: {e}") from e
 
 
 def load_deck(path: str | Path) -> Deck:
-    try:
-        data = Path(path).read_bytes()
-        prs = Presentation(io.BytesIO(data))
-    except (OSError, PackageNotFoundError, zipfile.BadZipFile, KeyError, ValueError, XMLSyntaxError) as e:
-        raise DeckError(f"cannot read deck {path}: {e}") from e
+    data = read_bytes(path)
+    return read_deck(open_presentation(data, path), str(path), hashlib.sha256(data).hexdigest())
+
+
+def read_deck(prs: PresentationT, path: str, sha256: str) -> Deck:
     themes: dict[int, ThemeFonts] = {}
     slides = []
     for index, slide in enumerate(prs.slides, start=1):
@@ -149,8 +166,8 @@ def load_deck(path: str | Path) -> Deck:
         shapes = tuple(_shapes(slide.shapes, layout, theme, Transform()))
         slides.append(Slide(index, layout.name, shapes, theme))
     return Deck(
-        path=str(path),
-        sha256=hashlib.sha256(data).hexdigest(),
+        path=path,
+        sha256=sha256,
         slide_width=int(prs.slide_width),
         slide_height=int(prs.slide_height),
         slides=tuple(slides),
@@ -193,6 +210,7 @@ def _compose(t: Transform, group) -> Transform:
     xfrm = group._element.grpSpPr.find(qn("a:xfrm"))
     if xfrm is None:
         return t
+    t = replace(t, rotated=t.rotated or bool(xfrm.rot) or xfrm.flipH or xfrm.flipV)
     off, ext = xfrm.find(qn("a:off")), xfrm.find(qn("a:ext"))
     ch_off, ch_ext = xfrm.find(qn("a:chOff")), xfrm.find(qn("a:chExt"))
     if off is None or ext is None or ch_off is None or ch_ext is None:
@@ -201,7 +219,7 @@ def _compose(t: Transform, group) -> Transform:
     sy = int(ext.get("cy")) / (int(ch_ext.get("cy")) or 1)
     dx = int(off.get("x")) - int(ch_off.get("x")) * sx
     dy = int(off.get("y")) - int(ch_off.get("y")) * sy
-    return Transform(sx=sx * t.sx, dx=dx * t.sx + t.dx, sy=sy * t.sy, dy=dy * t.sy + t.dy)
+    return Transform(sx=sx * t.sx, dx=dx * t.sx + t.dx, sy=sy * t.sy, dy=dy * t.sy + t.dy, rotated=t.rotated)
 
 
 def _kind(shape) -> Kind:
