@@ -71,7 +71,7 @@ Everything goes under `artifacts/verify-pptx/<run>/`. Git ignores that directory
 - `check/report.json` holds the deck sha256, the rule ids applied, `passed`, and every violation.
 - `check/outline.md` lists each slide's title, its text, and the resolved fonts per paragraph. Read it to confirm the content, not just the style.
 - `diff/diff.md` and `diff/diff.json` hold both hashes and the per-slide status with a text diff.
-- `render/slide-N.png` holds the slide images when soffice exists.
+- `render/slide-N.png` holds the slide images when `doctor` found all three render tools.
 - `render/fonts.json` maps each font the deck uses to the family `fc-match` found, with `substituted` true or false.
 - `audit/audit.json` holds the reviewer's eight check results per audited slide, the evidence for each fail, the advisory checks, and the verdict.
 

@@ -20,7 +20,7 @@ A reviewer agent looks at each rendered slide PNG, judges it against the eight c
 
 Preconditions:
 
-- Baseline preconditions from `README.md` hold, and `doctor` finds `soffice`.
+- Baseline preconditions from `README.md` hold, and `doctor` finds `soffice`, `pdftoppm`, and `fc-match`.
 - The deck's fonts are installed. On Debian or Ubuntu, accept the Microsoft fonts EULA and install Trebuchet MS and the Calibri stand-in:
 
   ```bash

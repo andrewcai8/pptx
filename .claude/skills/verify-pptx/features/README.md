@@ -20,7 +20,7 @@ This directory is the maintained source for verifying deck output in this repo. 
 
 - Record the command, the exit code, and the report path for each step.
 - Record the deck sha256 from `report.json` or `diff.json`, so the proof names one exact file.
-- Report `render` and the audit as skipped when `doctor` prints `soffice`, `pdftoppm`, or `fc-match` as `missing`. Never report it as passed through `check`.
+- Report `render` and the audit as skipped when `doctor` prints `soffice`, `pdftoppm`, or `fc-match` as `missing`. Never report either as passed through `check`.
 - Do not report a deck as verified when only the sample decks were checked.
 
 ## Feature entry contract
