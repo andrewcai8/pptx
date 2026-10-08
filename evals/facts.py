@@ -176,11 +176,15 @@ def _quantities(kind: str, text: str) -> list[tuple[Money | Percent, tuple[int, 
     return sorted(found, key=lambda q: q[1])
 
 
+# A count is a number then its unit, either end of a range then the unit, or the unit then a range from 1, so
+# "weeks 1 to 6" runs 6 weeks and "weeks 3 to 6" states no duration.
 def _counts(unit: str, text: str) -> Iterator[tuple[int, str]]:
     noun = rf"{re.escape(unit)}s?(?![a-z])"
     for m in re.finditer(rf"{START}(?P<low>{COUNT_WORD})(?:{RANGE})(?P<high>{COUNT_WORD})[\s-]{COUNT_GAP}{noun}", text):
         yield from ((_count(m[end]), m[0]) for end in ("low", "high"))
     for m in re.finditer(rf"{START}(?P<number>{COUNT_WORD})[\s-]{COUNT_GAP}{noun}", text):
+        yield _count(m["number"]), m[0]
+    for m in re.finditer(rf"(?<![a-z]){noun}\s(?:1|one)(?:{RANGE})(?P<number>{COUNT_WORD})(?!\w|[.,]\d)", text):
         yield _count(m["number"]), m[0]
 
 

@@ -109,7 +109,7 @@ A fact names the thing that must be true, not one phrasing of it. Each fact has 
 |---|---|---|
 | `money` | `"$100M"` | any amount of the same currency and value, with the currency before or after the number: `$100M`, `$100MM`, `$100 million`, `$100-million`, `US$ 100 million`, `USD 100 million`, `$0.1bn`, `100m$`, `100 million dollars`, and either end of a range such as `$100-120m` or `$80m to $100m` |
 | `percent` | `"48%"` | `48%`, `+48%`, `48 %`, `48 per cent`, `48 percent`, and either end of a range such as `45-48%`, `45–48%`, or `45 to 48 per cent`. `-48%` is a different value |
-| `count` | `"6 weeks"` | the number in digits or words up to twenty, then the unit, with up to three words between that are neither a number nor a plural: `6 weeks`, `six-week`, `6 calendar weeks`, `all 10 of the levers`, `10 key value levers`. Either end of a range such as `6-8 weeks` or `six to eight weeks` counts. |
+| `count` | `"6 weeks"` | the number in digits or words up to twenty, then the unit, with up to three words between that are neither a number nor a plural: `6 weeks`, `six-week`, `6 calendar weeks`, `all 10 of the levers`, `10 key value levers`. Either end of a range such as `6-8 weeks` or `six to eight weeks` counts. The unit before a range from 1 states the high end, so `weeks 1 to 6` is 6 weeks, and `weeks 3 to 6` is no duration |
 | `chart` | `410` | a value in the slide's chart data, as python-pptx reads it from the chart part. It takes no `where` |
 | `text` | a string or a list | the load-bearing concept, with the few wordings it needs, such as `["cap", "limit"]`. A `#` stands for any count in digits or words up to twenty, so `"# consultants"` matches `2 consultants` and `two consultants` |
 
