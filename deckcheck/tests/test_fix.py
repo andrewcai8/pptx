@@ -9,9 +9,8 @@ from pathlib import Path
 
 import pytest
 from pptx import Presentation
-from pptx.oxml.ns import qn
 from pptx.oxml.xmlchemy import OxmlElement
-from pptx.util import Emu, Inches, Pt
+from pptx.util import Inches, Pt
 
 from deckcheck import model
 from deckcheck.cli import main
@@ -21,7 +20,6 @@ from make_sample_decks import build_clean, build_dirty
 
 HOUSE_STYLE = Path(__file__).resolve().parents[2] / "standards" / "house-style.yaml"
 BULLET_RULES = 'rules:\n  no-bullet-end-punctuation:\n    chars: ".;,"\n'
-BOUNDS_RULES = "rules:\n  within-slide-bounds:\n    tolerance_pt: 18\n"
 TITLE_AND_CONTENT, TITLE_ONLY, BLANK = 1, 5, 6
 
 
@@ -56,10 +54,11 @@ REPORT_ONLY_DIRTY = [
     (3, "source-on-data-slides"),
     (3, "title-max-chars"),
     (4, "slide-has-title"),
+    (4, "within-slide-bounds"),
 ]
 
 
-def test_fix_dirty_deck_fixes_four_and_reports_four(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_fix_dirty_deck_fixes_three_and_reports_five(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     deck, fixed = tmp_path / "dirty.pptx", tmp_path / "out" / "fixed.pptx"
     build_dirty(deck)
     before = sha256(deck)
@@ -70,13 +69,11 @@ def test_fix_dirty_deck_fixes_four_and_reports_four(tmp_path: Path, capsys: pyte
 
     assert (code, err) == (1, "")
     assert out == (
-        f"FAIL {deck} -> {fixed}: 4 fixed in 1 pass, 4 remain\n"
+        f"FAIL {deck} -> {fixed}: 3 fixed in 1 pass, 5 remain\n"
         "fixed slide 2 [max-fonts-per-slide] 4 fonts on slide, max 3 | font Georgia -> +mn-lt (Calibri), 1 run\n"
         "fixed slide 2 [no-bullet-end-punctuation] Content Placeholder 2: bullet ends with '.' | "
         "text 'Three competitors exited the segment in 2025.' -> 'Three competitors exited the segment in 2025'\n"
         "fixed slide 4 [min-font-size] TextBox 3: 6pt text, min 7pt | size 6pt -> 7pt, 1 run\n"
-        "fixed slide 4 [within-slide-bounds] Table 2: text shape extends 72pt past the slide edge, tolerance 18pt | "
-        "box (1828800, 1371600) 8229600x1828800 EMU -> (914400, 1371600) 8229600x1828800 EMU\n"
         "remains slide 1 [no-placeholder-text] Subtitle 2: placeholder text 'XX' | Prepared by XX "
         "(report-only: fix by hand)\n"
         "remains slide 3 [source-on-data-slides] Chart 2: chart slide has no line starting with 'Source' | Chart 2 "
@@ -85,6 +82,8 @@ def test_fix_dirty_deck_fixes_four_and_reports_four(tmp_path: Path, capsys: pyte
         "2022 as enterprise buyers consolidated vendors and three regional competitors exited the segment entirely, "
         "while list prices held steady (report-only: fix by hand)\n"
         "remains slide 4 [slide-has-title] slide has no title | layout Title Only (report-only: fix by hand)\n"
+        "remains slide 4 [within-slide-bounds] Table 2: text shape extends 72pt past the slide edge, tolerance 18pt | "
+        "box (1828800, 1371600, 10058400, 3200400) vs slide (9144000, 6858000) EMU (report-only: fix by hand)\n"
     )
     assert sha256(deck) == before
     report = json.loads((tmp_path / "fix" / "fix.json").read_text())
@@ -98,7 +97,6 @@ def test_fix_dirty_deck_fixes_four_and_reports_four(tmp_path: Path, capsys: pyte
         (2, "max-fonts-per-slide", 1),
         (2, "no-bullet-end-punctuation", 1),
         (4, "min-font-size", 1),
-        (4, "within-slide-bounds", 1),
     ]
     assert [(r["slide"], r["rule"], r["why"]) for r in report["remaining"]] == [
         (s, r, "report-only") for s, r in REPORT_ONLY_DIRTY
@@ -135,7 +133,7 @@ def test_fix_writes_the_fixed_values_into_the_dirty_deck(tmp_path: Path, capsys:
         ("Three competitors exited the segment in 2025", "Verdana"),
     ]
     table, source = slides[3].shapes[1], slides[3].shapes[2]
-    assert box(table) == (Inches(1), Inches(1.5), Inches(9), Inches(2))
+    assert box(table) == (Inches(2), Inches(1.5), Inches(9), Inches(2))
     assert source.text_frame.paragraphs[0].runs[0].font.size == Pt(7)
 
 
@@ -146,7 +144,7 @@ def test_fixing_a_fixed_deck_changes_nothing(tmp_path: Path, capsys: pytest.Capt
 
     code, out, _ = run(["fix", str(first), "--out", str(second), "--rules", str(HOUSE_STYLE)], capsys)
 
-    assert (code, out.splitlines()[0]) == (1, f"FAIL {first} -> {second}: 0 fixed, 4 remain")
+    assert (code, out.splitlines()[0]) == (1, f"FAIL {first} -> {second}: 0 fixed, 5 remain")
     assert second.read_bytes() == first.read_bytes()
 
 
@@ -469,181 +467,6 @@ def test_font_fix_gives_titles_the_major_theme_font(tmp_path: Path, capsys: pyte
     assert [r.font.name for r in shapes[1].text_frame.paragraphs[0].runs] == ["+mn-lt", "+mn-lt", "Verdana"]
 
 
-def text_box(shapes, name: str, left: Emu, top: Emu, width: Emu, height: Emu, rotation: float = 0.0):
-    shape = shapes.add_textbox(left, top, width, height)
-    shape.name, shape.rotation = name, rotation
-    shape.text_frame.text = "Share of stores open"
-    return shape
-
-
-def test_bounds_fix_moves_only_the_overhanging_shape_of_two_with_one_name(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[BLANK])
-    text_box(slide.shapes, "ColumnHeader", Inches(-1), Inches(1), Inches(3), Inches(0.5))
-    text_box(slide.shapes, "ColumnHeader", Inches(4), Inches(1), Inches(3), Inches(0.5))
-    deck, fixed = tmp_path / "headers.pptx", tmp_path / "fixed.pptx"
-    prs.save(str(deck))
-
-    code, out, _ = run(
-        ["fix", str(deck), "--out", str(fixed), "--rules", str(write_rules(tmp_path, BOUNDS_RULES))], capsys
-    )
-
-    assert (code, out.splitlines()[1:]) == (
-        0,
-        [
-            (
-                "fixed slide 1 [within-slide-bounds] ColumnHeader: text shape extends 72pt past the slide edge, "
-                "tolerance 18pt | box (-914400, 914400) 2743200x457200 EMU -> (0, 914400) 2743200x457200 EMU"
-            )
-        ],
-    )
-    assert [box(s) for s in Presentation(str(fixed)).slides[0].shapes] == [
-        (0, Inches(1), Inches(3), Inches(0.5)),
-        (Inches(4), Inches(1), Inches(3), Inches(0.5)),
-    ]
-
-
-def scaled_group(slide, rot: int = 0):
-    group = slide.shapes.add_group_shape()
-    text_box(group.shapes, "Grouped label", Inches(2), Inches(1), Inches(2), Inches(1))
-    xfrm = group._element.grpSpPr.find(qn("a:xfrm"))
-    xfrm.off.x, xfrm.off.y, xfrm.ext.cx, xfrm.ext.cy = Inches(6), Inches(1), Inches(4), Inches(2)
-    xfrm.chOff.x, xfrm.chOff.y, xfrm.chExt.cx, xfrm.chExt.cy = Inches(1), Inches(1), Inches(2), Inches(1)
-    if rot:
-        xfrm.set("rot", str(rot))
-    return group
-
-
-def test_bounds_fix_writes_a_group_child_in_group_coordinates(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    prs = Presentation()
-    scaled_group(prs.slides.add_slide(prs.slide_layouts[BLANK]))
-    deck, fixed = tmp_path / "group.pptx", tmp_path / "fixed.pptx"
-    prs.save(str(deck))
-
-    code, out, _ = run(
-        ["fix", str(deck), "--out", str(fixed), "--rules", str(write_rules(tmp_path, BOUNDS_RULES))], capsys
-    )
-
-    assert (code, out.splitlines()[1:]) == (
-        0,
-        [
-            (
-                "fixed slide 1 [within-slide-bounds] Grouped label: text shape extends 144pt past the slide edge, "
-                "tolerance 18pt | box (7315200, 914400) 3657600x1828800 EMU -> (5486400, 914400) 3657600x1828800 EMU"
-            )
-        ],
-    )
-    group = Presentation(str(fixed)).slides[0].shapes[0]
-    assert box(group.shapes[0]) == (Inches(1), Inches(1), Inches(2), Inches(1))
-    assert box(group) == (Inches(6), Inches(1), Inches(4), Inches(2))
-
-
-def offset_group(slide, ext_cx: Emu, child_left: Emu):
-    group = slide.shapes.add_group_shape()
-    text_box(group.shapes, "Grouped label", child_left, Inches(1), Inches(1), Inches(1))
-    xfrm = group._element.grpSpPr.find(qn("a:xfrm"))
-    xfrm.off.x, xfrm.off.y, xfrm.ext.cx, xfrm.ext.cy = 2, Inches(1), ext_cx, Inches(1)
-    xfrm.chOff.x, xfrm.chOff.y, xfrm.chExt.cx, xfrm.chExt.cy = 2, Inches(1), Inches(1), Inches(1)
-    return group
-
-
-def test_bounds_fix_rounds_a_group_child_onto_the_slide(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    prs = Presentation()
-    offset_group(prs.slides.add_slide(prs.slide_layouts[BLANK]), Inches(3), Inches(-0.5))
-    deck, fixed = tmp_path / "group.pptx", tmp_path / "fixed.pptx"
-    prs.save(str(deck))
-
-    code, _, _ = run(
-        ["fix", str(deck), "--out", str(fixed), "--rules", str(write_rules(tmp_path, BOUNDS_RULES))], capsys
-    )
-
-    child = Presentation(str(fixed)).slides[0].shapes[0].shapes[0]
-    assert (code, box(child)) == (0, (2, Inches(1), Inches(1), Inches(1)))
-
-
-def test_bounds_fix_declines_a_child_of_a_group_with_zero_width(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    prs = Presentation()
-    group = offset_group(prs.slides.add_slide(prs.slide_layouts[BLANK]), 0, Inches(1))
-    group.shapes[0].top = Inches(7)
-    deck, fixed = tmp_path / "group.pptx", tmp_path / "fixed.pptx"
-    prs.save(str(deck))
-
-    code, out, _ = run(
-        ["fix", str(deck), "--out", str(fixed), "--rules", str(write_rules(tmp_path, BOUNDS_RULES))], capsys
-    )
-
-    assert (code, out.splitlines()[1:]) == (
-        1,
-        [
-            (
-                "remains slide 1 [within-slide-bounds] Grouped label: text shape extends 36pt past the slide edge, "
-                "tolerance 18pt | box (2, 6400800, 2, 7315200) vs slide (9144000, 6858000) EMU "
-                "(declined: inside a group with zero width or height)"
-            )
-        ],
-    )
-
-
-def test_bounds_fix_shrinks_only_a_box_wider_than_the_slide(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    prs = Presentation()
-    for left, width, rotation in [(Inches(-1), Inches(12), 0.0), (Inches(3), Inches(9), 90.0)]:
-        text_box(
-            prs.slides.add_slide(prs.slide_layouts[BLANK]).shapes, "Wide", left, Inches(3), width, Inches(1), rotation
-        )
-    deck, fixed = tmp_path / "wide.pptx", tmp_path / "fixed.pptx"
-    prs.save(str(deck))
-
-    code, _, _ = run(
-        ["fix", str(deck), "--out", str(fixed), "--rules", str(write_rules(tmp_path, BOUNDS_RULES))], capsys
-    )
-
-    assert code == 0
-    assert [box(s.shapes[0]) for s in Presentation(str(fixed)).slides] == [
-        (0, Inches(3), Inches(10), Inches(1)),
-        (Inches(3.75), Inches(3.25), Inches(7.5), Inches(1)),
-    ]
-
-
-def test_bounds_fix_declines_oversized_tables_and_rotated_groups(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    prs = Presentation()
-    table = prs.slides.add_slide(prs.slide_layouts[BLANK]).shapes.add_table(
-        1, 2, Inches(-1), Inches(1), Inches(12), Inches(1)
-    )
-    table.table.cell(0, 0).text = "Segment"
-    scaled_group(prs.slides.add_slide(prs.slide_layouts[BLANK]), rot=5400000)
-    deck, fixed = tmp_path / "declined.pptx", tmp_path / "fixed.pptx"
-    prs.save(str(deck))
-
-    code, out, _ = run(
-        ["fix", str(deck), "--out", str(fixed), "--rules", str(write_rules(tmp_path, BOUNDS_RULES))], capsys
-    )
-
-    assert (code, out.splitlines()[1:]) == (
-        1,
-        [
-            (
-                "remains slide 1 [within-slide-bounds] Table 1: text shape extends 72pt past the slide edge, "
-                "tolerance 18pt | box (-914400, 914400, 10058400, 1828800) vs slide (9144000, 6858000) EMU "
-                "(declined: table is larger than the slide)"
-            ),
-            (
-                "remains slide 2 [within-slide-bounds] Grouped label: text shape extends 144pt past the slide edge, "
-                "tolerance 18pt | box (7315200, 914400, 10972800, 2743200) vs slide (9144000, 6858000) EMU "
-                "(declined: inside a rotated or flipped group)"
-            ),
-        ],
-    )
-    assert fixed.read_bytes() == deck.read_bytes()
-
-
 def small_text_deck(path: Path) -> Path:
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[BLANK])
@@ -713,7 +536,7 @@ def test_doctor_lists_the_fixable_rules(capsys: pytest.CaptureFixture[str]) -> N
     main(["doctor"])
 
     assert (
-        "fixable rule ids: max-fonts-per-slide, no-bullet-end-punctuation, min-font-size, within-slide-bounds"
+        "fixable rule ids: max-fonts-per-slide, no-bullet-end-punctuation, min-font-size"
         in capsys.readouterr().out.splitlines()
     )
 

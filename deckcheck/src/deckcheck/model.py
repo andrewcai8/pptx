@@ -4,7 +4,7 @@ import hashlib
 import io
 import re
 import zipfile
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -67,7 +67,6 @@ class Shape:
     rotation: float
     paragraphs: tuple[Paragraph, ...]
     xml: BaseShapeElement = field(compare=False, repr=False)
-    to_slide: Transform = field(compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -133,7 +132,6 @@ class Transform:
     dx: float = 0.0
     sy: float = 1.0
     dy: float = 0.0
-    rotated: bool = False
 
 
 def read_bytes(path: str | Path) -> bytes:
@@ -200,7 +198,6 @@ def _shapes(shapes, layout, theme: ThemeFonts, t: Transform):
             rotation=shape.rotation,
             paragraphs=tuple(_paragraphs(shape, kind, theme, _bullet_styles(shape, layout))),
             xml=shape._element,
-            to_slide=t,
         )
 
 
@@ -208,7 +205,6 @@ def _compose(t: Transform, group) -> Transform:
     xfrm = group._element.grpSpPr.find(qn("a:xfrm"))
     if xfrm is None:
         return t
-    t = replace(t, rotated=t.rotated or bool(xfrm.rot) or xfrm.flipH or xfrm.flipV)
     off, ext = xfrm.find(qn("a:off")), xfrm.find(qn("a:ext"))
     ch_off, ch_ext = xfrm.find(qn("a:chOff")), xfrm.find(qn("a:chExt"))
     if off is None or ext is None or ch_off is None or ch_ext is None:
@@ -217,7 +213,7 @@ def _compose(t: Transform, group) -> Transform:
     sy = int(ext.get("cy")) / (int(ch_ext.get("cy")) or 1)
     dx = int(off.get("x")) - int(ch_off.get("x")) * sx
     dy = int(off.get("y")) - int(ch_off.get("y")) * sy
-    return Transform(sx=sx * t.sx, dx=dx * t.sx + t.dx, sy=sy * t.sy, dy=dy * t.sy + t.dy, rotated=t.rotated)
+    return Transform(sx=sx * t.sx, dx=dx * t.sx + t.dx, sy=sy * t.sy, dy=dy * t.sy + t.dy)
 
 
 def _kind(shape) -> Kind:

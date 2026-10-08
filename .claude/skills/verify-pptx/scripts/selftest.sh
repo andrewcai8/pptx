@@ -45,10 +45,10 @@ statuses="$(python3 -c 'import json,sys; print(" ".join(f"{s["slide"]}:{s["statu
 [ "$statuses" = "1:unchanged 2:changed 3:unchanged 4:unchanged 5:added" ] || fail "diff statuses were '$statuses'"
 
 fix_header="$(head -n 1 "$EVIDENCE/fix/stdout.txt")"
-[ "$fix_header" = "FAIL $EVIDENCE/decks/dirty.pptx -> $EVIDENCE/fix/dirty-fixed.pptx: 4 fixed in 1 pass, 4 remain" ] \
+[ "$fix_header" = "FAIL $EVIDENCE/decks/dirty.pptx -> $EVIDENCE/fix/dirty-fixed.pptx: 3 fixed in 1 pass, 5 remain" ] \
 	|| fail "dirty.pptx fix header was '$fix_header'"
 printf '%s\n' '1 no-placeholder-text' '3 source-on-data-slides' '3 title-max-chars' '4 slide-has-title' \
-	> "$EVIDENCE/expected-fixed.txt"
+	'4 within-slide-bounds' > "$EVIDENCE/expected-fixed.txt"
 python3 -c 'import json,sys; [print(v["slide"], v["rule"]) for v in json.load(open(sys.argv[1]))["violations"]]' \
 	"$EVIDENCE/fixed/report.json" | sort > "$EVIDENCE/actual-fixed.txt"
 diff -u "$EVIDENCE/expected-fixed.txt" "$EVIDENCE/actual-fixed.txt" > "$EVIDENCE/fixed-mismatch.diff" \
@@ -56,5 +56,5 @@ diff -u "$EVIDENCE/expected-fixed.txt" "$EVIDENCE/actual-fixed.txt" > "$EVIDENCE
 rm "$EVIDENCE/fixed-mismatch.diff"
 
 echo "SELFTEST PASS ($(wc -l < "$EVIDENCE/expected-dirty.txt" | tr -d ' ') rules caught, diff scoped to slides 2 and 5," \
-	"fix fixed 4 and left the 4 report-only violations)"
+	"fix fixed 3 and left the 5 report-only violations)"
 echo "evidence: $EVIDENCE"

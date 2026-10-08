@@ -7,14 +7,14 @@ import re
 import zipfile
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from lxml import etree
 from pptx.oxml.text import CT_RegularTextRun, CT_TextField, CT_TextLineBreak
 
 from deckcheck.model import Deck, DeckError, Paragraph, Shape, Slide, Violation, open_presentation, read_deck
-from deckcheck.rules import RuleSet, run_rules, slide_fonts, small_runs, visual_box
+from deckcheck.rules import RuleSet, run_rules, slide_fonts, small_runs
 
 MAX_PASSES = 3
 
@@ -29,7 +29,7 @@ Why = Literal["report-only", "declined", "did-not-stick", "pass-limit"]
 
 @dataclass(frozen=True)
 class Change:
-    what: Literal["text", "size", "font", "box"]
+    what: Literal["text", "size", "font"]
     before: str
     after: str
 
@@ -260,64 +260,8 @@ def fix_min_size(s: Shape, deck: Deck, params: dict[str, Any]) -> tuple[Change, 
     )
 
 
-def fitted_box(s: Shape, slide_w: int, slide_h: int) -> tuple[int, int, int, int] | Declined:
-    if s.to_slide.rotated:
-        return Declined("inside a rotated or flipped group")
-    if not (s.to_slide.sx and s.to_slide.sy):
-        return Declined("inside a group with zero width or height")
-    left, top, right, bottom = visual_box(s)
-    width, height = s.width, s.height
-    if right - left > slide_w or bottom - top > slide_h:
-        if s.kind == "table":
-            return Declined("table is larger than the slide")
-        if s.rotation % 90 == 0:
-            odd = round(s.rotation / 90) % 2 == 1
-            width, height = min(width, slide_h if odd else slide_w), min(height, slide_w if odd else slide_h)
-        else:
-            k = min(slide_w / (right - left), slide_h / (bottom - top))
-            width, height = round(width * k), round(height * k)
-        s = replace(
-            s,
-            left=round(s.left + (s.width - width) / 2),
-            top=round(s.top + (s.height - height) / 2),
-            width=width,
-            height=height,
-        )
-        left, top, right, bottom = visual_box(s)
-    dx = -left if left < 0 else min(0, slide_w - right)
-    dy = -top if top < 0 else min(0, slide_h - bottom)
-    return s.left + dx, s.top + dy, width, height
-
-
-# Rounding to nearest could put a box clamped to the slide edge back outside it, so round the way it moved.
-def _inward(child: float, up: bool) -> int:
-    return math.ceil(round(child, 6)) if up else math.floor(round(child, 6))
-
-
-def _box(left: int, top: int, width: int, height: int) -> str:
-    return f"({left}, {top}) {width}x{height} EMU"
-
-
-def fix_bounds(s: Shape, deck: Deck, params: dict[str, Any]) -> tuple[Change, ...] | Declined:
-    box = fitted_box(s, deck.slide_width, deck.slide_height)
-    if isinstance(box, Declined):
-        return box
-    left, top, width, height = box
-    t = s.to_slide
-    if width != s.width:
-        s.xml.cx = _inward(width / t.sx, up=False)
-    if height != s.height:
-        s.xml.cy = _inward(height / t.sy, up=False)
-    if left != s.left:
-        s.xml.x = _inward((left - t.dx) / t.sx, up=left > s.left)
-    if top != s.top:
-        s.xml.y = _inward((top - t.dy) / t.sy, up=top > s.top)
-    return (Change("box", _box(s.left, s.top, s.width, s.height), _box(*box)),)
-
-
 FIXERS: dict[str, FixerFn] = {
     "max-fonts-per-slide": fix_fonts,
     "no-bullet-end-punctuation": fix_bullet_end,
     "min-font-size": fix_min_size,
-    "within-slide-bounds": fix_bounds,
 }
