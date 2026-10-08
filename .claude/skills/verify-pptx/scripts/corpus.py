@@ -26,7 +26,17 @@ ROOT = Path(__file__).resolve().parents[4]
 MANIFEST = ROOT / ".claude/skills/verify-pptx/corpus/known-good.yaml"
 CACHE = ROOT / "artifacts/verify-pptx/corpus-cache"
 RULES = ROOT / "standards/house-style.yaml"
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+# Some hosts, such as mass.gov, answer 403 unless the request carries a browser's full header set.
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 
 class Unreachable(Exception):
@@ -47,7 +57,7 @@ def fetch(deck: dict) -> Path:
         return path
     CACHE.mkdir(parents=True, exist_ok=True)
     partial = path.with_suffix(f".{os.getpid()}.part")
-    request = urllib.request.Request(deck["url"], headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(deck["url"], headers=BROWSER_HEADERS)
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             partial.write_bytes(response.read())

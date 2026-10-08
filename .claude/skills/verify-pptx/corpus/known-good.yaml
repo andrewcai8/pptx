@@ -1,7 +1,9 @@
-# Real BCG decks that deckcheck must pass, from https://slideworks.io/resources/54-real-bcg-presentations
+# Real BCG decks that deckcheck must pass.
 # The decks remain BCG's property. corpus.py fetches them by URL and checks the hash. Never commit them.
 # A waiver records a deliberate difference between BCG practice and what our pipeline needs.
+# A web.archive.org URL with an id_ timestamp is a byte-exact snapshot of a deck whose host went dead.
 decks:
+  # From the slideworks list, https://slideworks.io/resources/54-real-bcg-presentations
   - id: constant-change-2019
     title: Leading in an Era of Constant Change (2019)
     url: https://www.zdruzenje-manager.si/assets/Uploads/PPT-Jim-Hemerling.pptx
@@ -11,7 +13,7 @@ decks:
         slides: [8, 12, 16, 23, 33, 36]
         reason: The Green one third slides put the title in a plain text box, and the pipeline needs the title placeholder to find slides.
       - rule: source-on-data-slides
-        slides: [3, 9, 10]
+        slides: [9, 10]
         reason: Live audience poll results carry no source line, and the provenance gate still requires one.
       - rule: within-slide-bounds
         slides: [3, 15, 34]
@@ -21,12 +23,9 @@ decks:
     url: https://connect.bcg.com/data/uploads/sites/1371/2020/10/Future-of-FMCG-Web-20201029-1.pptx
     sha256: c312ec6c4c653912b3b19e8f16fc1877710e4ddccd7caa832ac4dd72ef07f9ab
     waivers:
-      - rule: no-bullet-end-punctuation
-        slides: [2]
-        reason: The summary uses full-sentence bullets, and the brief's rule is kept as written.
       - rule: source-on-data-slides
         slides: [4, 7]
-        reason: The charts cite through Note lines and numbered footnotes instead of a Source line, and the provenance gate needs the Source line.
+        reason: The footnote runs the source on after a note on the same line, and the provenance gate needs a line that starts with Source.
   - id: insurance-regulator-2017
     title: The Role of the Regulator in Enabling Digitization of the Insurance Industry (2017)
     url: https://www.a-zn.si/wp-content/uploads/7.-Role-of-regulator-in-enabling-the-digitization.pptx
@@ -42,7 +41,10 @@ decks:
     waivers:
       - rule: source-on-data-slides
         slides: [9, 10]
-        reason: Slide 9 has no source line and slide 10 puts its source after a numbered footnote, and the provenance gate needs a Source line.
+        reason: Slide 9 has no source and slide 10 runs its source on after a numbered footnote on the same line, and the provenance gate needs a line that starts with Source.
+      - rule: no-bullet-end-punctuation
+        slides: [15]
+        reason: The financing bullet is two full sentences ending in a period, and the brief's rule is kept as written.
   - id: true-luxury-2018
     title: 2018 True-Luxury Global Consumer Insight (2018)
     url: https://www.luxurydaily.com/wp-content/uploads/2018/05/State-of-Luxury-2018-Boston-Consulting-Group-presentation-by-Sarah-Willersdorf.pptx
@@ -57,3 +59,215 @@ decks:
       - rule: no-placeholder-text
         slides: [41]
         reason: The xx is a legend symbol for brand ranking, not placeholder text.
+
+  # Found by search. The rcc- decks are Retail Council of Canada playbooks that BCG wrote.
+  - id: campus-reopening-2020
+    title: Campus Reopening Guide, Higher Education Re-Opening Workgroup (2020)
+    url: https://web.archive.org/web/20260407010615id_/https://sfs411.wsu.edu/media/762362/20200622-campus-planning-guide.pptx
+    sha256: 05f4805bdad6e503bc38f0878e2a7bda9d21784225575eb28409db38ddeeaeba
+    waivers:
+      - rule: no-bullet-end-punctuation
+        slides: [4]
+        reason: The workgroup roster abbreviates representatives as reps., and the brief's rule is kept as written.
+      - rule: no-bullet-end-punctuation
+        slides: [10, 16]
+        reason: The guidance bullets are full sentences ending in a period, and the brief's rule is kept as written.
+  - id: aps-megatrend-2019
+    title: "Appendix: APS Megatrend Survey, in support of the APS Review (2019)"
+    url: https://web.archive.org/web/20250318065332id_/https://www.apsreview.gov.au/sites/default/files/news/appendix-aps-megatrend-survey.pptx
+    sha256: 94e373c5315a2e5caea6e1b90eefced3f50d0ae8981998c3c40625e7a631077b
+    waivers:
+      - rule: slide-has-title
+        slides: [5, 7, 9, 10]
+        reason: The title, the Key insights heading, and the quote panel headings are plain text boxes, and the pipeline needs the title placeholder to find slides.
+  - id: retail-analytics-2018
+    title: Transforming retail through advanced analytics and AI (2018)
+    url: https://web.archive.org/web/20230405124638id_/https://tcgsummit.com/wp-content/uploads/2018/04/02_Hepp_Anta_BCG.pptx
+    sha256: 05240a7c5d236fd9b5934219ca978fa44c1fb6be54945b52980677a6a568f951
+    waivers:
+      - rule: no-bullet-end-punctuation
+        slides: [6]
+        reason: Each use-case list ends with a bullet of four dots to show it continues, and the brief's rule is kept as written.
+  - id: luxury-firstlook-2019
+    title: True-Luxury Global Consumer Insight, Luxury FirstLook (2019)
+    url: https://www.luxurydaily.com/wp-content/uploads/2018/11/01-BCG-Luxury-FirstLook-2019.pptx
+    sha256: 5f40dc1906ff02419fb0b2e4ad8a08d9b51266277ac248299613b04bc6ff31a3
+    waivers:
+      - rule: within-slide-bounds
+        slides: [3, 4, 8, 19, 24]
+        reason: The footnote, label, and column header boxes are wider than their text and run past the edge while the text stays visible.
+  - id: nursing-taskforce-2019
+    title: "Nursing Facility Task Force: Massachusetts Healthcare Collaborative (2019)"
+    url: https://www.mass.gov/doc/october-18-2019-presentation-eolwd/download
+    sha256: 6139cba2b5f19d18511deab7a2800fdb3c3b1e8c91639e93b9f4e7c4dbdfdde6
+    waivers:
+      - rule: title-max-chars
+        slides: [7]
+        reason: The headline itself runs past 150 characters, and the brief's limit is kept as written.
+      - rule: source-on-data-slides
+        slides: [9]
+        reason: The footnote runs the source on after the notes on the same line, and the provenance gate needs a line that starts with Source.
+      - rule: no-placeholder-text
+        slides: [10]
+        reason: TBD is the real status of a meeting date that was not yet set, and the gate cannot tell it from a placeholder.
+  - id: gg-ci-solar-africa-2023
+    title: "Growth Gateway: C&I solar investment case in Africa (2023)"
+    url: https://growthgateway.campaign.gov.uk/wp-content/uploads/sites/216/2025/06/202303_Growth-Gateway_CI-solar-in-Africa-March-2023.pptx
+    sha256: 73f4dbf7e901d9122c2555306698eee64c968c218b0e3795380d91fe38ca642f
+    waivers:
+      - rule: slide-has-title
+        slides: [2, 3, 4, 5, 8, 11, 14, 17, 19, 20]
+        reason: The context page, the section dividers, and several content slides put their titles in plain text boxes, and the pipeline needs the title placeholder to find slides.
+  - id: covid-gender-parity-fr-2021
+    title: "Crise de la COVID-19 : un retour en arrière pour la parité hommes-femmes au travail ? (2021)"
+    url: https://web.archive.org/web/20230726073949id_/https://web-assets.bcg.com/3b/81/98d4eeed4687bd462b759fe73acb/etude-bcg-crise-de-la-covid-19-un-retour-en-arriere-pour-la-parite-hommes-femmes-au-travail.pptx
+    sha256: 307c86864bd3c370e416e609ea66f2748e9e461c4911d24ec0471b2bfb786316
+    waivers:
+      - rule: no-bullet-end-punctuation
+        slides: [3]
+        reason: The key findings are full-sentence bullets ending in a period, and the brief's rule is kept as written.
+      - rule: title-max-chars
+        slides: [5]
+        reason: The headline itself runs past 150 characters, and the brief's limit is kept as written.
+      - rule: source-on-data-slides
+        slides: [6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 24]
+        reason: Each footnote runs "Source :" on after the survey question on the same line, and the provenance gate needs a line that starts with Source.
+  - id: rcc-hq-reopening-pack-2020
+    title: "RCC: HQ and office re-opening pack (2020)"
+    url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-HQ-reopening-pack_2020-06-22.pptx
+    sha256: 689bc16e857e35774999de835f755d3c1c4c31cc0e83ebd8129faf3e0e5a0052
+    waivers:
+      - rule: no-bullet-end-punctuation
+        slides: [4]
+        reason: The bullet list ends with etc., and the brief's rule is kept as written.
+      - rule: source-on-data-slides
+        slides: [11]
+        reason: The illustrative prioritization matrix labels its axis with percent bands and cites no source, and the provenance gate requires one.
+      - rule: slide-has-title
+        slides: [14]
+        reason: The COVID-19 Disclaimer heading is a plain text box, and the pipeline needs the title placeholder to find slides.
+  - id: rcc-mall-pack-2020
+    title: "RCC: Mall re-opening pack (2020)"
+    url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-Mall-pack_2020-06-22.pptx
+    sha256: dfbbcda7c81ac62f831ead999579187f81d14d602964f5b09950a0c62c5972ed
+    waivers:
+      - rule: no-bullet-end-punctuation
+        slides: [10]
+        reason: The sanitizing checklist bullet ends with etc., and the brief's rule is kept as written.
+      - rule: slide-has-title
+        slides: [14]
+        reason: The COVID-19 Disclaimer heading is a plain text box, and the pipeline needs the title placeholder to find slides.
+  - id: rcc-reentry-customer-health-safety-2020
+    title: "RCC playbook for retail re-entry: Customer Health and Safety (2020)"
+    url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-Playbook-for-Retail-Re-entry_Customer-Health-Safety_Edition1-1.pptx
+    sha256: 4ab3fcf3c593755092f1523b7cec685d197562a4d8e96247f1eb5b87ef72bff3
+    waivers:
+      - rule: slide-has-title
+        slides: [3]
+        reason: The is and is-not page puts its two headings in body placeholders and has no title, and the pipeline needs the title placeholder to find slides.
+      - rule: slide-has-title
+        slides: [35]
+        reason: The COVID-19 Disclaimer heading is a plain text box, and the pipeline needs the title placeholder to find slides.
+      - rule: no-bullet-end-punctuation
+        slides: [4]
+        reason: The playbook map abbreviates management and assortment as mgmt. and asst., and the brief's rule is kept as written.
+      - rule: no-bullet-end-punctuation
+        slides: [32]
+        reason: The sanitizing checklist bullet ends with etc., and the brief's rule is kept as written.
+  - id: rcc-reentry-employee-wellbeing-2020
+    title: "RCC playbook for retail re-entry: Employee Wellbeing (2020)"
+    url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-Playbook-for-Retail-re-entry_Employee-Wellbeing_Edition1.pptx
+    sha256: 82c0b3e7c1ea09b98be8ceb223635c901c54c0b26350df43f6bafdc8590b4f33
+    waivers:
+      - rule: slide-has-title
+        slides: [3]
+        reason: The is and is-not page puts its two headings in body placeholders and has no title, and the pipeline needs the title placeholder to find slides.
+      - rule: slide-has-title
+        slides: [32]
+        reason: The COVID-19 Disclaimer heading is a plain text box, and the pipeline needs the title placeholder to find slides.
+      - rule: no-bullet-end-punctuation
+        slides: [4]
+        reason: The playbook map abbreviates management and assortment as mgmt. and asst., and the brief's rule is kept as written.
+      - rule: no-bullet-end-punctuation
+        slides: [9, 12, 22]
+        reason: These bullets end with etc., and the brief's rule is kept as written.
+      - rule: no-bullet-end-punctuation
+        slides: [13]
+        reason: The closing note is a full-sentence bullet ending in a period, and the brief's rule is kept as written.
+      - rule: source-on-data-slides
+        slides: [27]
+        reason: The table of retailer bonuses and hourly raises cites no source, and the provenance gate requires one.
+  - id: rcc-reentry-finances-2020
+    title: "RCC playbook for retail re-entry: Finances (2020)"
+    url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-Playbook-for-Retail-re-entry_Finances_Edition1-1.pptx
+    sha256: 74f41d2725e2105086888612125098a4966cbf3b7e8d047585558fb110c5c71f
+    waivers:
+      - rule: slide-has-title
+        slides: [3]
+        reason: The is and is-not page puts its two headings in body placeholders and has no title, and the pipeline needs the title placeholder to find slides.
+      - rule: slide-has-title
+        slides: [36]
+        reason: The COVID-19 Disclaimer heading is a plain text box, and the pipeline needs the title placeholder to find slides.
+      - rule: no-bullet-end-punctuation
+        slides: [4]
+        reason: The playbook map abbreviates management as mgmt., and the brief's rule is kept as written.
+      - rule: no-bullet-end-punctuation
+        slides: [10, 18]
+        reason: These bullets end with etc., and the brief's rule is kept as written.
+  - id: rcc-reentry-merchandising-marketing-2020
+    title: "RCC playbook for retail re-entry: Merchandising and Marketing (2020)"
+    url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-Playbook-for-Retail-re-entry_Merchandising-Marketing_Edition1-1.pptx
+    sha256: c443d2b77d3d5ee842f3f85a63e57645fdc56f5872e1f01a6ced549dee137e43
+    waivers:
+      - rule: slide-has-title
+        slides: [3]
+        reason: The is and is-not page puts its two headings in body placeholders and has no title, and the pipeline needs the title placeholder to find slides.
+      - rule: slide-has-title
+        slides: [31]
+        reason: The COVID-19 Disclaimer heading is a plain text box, and the pipeline needs the title placeholder to find slides.
+      - rule: no-bullet-end-punctuation
+        slides: [4]
+        reason: The playbook map abbreviates management as mgmt., and the brief's rule is kept as written.
+      - rule: source-on-data-slides
+        slides: [10]
+        reason: The illustrative demand-shape charts draw schematic curves and cite no source, and the provenance gate requires one for every chart.
+  - id: rcc-reentry-retail-operations-2020
+    title: "RCC playbook for retail re-entry: Retail Operations (2020)"
+    url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-Playbook-for-Retail-re-entry_Retail-Operations_Edition1-1.pptx
+    sha256: e56e1b9912880d3f7588437a1933627f98729565df4ff4a74d74d7d2a1e4d86c
+    waivers:
+      - rule: slide-has-title
+        slides: [3]
+        reason: The is and is-not page puts its two headings in body placeholders and has no title, and the pipeline needs the title placeholder to find slides.
+      - rule: slide-has-title
+        slides: [36]
+        reason: The COVID-19 Disclaimer heading is a plain text box, and the pipeline needs the title placeholder to find slides.
+      - rule: no-bullet-end-punctuation
+        slides: [4]
+        reason: The playbook map abbreviates management as mgmt., and the brief's rule is kept as written.
+      - rule: no-bullet-end-punctuation
+        slides: [8, 15, 20, 22, 34, 35]
+        reason: These bullets end with etc., and the brief's rule is kept as written.
+      - rule: no-bullet-end-punctuation
+        slides: [28]
+        reason: The supply chain bullet is a full sentence ending in a period, and the brief's rule is kept as written.
+      - rule: source-on-data-slides
+        slides: [24, 26, 27]
+        reason: The illustrative demand-shape and forecasting charts draw schematic curves and cite no source, and the provenance gate requires one for every chart.
+  - id: rcc-reentry-store-network-channel-2020
+    title: "RCC playbook for retail re-entry: Store Network and Channel (2020)"
+    url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-Playbook-for-Retail-re-entry_Store-Network-Channel_Edition1-1.pptx
+    sha256: 20b1e7c687254edfb321a26f523abc93e0993fc1cd171d33666257fe180f2f37
+    waivers:
+      - rule: slide-has-title
+        slides: [3]
+        reason: The is and is-not page puts its two headings in body placeholders and has no title, and the pipeline needs the title placeholder to find slides.
+      - rule: slide-has-title
+        slides: [24]
+        reason: The COVID-19 Disclaimer heading is a plain text box, and the pipeline needs the title placeholder to find slides.
+      - rule: no-bullet-end-punctuation
+        slides: [4]
+        reason: The playbook map abbreviates management as mgmt., and the brief's rule is kept as written.
+      - rule: no-bullet-end-punctuation
+        slides: [8, 11, 22]
+        reason: These bullets end with etc., and the brief's rule is kept as written.
