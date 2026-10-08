@@ -25,6 +25,7 @@ from deckcheck.model import DeckError, Slide, Violation
 from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
 from facts import ChartValue, Value, describe, match, to_json
 from scenario import (
+    TIMESTAMP,
     AddSlide,
     Ambiguous,
     BadScenario,
@@ -40,7 +41,6 @@ from scenario import (
     Slot,
     Snapshot,
     SourceSlot,
-    TIMESTAMP,
     SourceTampered,
     Where,
     corpus,

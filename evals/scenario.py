@@ -107,7 +107,7 @@ class Forbid:
 class Facts:
     require: tuple[Require, ...]
     forbid: tuple[Forbid, ...]
-    may_change: tuple[str, ...] = ()
+    may_change: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -213,8 +213,8 @@ class Look:
 class Charts:
     """The values a slide's charts draw, and the plot types of any chart python-pptx cannot read."""
 
-    values: tuple[Decimal, ...] = ()
-    unreadable: tuple[str, ...] = ()
+    values: tuple[Decimal, ...]
+    unreadable: tuple[str, ...]
 
 
 @dataclass(frozen=True)
