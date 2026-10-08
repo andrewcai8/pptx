@@ -24,8 +24,9 @@ The first two gates exist today in `deckcheck/`. The `verify-pptx` skill in `.cl
 
 ## Repo layout
 
-- `standards/house-style.yaml` holds the company slide rules. The generator and `deckcheck` both read it.
+- `standards/house-style.yaml` holds the company slide rules. `deckcheck` reads it.
 - `deckcheck/` is the Python CLI that checks, diffs, and renders decks.
+- `deckcheck fix` writes a fixed copy of a deck and reports what it could not fix.
 - `.claude/skills/verify-pptx/` holds the verification skill and its feature map.
 - `docs/PLAN.md` is this document.
 
