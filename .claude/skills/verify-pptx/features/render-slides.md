@@ -17,12 +17,12 @@
 Preconditions:
 
 - Baseline preconditions from `README.md` hold.
-- `doctor` prints a path for both `soffice` and `pdftoppm`. Install LibreOffice with `brew install --cask libreoffice` if soffice is missing.
+- `doctor` prints a path for `soffice`, `pdftoppm`, and `fc-match`. Install LibreOffice with `brew install --cask libreoffice` if soffice is missing, and fontconfig with `brew install fontconfig` if fc-match is missing.
 - `fc-match` exists. Install fontconfig with `brew install fontconfig` if it is missing.
 
 - **Render.** Run `uv run --project deckcheck deckcheck render $RUN/decks/clean.pptx --out $RUN/render`. Exit 0. Stdout lists one PNG path per slide, and `$RUN/render` holds `clean.pdf`, `fonts.json`, and `slide-1.png` to `slide-4.png`.
 - **Inspect.** Open each changed slide's PNG and confirm that no text is clipped and no shapes overlap.
-- **Missing tool.** On a machine without soffice, the same command exits 3 and stderr contains `brew install --cask libreoffice`. Report render as skipped.
+- **Missing tool.** On a machine without soffice, pdftoppm, or fc-match, the same command exits 3 and stderr names the install command. Report render as skipped.
 
 ## Gotchas
 
