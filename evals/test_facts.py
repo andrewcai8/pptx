@@ -48,7 +48,7 @@ def test_match_finds_a_fact_by_meaning(kind, spec, text, found):
 
 @pytest.mark.parametrize(
     ("kind", "spec"),
-    [("money", "100 million"), ("money", "$100M and $5M"), ("percent", "48"), ("count", "weeks"), ("text", []), ("text", 5)],
+    [("money", "100 million"), ("money", "$100M and $5M"), ("percent", "48"), ("count", "weeks"), ("chart", "four hundred"), ("text", []), ("text", 5)],
 )
 def test_parse_rejects_a_spec_that_is_not_one_fact_of_its_kind(kind, spec):
     with pytest.raises(ValueError):

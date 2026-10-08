@@ -91,6 +91,7 @@ A fact names the thing that must be true, not one phrasing of it. Each fact has 
 | `money` | `"$100M"` | any amount of the same currency and value: `$100M`, `$100 million`, `$100m`, `US$100M`, `USD 100 million`, `$0.1bn` |
 | `percent` | `"48%"` | `48%`, `48 %`, `48 per cent`, `48 percent` |
 | `count` | `"6 weeks"` | the number in digits or words up to twenty, then the unit, with at most one word between: `6 weeks`, `six-week`, `6 calendar weeks` |
+| `chart` | `410` | a value in the slide's chart data, as python-pptx reads it from the chart part. It takes no `where` |
 | `text` | a string or a list | the load-bearing concept, with the few wordings it needs, such as `["cap", "limit"]` |
 
 A `require` passes when the fact is on the slide. A `forbid` or `absent` fails when it is there. Matching ignores case, Unicode composition, runs of whitespace, and curly quotes. A match cannot sit inside a longer word or number, so `39%` matches `+39%` but not `139%` or `1.39%`, and `day` does not match `days`. `evals/test_facts.py` lists the cases.
@@ -123,7 +124,7 @@ Some python-pptx getters add XML when code only reads a deck. The XML comparison
 
 The last three render differently, so a maker must not touch them on a slide nobody asked about. Any other XML difference, even an empty element such as `a:buNone` or `a:noFill`, is a change. A tool that re-serializes the whole slide XML, such as a PowerPoint save or LibreOffice, may change an untouched slide's XML in other ways. Scoring the output of such a tool may need the table extended, from a measurement like `read_artifacts.py`.
 
-The intent checker judges the rest. That covers every `intent_checks` line, such as tone, wording, and chart data, and whether the maker raised each ambiguous `flag`. `score.json` lists them under `deferred`. For an ambiguous ask, the script proves only that the maker did not guess.
+The intent checker judges the rest. That covers every `intent_checks` line, such as tone, wording, and placement, and whether the maker raised each ambiguous `flag`. `score.json` lists them under `deferred`. For an ambiguous ask, the script proves only that the maker did not guess.
 
 ## Private scenarios
 

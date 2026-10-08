@@ -12,19 +12,22 @@ import re
 import sys
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from lxml import etree
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part, XmlPart
 from pptx.oxml.ns import qn
+from pptx.shapes.shapetree import SlideShapes
 
 import facts
 from deckcheck.model import Deck, DeckError, Slide, open_presentation, read_bytes, read_deck
-from facts import Value, Words
+from facts import ChartValue, Value, Words
 
 ROOT = Path(__file__).resolve().parents[1]
 EVALS = ROOT / "evals"
@@ -40,7 +43,7 @@ def _load_corpus():
 
 corpus = _load_corpus()
 
-Where = Literal["title", "slide"]
+Where = Literal["title", "slide", "chart"]
 EditKind = Literal["edit-text", "update-number", "restyle"]
 EDIT_KINDS: tuple[EditKind, ...] = ("edit-text", "update-number", "restyle")
 
@@ -209,6 +212,7 @@ class Snapshot:
     deck: Deck
     ids: tuple[int, ...]
     looks: tuple[Look, ...]
+    charts: tuple[tuple[Decimal, ...], ...]
     shared: str
 
 
@@ -307,12 +311,14 @@ def texts(slide: Slide, where: Where) -> list[str]:
     return [p.text for shape in slide.shapes for p in shape.paragraphs]
 
 
-def find(value: Value, where: Where, slide: Slide) -> str | None:
+def find(value: Value, where: Where, slide: Slide, charts: tuple[Decimal, ...]) -> str | None:
+    if isinstance(value, ChartValue):
+        return facts.in_chart(value, charts)
     return next((hit for t in texts(slide, where) if (hit := facts.match(value, t))), None)
 
 
 def find_in(snap: Snapshot, k: int, value: Value, where: Where = "slide") -> str | None:
-    return find(value, where, snap.deck.slides[k - 1])
+    return find(value, where, snap.deck.slides[k - 1], snap.charts[k - 1])
 
 
 def sha256(path: Path) -> str:
@@ -339,8 +345,9 @@ def snapshot(path: Path) -> Snapshot:
     shared = sorted(
         _content(p) for m in prs.slide_masters for p in (m.part, m.part.part_related_by(RT.THEME), *(layout.part for layout in m.slide_layouts))
     )
+    charts = tuple(tuple(_chart_values(s.shapes)) for s in slides)
     deck = read_deck(prs, str(path), hashlib.sha256(data).hexdigest())
-    return Snapshot(deck, tuple(s.slide_id for s in slides), looks, _digest(shared))
+    return Snapshot(deck, tuple(s.slide_id for s in slides), looks, charts, _digest(shared))
 
 
 def _digest(items: Iterable[str]) -> str:
@@ -378,6 +385,16 @@ def _blank_notes(rel) -> bool:
         return False
     notes = rel.target_part
     return not "".join(notes._element.itertext(qn("a:t"))).strip() and all(r.reltype in NOT_SLIDE_CONTENT for r in notes.rels.values())
+
+
+def _chart_values(shapes: SlideShapes) -> Iterator[Decimal]:
+    for shape in shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _chart_values(shape.shapes)
+        elif shape.has_chart:
+            for plot in shape.chart.plots:
+                for series in plot.series:
+                    yield from (Decimal(str(v)) for v in series.values if v is not None)
 
 
 def resolve(arg: str | Path) -> Path:
@@ -512,6 +529,10 @@ def _fact(raw: Any, where: str, optional: Sequence[str] = ()) -> tuple[Value, Wh
         value = facts.parse(kinds[0], raw[kinds[0]])
     except ValueError as e:
         raise BadScenario(f"{where}.{kinds[0]}: {e}") from e
+    if isinstance(value, ChartValue):
+        if "where" in raw:
+            raise BadScenario(f"{where}: a chart value is read from the slide's chart data, so it takes no where")
+        return value, "chart", raw
     return value, _where(raw.get("where", "slide"), where), raw
 
 
@@ -711,6 +732,8 @@ def _said(value: Value, text: str) -> bool:
     match value:
         case Words(alternatives):
             return any(facts.match(Words((alt,)), text) or _says_numbers(alt, text) for alt in alternatives)
+        case ChartValue(_, spec):
+            return says_number(spec, text)
     return facts.match(value, text) is not None
 
 

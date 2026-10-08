@@ -23,7 +23,7 @@ from deckcheck.cli import write_atomic
 from deckcheck.diff import diff_decks, outline
 from deckcheck.model import DeckError, Slide, Violation
 from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
-from facts import Value, describe, match, to_json
+from facts import ChartValue, Value, describe, match, to_json
 from scenario import (
     AddSlide,
     Ambiguous,
@@ -260,7 +260,7 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix
             elif e.kind != "restyle" and not text_changed:
                 failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k}"))
         if edits and text_changed:
-            forbids = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None]
+            forbids = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None and not isinstance(f.value, ChartValue)]
             if lost := lost_lines(sc.source.deck.slides[k - 1], out.deck.slides[i], forbids, source_prefix):
                 shown = ", ".join(repr(x) for x in lost[:3]) + (f", and {len(lost) - 3} more" if len(lost) > 3 else "")
                 failures.append(Failure(Code.SCOPE, k, edits[0].id, f"{edits[0].id} does not ask to change these lines on slide {k}, but they are gone or changed: {shown}"))
@@ -295,15 +295,16 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
     for change, slot, facts in sc.fact_targets:
         if slot not in placement.index or isinstance(slot, SourceSlot) and slot.slide not in applied:
             continue
-        slide = out.deck.slides[placement.index[slot]]
+        i = placement.index[slot]
+        slide, charts = out.deck.slides[i], out.charts[i]
         ref = slot_ref(slot)
         for r in facts.require:
-            found = find(r.value, r.where, slide)
+            found = find(r.value, r.where, slide, charts)
             results.append(FactResult(change.id, ref, "require", r.value, r.where, found, found is not None, source=r.source))
             if found is None:
                 failures.append(Failure(Code.MISSING, ref, change.id, f"{change.id}: {describe(r.value)} is not on {place_name(ref, r.where)}"))
         for f in facts.forbid:
-            found = find(f.value, f.where, slide)
+            found = find(f.value, f.where, slide, charts)
             results.append(FactResult(change.id, ref, "forbid", f.value, f.where, found, found is None, superseded=f.superseded))
             if found and f.superseded:
                 failures.append(Failure(Code.FORBIDDEN, ref, change.id, f"{change.id}: {found!r} is on {place_name(ref, f.where)}; it was abandoned after {f.superseded}"))
@@ -311,7 +312,11 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
                 failures.append(Failure(Code.FORBIDDEN, ref, change.id, f"{change.id}: {found!r} is still on {place_name(ref, f.where)}"))
     for nc in sc.non_changes:
         for value in nc.absent:
-            hits = [(slot_ref(slot), found) for slot, s in zip(placement.slots, out.deck.slides, strict=True) if (found := find(value, "slide", s))]
+            hits = [
+                (slot_ref(slot), found)
+                for slot, s, charts in zip(placement.slots, out.deck.slides, out.charts, strict=True)
+                if (found := find(value, "slide", s, charts))
+            ]
             results.append(FactResult(nc.id, "deck", "absent", value, "slide", hits[0][1] if hits else None, not hits))
             failures += [Failure(non_change_code(nc), ref, nc.id, f"{nc.id}: {found!r} is on {slide_name(ref)}, but {non_change_reason(nc)}") for ref, found in hits]
     return results, failures

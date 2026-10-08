@@ -1,11 +1,12 @@
-"""Facts a slide states, compared by meaning: money, percents and counts by value, concepts by wording."""
+"""Facts a slide states, compared by meaning: money, percents and counts by value, chart data by number, concepts by wording."""
 
 from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 WHITESPACE = re.compile(r"\s+")
 QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
@@ -54,12 +55,18 @@ class Count:
 
 
 @dataclass(frozen=True)
+class ChartValue:
+    value: Decimal
+    text: str = field(compare=False)
+
+
+@dataclass(frozen=True)
 class Words:
     alternatives: tuple[str, ...]
 
 
-Value = Money | Percent | Count | Words
-KINDS = ("text", "money", "percent", "count")
+Value = Money | Percent | Count | ChartValue | Words
+KINDS = ("text", "money", "percent", "count", "chart")
 EXAMPLES = {"money": "$410m", "percent": "37%", "count": "6 weeks"}
 
 
@@ -70,6 +77,11 @@ def parse(kind: str, raw: object) -> Value:
         if not alternatives or not all(isinstance(a, str) and a.strip() for a in alternatives):
             raise ValueError("expected a string or a non-empty list of strings")
         return Words(alternatives)
+    if kind == "chart":
+        try:
+            return ChartValue(Decimal(str(raw)), str(raw))
+        except InvalidOperation:
+            raise ValueError(f"{raw!r} is not a number") from None
     if not isinstance(raw, str):
         raise ValueError(f"expected a quoted {kind} such as {EXAMPLES[kind]!r}")
     text = normalize(raw)
@@ -84,8 +96,8 @@ def parse(kind: str, raw: object) -> Value:
     return replace(found[0][0], text=raw)
 
 
-def match(value: Value, text: str) -> str | None:
-    """The first stretch of text that states the value, or None."""
+def match(value: Money | Percent | Count | Words, text: str) -> str | None:
+    """The first stretch of text that states the value, or None. A chart value is matched against chart data by in_chart."""
     text = normalize(text)
     match value:
         case Words(alternatives):
@@ -98,10 +110,16 @@ def match(value: Value, text: str) -> str | None:
             return next((text[a:b] for found, (a, b) in _quantities(kind, text) if found == value), None)
 
 
+def in_chart(value: ChartValue, numbers: Iterable[Decimal]) -> str | None:
+    return f"chart value {value.text}" if value.value in set(numbers) else None
+
+
 def describe(value: Value) -> str:
     match value:
         case Words(alternatives):
             return " or ".join(repr(a) for a in alternatives)
+        case ChartValue(_, text):
+            return f"chart value {text}"
         case _:
             return repr(value.text)
 
@@ -116,6 +134,8 @@ def to_json(value: Value) -> dict[str, object]:
             return {"percent": text, "value": f"{v:f}"}
         case Count(n, unit, text):
             return {"count": text, "value": n, "unit": unit}
+        case ChartValue(v, _):
+            return {"chart": f"{v:f}"}
 
 
 def _quantities(kind: str, text: str) -> list[tuple[Money | Percent, tuple[int, int]]]:

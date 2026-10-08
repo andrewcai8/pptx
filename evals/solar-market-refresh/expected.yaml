@@ -16,9 +16,12 @@ changes:
           - percent: "37%"
             where: title
             from: {data: data/market_update.csv, row: cagr_2022_27, column: value}
+          - chart: 410
+            from: {data: data/market_update.csv, row: market_size_2022, column: value}
         forbid:
           - {money: "$380m"}
           - {percent: "39%"}
+          - {chart: 380}
           - {money: "$400m", superseded: "00:02:30"}
       2:
         require:
@@ -27,7 +30,6 @@ changes:
         forbid:
           - {percent: "39%"}
     intent_checks:
-      - Slide 10's chart data puts the 2022 bar at 410 (deckcheck cannot read chart data), so the bar heights agree with the $410m labels and the +37% growth label.
       - Slide 10's header still says the market grows to $2bn over the next 5 years, now from $410m, and the table's 2022 market-size cell reads $410m.
       - Slide 2 still reads as one sentence about the $11B opportunity, the CAGR, and the $2B near-term potential, with only the growth rate changed.
 
