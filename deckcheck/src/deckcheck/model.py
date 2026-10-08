@@ -210,26 +210,33 @@ def _kind(shape) -> Kind:
     return "other"
 
 
+# Reads go through oxml getters that return None for a missing element. python-pptx's cell.text_frame,
+# run.font, and paragraph.level add the element they read, so reading through them edits the deck.
 def _paragraphs(shape, kind: Kind, theme: ThemeFonts, styles: tuple):
     if kind == "table":
-        frames = [cell.text_frame for cell in shape.table.iter_cells()]
+        bodies = [cell._tc.txBody for cell in shape.table.iter_cells()]
     elif shape.has_text_frame:
-        frames = [shape.text_frame]
+        bodies = [shape._element.txBody]
     else:
-        frames = []
-    for frame in frames:
-        for p in frame.paragraphs:
+        bodies = []
+    for body in bodies:
+        for p in body.p_lst if body is not None else ():
             if not p.text.strip():
                 continue
-            runs = tuple(
-                Run(
-                    text=r.text,
-                    font=theme.resolve(r.font.name, kind == "title"),
-                    size_pt=r.font.size.pt if r.font.size is not None else None,
-                )
-                for r in p.runs
-            )
-            yield Paragraph(text=p.text, runs=runs, is_bullet=_is_bullet(p, styles, kind), level=p.level)
+            level = p.pPr.lvl if p.pPr is not None else 0
+            runs = tuple(_run(r, theme, kind == "title") for r in p.r_lst)
+            yield Paragraph(text=p.text, runs=runs, is_bullet=_is_bullet(p, level, styles, kind), level=level)
+
+
+def _run(r, theme: ThemeFonts, is_title: bool) -> Run:
+    rPr = r.rPr
+    latin = rPr.latin if rPr is not None else None
+    sz = rPr.sz if rPr is not None else None
+    return Run(
+        text=r.text,
+        font=theme.resolve(latin.typeface if latin is not None else None, is_title),
+        size_pt=sz / 100 if sz is not None else None,
+    )
 
 
 # The list styles a paragraph inherits bullets from, nearest first: the shape's own, the matching
@@ -263,9 +270,9 @@ def _list_style(element):
     return body.find(qn("a:lstStyle")) if body is not None else None
 
 
-def _is_bullet(p, styles: tuple, kind: Kind) -> bool:
-    level = qn(f"a:lvl{p.level + 1}pPr")
-    for pPr in (p._p.pPr, *(s.find(level) for s in styles)):
+def _is_bullet(p, level: int, styles: tuple, kind: Kind) -> bool:
+    tag = qn(f"a:lvl{level + 1}pPr")
+    for pPr in (p.pPr, *(s.find(tag) for s in styles)):
         bullet = next(pPr.iterchildren(*BULLET_TAGS), None) if pPr is not None else None
         if bullet is not None:
             char = bullet.get("char", "")
