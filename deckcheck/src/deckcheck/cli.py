@@ -4,7 +4,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import sys
 import tempfile
 from dataclasses import asdict, replace
@@ -168,27 +167,36 @@ def cmd_fix(deck_path: Path, out: Path, rules_path: Path | None, report: Path | 
     if out.exists() and os.path.samefile(out, deck_path):
         print(f"error: --out {out} is the input deck; fix never overwrites its input", file=sys.stderr)
         return USAGE
-    result = fix_deck(data, rules, str(deck_path))
-    write_atomic(out, result.data, mode_from=deck_path)
-    remaining = result.remaining
-    print(f"{'FAIL' if remaining else 'PASS'} {deck_path} -> {out}: {fix_summary(result)}")
-    for o in (*result.fixed, *remaining):
-        print(format_outcome(o))
-    if report:
-        report.mkdir(parents=True, exist_ok=True)
-        in_sha = hashlib.sha256(data).hexdigest()
-        (report / "fix.json").write_text(json.dumps(fix_json(deck_path, in_sha, out, rules, result), indent=2) + "\n")
-        (report / "fix.md").write_text(fix_md(deck_path, in_sha, out, rules, result))
+    try:
+        if report:
+            report.mkdir(parents=True, exist_ok=True)
+        result = fix_deck(data, rules, str(deck_path))
+        write_atomic(out, result.data)
+        remaining = result.remaining
+        print(f"{'FAIL' if remaining else 'PASS'} {deck_path} -> {out}: {fix_summary(result)}")
+        for o in (*result.fixed, *remaining):
+            print(format_outcome(o))
+        if report:
+            in_sha = hashlib.sha256(data).hexdigest()
+            (report / "fix.json").write_text(
+                json.dumps(fix_json(deck_path, in_sha, out, rules, result), indent=2) + "\n"
+            )
+            (report / "fix.md").write_text(fix_md(deck_path, in_sha, out, rules, result))
+    except OSError as e:
+        print(f"error: cannot write the fix output: {e}", file=sys.stderr)
+        return USAGE
     return VIOLATIONS if remaining else OK
 
 
-def write_atomic(path: Path, data: bytes, mode_from: Path) -> None:
+def write_atomic(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".part")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        shutil.copymode(mode_from, tmp)
+        umask = os.umask(0)
+        os.umask(umask)
+        os.chmod(tmp, 0o666 & ~umask)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)

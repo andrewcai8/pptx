@@ -237,6 +237,44 @@ def test_fix_refuses_a_directory_as_out(tmp_path: Path, capsys: pytest.CaptureFi
     )
 
 
+def test_fix_exits_2_when_it_cannot_write_its_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    deck, blocker = tmp_path / "dirty.pptx", tmp_path / "afile"
+    build_dirty(deck)
+    blocker.write_text("not a directory")
+
+    assert run(["fix", str(deck), "--out", str(blocker / "x.pptx"), "--rules", str(HOUSE_STYLE)], capsys) == (
+        2,
+        "",
+        f"error: cannot write the fix output: [Errno 17] File exists: '{blocker}'\n",
+    )
+
+
+def test_fix_checks_the_report_directory_before_writing_the_deck(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    deck, fixed, blocker = tmp_path / "dirty.pptx", tmp_path / "fixed.pptx", tmp_path / "afile"
+    build_dirty(deck)
+    blocker.write_text("not a directory")
+
+    assert run(
+        ["fix", str(deck), "--out", str(fixed), "--rules", str(HOUSE_STYLE), "--report", str(blocker)], capsys
+    ) == (2, "", f"error: cannot write the fix output: [Errno 17] File exists: '{blocker}'\n")
+    assert not fixed.exists()
+
+
+def test_fix_output_mode_follows_the_umask(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    deck, fixed = tmp_path / "dirty.pptx", tmp_path / "fixed.pptx"
+    build_dirty(deck)
+    deck.chmod(0o400)
+    old = os.umask(0o027)
+    try:
+        run(["fix", str(deck), "--out", str(fixed), "--rules", str(HOUSE_STYLE)], capsys)
+    finally:
+        os.umask(old)
+
+    assert oct(fixed.stat().st_mode & 0o777) == "0o640"
+
+
 def bullet_deck(path: Path, texts: list[str]) -> Path:
     prs = Presentation()
     for text in texts:
