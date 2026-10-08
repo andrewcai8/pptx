@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import re
+import reprlib
 import sys
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -459,7 +460,8 @@ def check_style(sc: Scenario, out: Snapshot, placement: Placement, rules: RuleSe
 FLAGS_FILE = "flags.json"
 # A turn as a maker may write it, with or without the hour: 00:08:05, 0:08:05, 08:05, or 8:05.
 TURN_STAMP = re.compile(r"(?:(\d{1,2}):)?([0-5]?\d):([0-5]\d)")
-SLIDE_NUMBER = re.compile(r"\d+", re.ASCII)
+SLIDE_NUMBER = re.compile(r"\d{1,6}", re.ASCII)
+SHORT = reprlib.Repr(maxstring=60, maxother=60, maxlevel=3)
 
 
 class UnreadableFlag(Exception):
@@ -473,7 +475,9 @@ def read_flags(path: Path) -> tuple[tuple[Flag, ...], tuple[str, ...]] | None:
         return None
     try:
         raw = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
+    except RecursionError:
+        return (), (f"{path.name}: nested too deeply to read",)
+    except (OSError, ValueError) as e:
         return (), (f"{path.name}: {e}",)
     if not isinstance(raw, list):
         return (), (f"{path.name}: expected a list of flags",)
@@ -508,7 +512,7 @@ def _items(raw: object) -> list[object]:
 def _turn(raw: object, where: str) -> str:
     m = TURN_STAMP.fullmatch(raw.strip()) if isinstance(raw, str) else None
     if m is None:
-        raise UnreadableFlag(f"{where}: {raw!r} is not a transcript timestamp such as 00:08:05")
+        raise UnreadableFlag(f"{where}: {SHORT.repr(raw)} is not a transcript timestamp such as 00:08:05")
     hours, minutes, seconds = m.groups()
     return f"{int(hours or 0):02}:{int(minutes):02}:{seconds}"
 
@@ -518,7 +522,7 @@ def _slide_number(raw: object, where: str) -> int:
         return raw
     if isinstance(raw, str) and SLIDE_NUMBER.fullmatch(raw.strip()):
         return int(raw)
-    raise UnreadableFlag(f"{where}: {raw!r} is not a source slide number")
+    raise UnreadableFlag(f"{where}: {SHORT.repr(raw)} is not a source slide number")
 
 
 def check_flags(sc: Scenario, path: Path) -> Flags:

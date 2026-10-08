@@ -235,6 +235,15 @@ def test_flags_json_next_to_the_deck_is_reported_beside_the_verdict(private_dir,
         ),
         ('[{"question": "Which callout?", "said": ["1:05"]}]', "flags (reported, not scored): raised none; missing n1; 1 unmatched"),
         ('[{"question": "Which callout?", "slides": ["slide 1"]}]', "flags (reported, not scored): raised none; missing n1; 0 unmatched; unreadable (flags.json[0].slides: 'slide 1' is not a source slide number)"),
+        (
+            '[{"question": "Which callout?", "slides": ["' + "9" * 5000 + '"]}]',
+            "flags (reported, not scored): raised none; missing n1; 0 unmatched; unreadable (flags.json[0].slides: '" + "9" * 27 + "..." + "9" * 28 + "' is not a source slide number)",
+        ),
+        (
+            '[{"question": "Which callout?", "slides": [' + "9" * 5000 + "]}]",
+            "flags (reported, not scored): raised none; missing n1; 0 unmatched; unreadable (flags.json: Exceeds the limit (4300 digits) for integer string conversion: value has 5000 digits; use sys.set_int_max_str_digits() to increase the limit)",
+        ),
+        ("[" * 100_000 + "]" * 100_000, "flags (reported, not scored): raised none; missing n1; 0 unmatched; unreadable (flags.json: nested too deeply to read)"),
     ],
 )
 def test_a_flags_json_in_any_shape_is_reported_and_the_deck_still_scored(private_dir, tmp_path, capsys, text, printed):
