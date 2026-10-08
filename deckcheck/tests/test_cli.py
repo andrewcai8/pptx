@@ -255,9 +255,13 @@ def add_footnote(slide, text: str) -> None:
     slide.shapes.add_textbox(Inches(0.5), Inches(6.6), Inches(9), Inches(0.4)).text_frame.text = text
 
 
-def test_source_may_follow_a_note_on_a_later_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_source_may_follow_a_note(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     prs = Presentation()
-    for footnote in ["Note: Shares are rounded\vSource: Company filings", "Note: Shares are rounded"]:
+    for footnote in [
+        "Note: Shares are rounded\vSource: Company filings",
+        "Note: Shares are rounded    Source: Company filings",
+        "Note: Open Source software is excluded",
+    ]:
         slide = prs.slides.add_slide(prs.slide_layouts[BLANK])
         add_chart(slide)
         add_footnote(slide, footnote)
@@ -266,7 +270,7 @@ def test_source_may_follow_a_note_on_a_later_line(tmp_path: Path, capsys: pytest
 
     assert violations(deck, write_rules(tmp_path, SOURCE_RULES), tmp_path, capsys) == (
         1,
-        [(2, "source-on-data-slides")],
+        [(3, "source-on-data-slides")],
     )
 
 

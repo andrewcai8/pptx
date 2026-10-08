@@ -22,10 +22,6 @@ decks:
     title: "Fast-moving consumer goods: Driving value creation in an era of disruption (2020)"
     url: https://connect.bcg.com/data/uploads/sites/1371/2020/10/Future-of-FMCG-Web-20201029-1.pptx
     sha256: c312ec6c4c653912b3b19e8f16fc1877710e4ddccd7caa832ac4dd72ef07f9ab
-    waivers:
-      - rule: source-on-data-slides
-        slides: [4, 7]
-        reason: The footnote runs the source on after a note on the same line, and the provenance gate needs a line that starts with Source.
   - id: insurance-regulator-2017
     title: The Role of the Regulator in Enabling Digitization of the Insurance Industry (2017)
     url: https://www.a-zn.si/wp-content/uploads/7.-Role-of-regulator-in-enabling-the-digitization.pptx
@@ -40,8 +36,8 @@ decks:
     sha256: 53cac17c5d42ca05a6a9986dc2539d38a114ecc407e3b80b3a7b7a9a630c764e
     waivers:
       - rule: source-on-data-slides
-        slides: [9, 10]
-        reason: Slide 9 has no source and slide 10 runs its source on after a numbered footnote on the same line, and the provenance gate needs a line that starts with Source.
+        slides: [9]
+        reason: The chart cites no source, and the provenance gate requires one for every chart.
       - rule: no-bullet-end-punctuation
         slides: [15]
         reason: The financing bullet is two full sentences ending in a period, and the brief's rule is kept as written.
@@ -104,9 +100,6 @@ decks:
       - rule: title-max-chars
         slides: [7]
         reason: The headline itself runs past 150 characters, and the brief's limit is kept as written.
-      - rule: source-on-data-slides
-        slides: [9]
-        reason: The footnote runs the source on after the notes on the same line, and the provenance gate needs a line that starts with Source.
       - rule: no-placeholder-text
         slides: [10]
         reason: TBD is the real status of a meeting date that was not yet set, and the gate cannot tell it from a placeholder.
@@ -129,9 +122,6 @@ decks:
       - rule: title-max-chars
         slides: [5]
         reason: The headline itself runs past 150 characters, and the brief's limit is kept as written.
-      - rule: source-on-data-slides
-        slides: [6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 24]
-        reason: Each footnote runs "Source :" on after the survey question on the same line, and the provenance gate needs a line that starts with Source.
   - id: rcc-hq-reopening-pack-2020
     title: "RCC: HQ and office re-opening pack (2020)"
     url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-HQ-reopening-pack_2020-06-22.pptx
@@ -231,6 +221,9 @@ decks:
       - rule: source-on-data-slides
         slides: [10]
         reason: The illustrative demand-shape charts draw schematic curves and cite no source, and the provenance gate requires one for every chart.
+      - rule: no-bullet-end-punctuation
+        slides: [12]
+        reason: The numbered footnote's first item ends in a semicolon, and the brief's rule is kept as written.
   - id: rcc-reentry-retail-operations-2020
     title: "RCC playbook for retail re-entry: Retail Operations (2020)"
     url: https://www.retailcouncil.org/wp-content/uploads/2018/08/RCC-Playbook-for-Retail-re-entry_Retail-Operations_Edition1-1.pptx

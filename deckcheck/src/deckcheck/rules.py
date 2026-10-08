@@ -237,8 +237,9 @@ def _is_data(shape: Shape) -> bool:
 def source_on_data_slides(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
         data = [s for s in slide.shapes if _is_data(s)]
+        label = re.compile(rf"\s{re.escape(params['prefix'])}s?\s*:")
         has_source = any(
-            line.startswith(params["prefix"])
+            line.startswith(params["prefix"]) or label.search(line)
             for s in slide.shapes
             if s.kind != "table"
             for p in s.paragraphs
