@@ -54,5 +54,5 @@ Attendees:
 [00:07:05] Pieter Vos (Chief of Staff, Norrmark Grocery Group): On logistics. The pre-read goes out Thursday at noon. So Wednesday evening at the latest from you, and I need it as the pptx, not a PDF, the secretariat stamps them.
 [00:07:20] Lena Marsh (Principal, consulting team): Wednesday evening. Arjun, can you do that one?
 [00:07:25] Arjun Bose (Project Leader, consulting team): Yeah, I'll send it Wednesday by six. It's just fifteen this round.
-[00:07:32] Ines Duarte (Chief Data Officer, Norrmark Grocery Group): And fourteen next week. Okay, I need to go. Thanks both.
-[00:07:38] Pieter Vos (Chief of Staff, Norrmark Grocery Group): Thanks, bye.
+[00:07:31] Lena Marsh (Principal, consulting team): Let me read it back before you go. Fifteen gets an action title with the 150% and the hundred million and Starbucks named, the quotes stay exactly as they are, fourteen waits for next week, and the loyalty-data idea is a separate note after the board.
+[00:07:50] Ines Duarte (Chief Data Officer, Norrmark Grocery Group): That's it. I'll bring my team's view on the propensity table next week.

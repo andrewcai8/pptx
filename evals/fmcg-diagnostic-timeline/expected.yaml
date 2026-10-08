@@ -8,14 +8,14 @@ changes:
     after: 13
     layout: "D. Title and Text"
     intent: Add a text slide straight after Next steps that unpacks STEP 1 Diagnose as a 6-week diagnostic across all 10 levers, ending in the 2 December steering-committee readout.
-    said: ["00:01:17", "00:01:46", "00:02:27", "00:02:53", "00:04:07", "00:05:10", "00:05:52", "00:06:06"]
+    said: ["00:01:13", "00:01:42", "00:02:23", "00:02:49", "00:04:03", "00:05:06", "00:05:48", "00:06:02"]
     require:
       - count: "6 weeks"
-        from: {said: "00:04:07"}
+        from: {said: "00:04:03"}
       - count: "10 levers"
-        from: {said: "00:02:27"}
+        from: {said: "00:02:23"}
     forbid:
-      - {count: "8 weeks", superseded: "00:01:54"}
+      - {count: "8 weeks", superseded: "00:01:50"}
     intent_checks:
       - The title names the Diagnose step or the diagnostic, so the slide reads as the unpacking of STEP 1 on slide 13.
       - The steering-committee readout on 2 December appears as the end point of the diagnostic.
@@ -26,23 +26,23 @@ changes:
 non_changes:
   - id: n1
     kind: not-a-change
-    said: ["00:03:07", "00:03:30"]
+    said: ["00:03:03", "00:03:26"]
     why: The author contacts page belongs to marketing; Nadia will ask them about adding a line, but not for this version, and the consultants' names go in the cover email.
     slides: [14]
     absent: [{text: "Nadia Brennan"}, {text: "Tomás Reyes"}]
   - id: n2
     kind: not-a-change
-    said: ["00:01:36"]
+    said: ["00:01:32"]
     why: The client asked that the Diagnose, Plan, Execute arrow on Next steps stay untouched; the detail goes on the new slide.
     slides: [13]
   - id: n3
     kind: not-a-change
-    said: ["00:06:19", "00:06:34"]
+    said: ["00:06:15", "00:06:30"]
     why: The list of the 80-plus companies in the study is a follow-up the consultants send by email, not a deck edit.
     slides: [2]
   - id: n4
     kind: not-a-change
-    said: ["00:05:29"]
+    said: ["00:05:25"]
     why: The client takes team size up separately as a budget conversation and asked for nothing on the slide, not even a placeholder. Saying who works on the diagnostic, with no number, is not a team size.
     slides: []
     absent:

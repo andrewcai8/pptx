@@ -23,7 +23,7 @@ Some asks are ambiguous, and the right output asks a question instead of guessin
 
 ```json
 [
-  {"question": "Which regulator slide should be punchier: 10, 16, or 18?", "said": ["00:08:09", "00:08:42"], "slides": [10, 16, 18]}
+  {"question": "Which regulator slide should be punchier: 10, 16, or 18?", "said": ["00:08:05", "00:08:38"], "slides": [10, 16, 18]}
 ]
 ```
 
