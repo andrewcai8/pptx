@@ -1,6 +1,6 @@
 ---
 name: verify-pptx
-description: Prove a generated or edited PowerPoint deck is ready to ship by running deckcheck (house-style check, slide diff against the source deck, slide render) and capturing evidence. Use after producing or changing any .pptx in this repo, before claiming a deck is one-shot, or when deckcheck or standards/house-style.yaml changes.
+description: Prove a generated or edited PowerPoint deck is ready to ship by running deckcheck (house-style check, slide diff against the source deck, slide render), auditing the rendered slides against a rubric, and capturing evidence. Use after producing or changing any .pptx in this repo, before claiming a deck is one-shot, or when deckcheck or standards/house-style.yaml changes.
 ---
 
 # Verify a deck
@@ -55,7 +55,8 @@ To prove a deck that the pipeline produced from a source deck:
 2. Run `uv run --project deckcheck deckcheck check <new.pptx> --out $RUN/check`. Exit 0 prints `PASS`. Exit 1 prints `FAIL` and one `slide N [rule-id] shape: message | evidence` line per violation.
 3. Run `uv run --project deckcheck deckcheck diff <source.pptx> <new.pptx> --out $RUN/diff`. Every slide listed as `changed`, `added`, or `removed` must be one that the request asked for.
 4. Run `shasum -a 256 -c $RUN/source.sha256`. It must print `OK`. The pipeline writes new files and never edits the source.
-5. If `doctor` found soffice, run `uv run --project deckcheck deckcheck render <new.pptx> --out $RUN/render`, then open the changed slides' PNGs and look at them.
+5. If `doctor` found soffice, run `uv run --project deckcheck deckcheck render <new.pptx> --out $RUN/render`, then open the changed slides' PNGs and look at them. Each `substituted:` line names a font the render replaced.
+6. Audit the changed slides. A blind reviewer subagent judges their PNGs against `audit/rubric.md` and writes `$RUN/audit/audit.json`. Then `scripts/audit_check.py` must print `AUDIT VALID`. The audit is advisory, so report its needs-work slides without failing the deck. See `features/audit-slides.md`.
 
 To repair house-style violations before proving a deck, run `uv run --project deckcheck deckcheck fix <new.pptx> --out <fixed.pptx> --report $RUN/fix`, then prove `<fixed.pptx>` with the steps above. See `features/fix-deck.md`.
 
@@ -71,6 +72,8 @@ Everything goes under `artifacts/verify-pptx/<run>/`. Git ignores that directory
 - `check/outline.md` lists each slide's title, its text, and the resolved fonts per paragraph. Read it to confirm the content, not just the style.
 - `diff/diff.md` and `diff/diff.json` hold both hashes and the per-slide status with a text diff.
 - `render/slide-N.png` holds the slide images when soffice exists.
+- `render/fonts.json` maps each font the deck uses to the family `fc-match` found, with `substituted` true or false.
+- `audit/audit.json` holds the reviewer's eight check results per audited slide, the evidence for each fail, the advisory checks, and the verdict.
 
 Proof standards:
 
@@ -88,4 +91,5 @@ deckcheck starts no processes. `selftest.sh` deletes its own scratch directory o
 - `scripts/selftest.sh` builds sample decks with `deckcheck/scripts/make_sample_decks.py`. It asserts that `clean.pptx` passes, that `dirty.pptx` fails with exactly the expected `(slide, rule)` pairs, that the diff touches only slides 2 and 5, and that `fix` on `dirty.pptx` leaves its input hash unchanged and only the report-only violations.
 - `uv run --project deckcheck python deckcheck/scripts/make_sample_decks.py <dir>` writes `clean.pptx`, `dirty.pptx`, and `clean-v2.pptx`, and prints the expected violations for `dirty.pptx`.
 - `cd deckcheck && uv run pytest -q` runs the unit tests.
+- `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/audit_check.py <slide-dir> <audit.json>` checks that a reviewer's `audit.json` covers every PNG in the directory and follows the rubric's rules. It prints `AUDIT VALID (...)` or `AUDIT INVALID: <reason>` and exits 1.
 - `scripts/corpus.py [RUN_DIR]` fetches the decks in `corpus/known-good.yaml` into `artifacts/verify-pptx/corpus-cache/`, checks each one, and fails on any violation without a waiver or any waiver that no longer fires. It also runs `fix` on each deck and fails when a slide outside the deck's waived fixable slides changes. See `features/known-good-corpus.md`.
