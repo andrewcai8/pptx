@@ -226,10 +226,11 @@ class Look:
 
 @dataclass(frozen=True)
 class Charts:
-    """The values a slide's charts draw, and the plot types of any chart python-pptx cannot read."""
+    """The values a slide's charts draw, the plot types of any chart python-pptx cannot read, and every chart's plot types."""
 
     values: tuple[Decimal, ...]
     unreadable: tuple[str, ...]
+    types: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -415,13 +416,16 @@ def _blank_notes(rel) -> bool:
 def _read_charts(shapes: SlideShapes) -> Charts:
     values: list[Decimal] = []
     unreadable: list[str] = []
+    types: list[str] = []
     for chart in _charts(shapes):
+        plots = [etree.QName(x).localname for x in chart._chartSpace.plotArea.iter_xCharts()]
+        types += plots
         try:
             values += [Decimal(str(v)) for plot in chart.plots for series in plot.series for v in series.values if v is not None]
         except ValueError:
             # python-pptx models no 3D, stock, surface, or of-pie plot, and raises ValueError on reading one.
-            unreadable += [etree.QName(x).localname for x in chart._chartSpace.plotArea.iter_xCharts()]
-    return Charts(tuple(values), tuple(unreadable))
+            unreadable += plots
+    return Charts(tuple(values), tuple(unreadable), tuple(types))
 
 
 def _charts(shapes: SlideShapes) -> Iterator[Chart]:

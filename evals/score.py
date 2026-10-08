@@ -82,6 +82,7 @@ class Changed:
     output: int
     allowed_by: tuple[str, ...]
     diff: str
+    redrawn: bool
 
 
 @dataclass(frozen=True)
@@ -208,7 +209,7 @@ def score(sc: Scenario, out: Snapshot, rules: RuleSet) -> Verdict:
     structure = check_structure(sc, placement)
     scope, changed = check_scope(sc, out, placement, rules.params["source-on-data-slides"]["prefix"])
     applied = {c.source for c in changed if c.diff or any(e.kind == "restyle" for e in sc.edits.get(c.source, ()))}
-    facts, fact_failures = check_facts(sc, out, placement, applied)
+    facts, fact_failures = check_facts(sc, out, placement, applied, {c.source for c in changed if c.redrawn})
     layout = check_layout(sc, out, placement)
     inherited, new = check_style(sc, out, placement, rules)
     style = [
@@ -289,8 +290,12 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix
         text_changed = d.status == "changed"
         look_changed = text_changed or before != after
         edits = sc.edits.get(k, ())
+        redrawn = sc.source.charts[k - 1].types != out.charts[i].types
         if look_changed:
-            changed.append(Changed(k, i + 1, tuple(e.id for e in edits), d.diff))
+            changed.append(Changed(k, i + 1, tuple(e.id for e in edits), d.diff, redrawn))
+        if edits and redrawn:
+            was, now = (", ".join(c.types) or "no chart" for c in (sc.source.charts[k - 1], out.charts[i]))
+            failures.append(Failure(Code.SCOPE, k, edits[0].id, f"{edits[0].id} does not ask to change the type of slide {k}'s chart, but {was} became {now}"))
         for e in edits:
             if e.kind == "restyle" and text_changed:
                 failures.append(Failure(Code.SCOPE, k, e.id, f"{e.id} restyles slide {k} but its text changed"))
@@ -379,13 +384,16 @@ def _lines(slide: Slide) -> dict[str, list[str]]:
     return lines
 
 
-def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[int]) -> tuple[list[FactResult], list[Failure]]:
+def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[int], redrawn: set[int]) -> tuple[list[FactResult], list[Failure]]:
+    """Check each fact where it applies. A chart fact on a chart the scorer cannot read is unreadable, unless the maker
+    changed that edited slide's chart type, which scope already fails."""
     results: list[FactResult] = []
     failures: list[Failure] = []
 
     def unreadable(value: Value, charts: Charts, ref: SlideRef, by: str) -> bool:
         if isinstance(value, ChartValue) and charts.unreadable:
-            failures.append(Failure(Code.UNREADABLE, ref, by, f"{slide_name(ref)} chart: {', '.join(charts.unreadable)} cannot be read; check by hand"))
+            if ref not in redrawn:
+                failures.append(Failure(Code.UNREADABLE, ref, by, f"{slide_name(ref)} chart: {', '.join(charts.unreadable)} cannot be read; check by hand"))
             return True
         return False
 

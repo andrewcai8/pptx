@@ -141,8 +141,8 @@ def chart_deck(path: Path, plot: str = "barChart") -> Path:
 
 @pytest.mark.parametrize("plot", ["bar3DChart", "line3DChart", "pie3DChart", "stockChart", "surfaceChart", "surface3DChart", "ofPieChart"])
 def test_a_chart_python_pptx_cannot_read_is_reported_by_type(tmp_path, plot):
-    assert snapshot(chart_deck(tmp_path / "unreadable.pptx", plot)).charts == (Charts((), (plot,)),)
-    assert snapshot(chart_deck(tmp_path / "bar.pptx")).charts == (Charts((Decimal("410.0"), Decimal("2000.0")), ()),)
+    assert snapshot(chart_deck(tmp_path / "unreadable.pptx", plot)).charts == (Charts((), (plot,), (plot,)),)
+    assert snapshot(chart_deck(tmp_path / "bar.pptx")).charts == (Charts((Decimal("410.0"), Decimal("2000.0")), (), ("barChart",)),)
 
 
 def built(tmp_path: Path, scenario: str, variant: str) -> Path:

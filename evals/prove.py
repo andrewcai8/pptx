@@ -40,8 +40,10 @@ from scenario import (
 from score import BAD, FAIL, OK, UNREACHABLE, Code, SlideRef, line, load_house_rules, run
 
 WORDS = (600, 1500)
-# A built output is never the source file and never tampers with it, so no variant can earn a source failure.
-NEGATIVE_CODES = frozenset(Code) - {Code.SOURCE}
+# A built output is never the source file and never tampers with it, so no variant can earn a source failure. No
+# public variant can earn unreadable either: the loader rejects a chart fact on a chart the scorer cannot read, and a
+# maker who redraws an edited slide's chart in another type fails scope. test_scenario.py covers unreadable.
+NEGATIVE_CODES = frozenset(Code) - {Code.SOURCE, Code.UNREADABLE}
 
 
 @dataclass(frozen=True)
