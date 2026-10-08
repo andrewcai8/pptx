@@ -29,7 +29,9 @@ Some asks are ambiguous, and the right output asks a question instead of guessin
 
 Each flag has a `question` and at least one of `said`, the transcript turns it is about, and `slides`, the source slide numbers it is about. A flag raises an ambiguous non-change when it cites one of that non-change's `said` turns or names one of its `slides`. A flag that raises none is `unmatched`.
 
-`score.py` reads `flags.json` when it is there. `score.json` lists under `flags` which ambiguous non-changes were raised, which are missing, and the unmatched questions, and the command prints them on a second line. This is reported, not scored. A missing flag does not fail the deck and an unmatched one does not either, until the intent checker exists to judge whether each question is the right one. A `flags.json` that is not a list of such objects exits 2.
+`score.py` reads `flags.json` when it is there. `score.json` lists under `flags` which ambiguous non-changes were raised, which are missing, the unmatched questions, and anything it could not read, and the command prints them on a second line. This is reported, not scored. A missing flag does not fail the deck and an unmatched one does not either, until the intent checker exists to judge whether each question is the right one.
+
+The scorer reads a flags file the way a maker is likely to write it. It reads UTF-8 with or without a byte order mark and ignores keys other than `question`, `said`, and `slides`, such as `id` or `reason`. A turn may drop its hour or leading zeros (`8:05` is `00:08:05`), a slide number may be a numeric string (`"18"`), and a single turn or slide may stand without a list. A file or a flag it still cannot read is reported on the flags line as `unreadable (<reason>)`, and the deck is scored as usual. The exit code comes from the deck verdict alone.
 
 ## Run the proof
 

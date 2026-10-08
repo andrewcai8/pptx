@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -25,7 +26,6 @@ from deckcheck.model import DeckError, Slide, Violation
 from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
 from facts import ChartValue, Value, describe, match, to_json
 from scenario import (
-    TIMESTAMP,
     AddSlide,
     Ambiguous,
     BadScenario,
@@ -115,10 +115,13 @@ class Flags:
     raised: tuple[str, ...]
     missing: tuple[str, ...]
     unmatched: tuple[str, ...]
+    unreadable: tuple[str, ...]
 
     @property
     def line(self) -> str:
         found = f"raised {', '.join(self.raised) or 'none'}; missing {', '.join(self.missing) or 'none'}; {len(self.unmatched)} unmatched"
+        if self.unreadable:
+            found += f"; unreadable ({'; '.join(self.unreadable)})"
         return f"flags (reported, not scored): {found}" + ("" if self.file else "; no flags.json")
 
 
@@ -446,49 +449,81 @@ def check_style(sc: Scenario, out: Snapshot, placement: Placement, rules: RuleSe
 
 
 FLAGS_FILE = "flags.json"
+# A turn as a maker may write it, with or without the hour: 00:08:05, 0:08:05, 08:05, or 8:05.
+TURN_STAMP = re.compile(r"(?:(\d{1,2}):)?([0-5]?\d):([0-5]\d)")
+SLIDE_NUMBER = re.compile(r"\d+", re.ASCII)
 
 
-class BadOutput(Exception):
+class UnreadableFlag(Exception):
     pass
 
 
-def read_flags(path: Path) -> tuple[Flag, ...] | None:
-    """The maker's flags.json, if it wrote one. A file that is there but malformed is a bad output, not an empty one."""
+def read_flags(path: Path) -> tuple[tuple[Flag, ...], tuple[str, ...]] | None:
+    """The maker's flags.json, if it wrote one: the flags it could read and why it could not read the rest. Flags are
+    reported beside the verdict, so a file the scorer cannot read never stops it scoring the deck."""
     if not path.is_file():
         return None
     try:
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise BadOutput(f"{path}: {e}") from e
+        return (), (f"{path.name}: {e}",)
     if not isinstance(raw, list):
-        raise BadOutput(f"{path}: expected a list of flags")
-    return tuple(parse_flag(f, f"{path}[{i}]") for i, f in enumerate(raw))
+        return (), (f"{path.name}: expected a list of flags",)
+    flags: list[Flag] = []
+    unreadable: list[str] = []
+    for i, item in enumerate(raw):
+        try:
+            flags.append(parse_flag(item, f"{path.name}[{i}]"))
+        except UnreadableFlag as e:
+            unreadable.append(str(e))
+    return tuple(flags), tuple(unreadable)
 
 
 def parse_flag(raw: object, where: str) -> Flag:
-    if not isinstance(raw, dict) or set(raw) - {"question", "said", "slides"}:
-        raise BadOutput(f"{where}: expected an object with a question, and said or slides")
-    question, said, slides = raw.get("question"), raw.get("said", []), raw.get("slides", [])
+    """A flag needs its question and what it is about. Any other key is the maker's own and is ignored."""
+    if not isinstance(raw, dict):
+        raise UnreadableFlag(f"{where}: expected an object with a question, and said or slides")
+    question = raw.get("question")
     if not isinstance(question, str) or not question.strip():
-        raise BadOutput(f"{where}.question: expected the question as a non-empty string")
-    if not isinstance(said, list) or not all(isinstance(at, str) and TIMESTAMP.match(at) for at in said):
-        raise BadOutput(f"{where}.said: expected a list of hh:mm:ss transcript timestamps")
-    if not isinstance(slides, list) or not all(type(k) is int for k in slides):
-        raise BadOutput(f"{where}.slides: expected a list of source slide numbers")
+        raise UnreadableFlag(f"{where}.question: expected the question as a non-empty string")
+    said = tuple(_turn(at, f"{where}.said") for at in _items(raw.get("said")))
+    slides = tuple(_slide_number(k, f"{where}.slides") for k in _items(raw.get("slides")))
     if not said and not slides:
-        raise BadOutput(f"{where}: name the transcript turns it is about in said, or the source slides in slides")
-    return Flag(question, tuple(said), tuple(slides))
+        raise UnreadableFlag(f"{where}: name the transcript turns in said or the source slides in slides")
+    return Flag(question, said, slides)
+
+
+def _items(raw: object) -> list[object]:
+    return [] if raw is None else raw if isinstance(raw, list) else [raw]
+
+
+def _turn(raw: object, where: str) -> str:
+    m = TURN_STAMP.fullmatch(raw.strip()) if isinstance(raw, str) else None
+    if m is None:
+        raise UnreadableFlag(f"{where}: {raw!r} is not a transcript timestamp such as 00:08:05")
+    hours, minutes, seconds = m.groups()
+    return f"{int(hours or 0):02}:{int(minutes):02}:{seconds}"
+
+
+def _slide_number(raw: object, where: str) -> int:
+    if type(raw) is int:
+        return raw
+    if isinstance(raw, str) and SLIDE_NUMBER.fullmatch(raw.strip()):
+        return int(raw)
+    raise UnreadableFlag(f"{where}: {raw!r} is not a source slide number")
 
 
 def check_flags(sc: Scenario, path: Path) -> Flags:
-    flags = read_flags(path)
+    read = read_flags(path)
+    flags, unreadable = read or ((), ())
     asks = [nc for nc in sc.non_changes if isinstance(nc, Ambiguous)]
-    raised = tuple(nc.id for nc in asks if any(f.raises(nc) for f in flags or ()))
+    raised = tuple(nc.id for nc in asks if any(f.raises(nc) for f in flags))
     return Flags(
-        path if flags is not None else None,
+        path if read is not None else None,
         raised,
         tuple(nc.id for nc in asks if nc.id not in raised),
-        tuple(f.question for f in flags or () if not any(f.raises(nc) for nc in asks)),
+        tuple(f.question for f in flags if not any(f.raises(nc) for nc in asks)),
+        unreadable,
     )
 
 
@@ -546,7 +581,13 @@ def report(sc: Scenario, output: Path, out: Snapshot | None, verdict: Verdict) -
 def flags_json(flags: Flags | None) -> dict[str, object] | None:
     if flags is None:
         return None
-    return {"file": str(flags.file) if flags.file else None, "raised": list(flags.raised), "missing": list(flags.missing), "unmatched": list(flags.unmatched)}
+    return {
+        "file": str(flags.file) if flags.file else None,
+        "raised": list(flags.raised),
+        "missing": list(flags.missing),
+        "unmatched": list(flags.unmatched),
+        "unreadable": list(flags.unreadable),
+    }
 
 
 def tampered_report(e: SourceTampered, output: Path, verdict: Verdict) -> dict[str, object]:
@@ -597,7 +638,7 @@ def main(argv: list[str] | None = None) -> int:
         write_json(out_dir / "score.json", tampered_report(e, args.output, verdict))
         print(line(e.name, verdict, 0))
         return FAIL
-    except (BadScenario, BadOutput, ConfigError, DeckError) as e:
+    except (BadScenario, ConfigError, DeckError) as e:
         print(f"error: {e}", file=sys.stderr)
         return BAD
     except DeckUnreachable as e:
