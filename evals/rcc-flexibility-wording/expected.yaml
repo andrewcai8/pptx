@@ -1,0 +1,40 @@
+deck:
+  corpus: rcc-hq-reopening-pack-2020
+  sha256: 689bc16e857e35774999de835f755d3c1c4c31cc0e83ebd8129faf3e0e5a0052
+
+changes:
+  - id: c1
+    kind: edit-text
+    intent: Reword the flexibility principle on slide 4 so it says teams choose their own office days within the site cap, replacing "Flexibility to teams".
+    said: ["00:01:38", "00:02:42", "00:03:17", "00:03:27"]
+    slides:
+      4:
+        require:
+          - {text: ["office days", "days in the office", "office day"]}
+          - {text: ["site cap", "site's cap", "site capacity", "site limit", "per-site cap"]}
+        forbid:
+          - {text: "Flexibility to teams"}
+          - {text: "pick their own schedule", superseded: "00:02:42"}
+    intent_checks:
+      - The reworded bullet replaces "Flexibility to teams" in the same place in the illustrative principles list, between the customers bullet and the individual choice bullet, not as an extra bullet.
+      - The bullet reads as a bounded choice (teams decide their days, inside a per-site limit), not as open-ended flexibility or flexible hours.
+      - No site headcount (the 420 or 380 Mississauga figure) appears on the slide; Daniel said the cap belongs in the facilities plan.
+      - The "Business profitability, market share, etc." bullet is left as is.
+
+non_changes:
+  - id: n1
+    kind: not-a-change
+    said: ["00:04:22", "00:04:36", "00:05:10"]
+    why: The team debated whether the timing slide still holds before the province's workplace guidance and decided to leave slide 7 as it is until the announcement.
+    slides: [7]
+    absent:
+      - {text: "province"}
+      - {text: "provincial"}
+  - id: n2
+    kind: not-a-change
+    said: ["00:05:31", "00:05:57", "00:06:02"]
+    why: Who sends the pre-read and whether to stamp the cover as a draft are logistics; Daniel will send it himself and said to leave the cover alone.
+    slides: [1]
+    absent:
+      - {text: "Draft for ExCo"}
+      - {text: "pre-read"}
