@@ -49,6 +49,8 @@ MONTHS = "january|february|march|april|may|june|july|august|september|october|no
 # plural that already ends the phrase, so "6 days and then weeks" is not 6 weeks, and not a month, so "2 December by
 # the consultants" is a date and not 2 consultants.
 COUNT_GAP = rf"(?:(?!{NUMBER_WORD})(?!(?:{MONTHS})[\s-])(?![a-z-]*[^s]s[\s-])[a-z][a-z-]*[\s-]){{0,3}}"
+# A unit may be written short: 8 wks, a 6-wk diagnostic.
+SHORT_UNITS = {"week": "wk"}
 # In a text fact, " ... " stands for up to three words and the punctuation around them, so "team ... tbc" matches
 # "Team: TBC" and "Team size still TBC".
 WORD_GAP = r"\W+(?:\w+\W+){0,3}"
@@ -182,14 +184,17 @@ def _quantities(kind: str, text: str) -> list[tuple[Money | Percent, tuple[int, 
 
 
 # A count is a number then its unit, either end of a range then the unit, or the unit then a range from 1, so
-# "weeks 1 to 6" runs 6 weeks and "weeks 3 to 6" states no duration.
+# "weeks 1 to 6" runs 6 weeks and "weeks 3 to 6" states no duration, or a label that ends in the count, so "Levers
+# covered: all 10" is 10 levers.
 def _counts(unit: str, text: str) -> Iterator[tuple[int, str]]:
-    noun = rf"{re.escape(unit)}s?(?![a-z])"
+    noun = rf"(?:{'|'.join(re.escape(u) for u in (unit, SHORT_UNITS.get(unit)) if u)})s?(?![a-z])"
     for m in re.finditer(rf"{START}(?P<low>{COUNT_WORD})(?:{RANGE})(?P<high>{COUNT_WORD})[\s-]{COUNT_GAP}{noun}", text):
         yield from ((_count(m[end]), m[0]) for end in ("low", "high"))
     for m in re.finditer(rf"{START}(?P<number>{COUNT_WORD})[\s-]{COUNT_GAP}{noun}", text):
         yield _count(m["number"]), m[0]
     for m in re.finditer(rf"(?<![a-z]){noun}\s(?:1|one)(?:{RANGE})(?P<number>{COUNT_WORD})(?!\w|[.,]\d)", text):
+        yield _count(m["number"]), m[0]
+    for m in re.finditer(rf"(?<![a-z]){noun}(?:\s[a-z]+){{0,2}}:\s?(?:all\s)?(?P<number>{COUNT_WORD})(?=\s*(?:[,;)]|\.(?!\d)|$))", text):
         yield _count(m["number"]), m[0]
 
 

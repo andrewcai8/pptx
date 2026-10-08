@@ -171,3 +171,21 @@ def placeholder_for_team(d: DeckEdit) -> None:
 def hedged_6_to_8_weeks(d: DeckEdit) -> None:
     """Diagnostic slide hedges the duration as "6 to 8 weeks", keeping the 8 weeks the client ruled out."""
     add_diagnostic(d, bullets=("6 to 8 weeks from kick-off on 19 October to readout", *BULLETS[1:]))
+
+
+@variant()
+def duration_in_wks(d: DeckEdit) -> None:
+    """Diagnostic slide states the duration only as "Duration 6 wks", the usual short form of 6 weeks."""
+    add_diagnostic(d, title="STEP 1: Diagnose, ready for the 2 December steering committee", bullets=("Duration 6 wks, from kick-off on 19 October to readout", *BULLETS[1:]))
+
+
+@variant()
+def levers_covered_label(d: DeckEdit) -> None:
+    """Diagnostic slide states the lever count only as the label "Levers covered: all 10"."""
+    add_diagnostic(d, bullets=(BULLETS[0], "Levers covered: all 10", *BULLETS[2:]))
+
+
+@variant(fails={("forbidden", "c1")})
+def extended_option_8_wks(d: DeckEdit) -> None:
+    """Diagnostic slide keeps "Extended option: 8 wks", the eight Nadia said to take out completely."""
+    add_diagnostic(d, bullets=BULLETS + ("Extended option: 8 wks",))
