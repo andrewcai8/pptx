@@ -147,6 +147,8 @@ The last three render differently, so a maker must not touch them on a slide nob
 
 The intent checker judges the rest. That covers every `intent_checks` line, such as tone, wording, and placement, and whether each question in `flags.json` is the right one. `score.json` lists them under `deferred`. For an ambiguous ask, the script decides only that the maker did not guess, and reports whether `flags.json` raised it.
 
+A `chart` fact reads the chart's cached values, the numbers PowerPoint draws. The chart's embedded workbook is what PowerPoint reloads on Edit Data. A maker that updates the cache but leaves the workbook stale shows the right bar until someone opens Edit Data, which brings the old number back. The script does not read workbooks, so whether the workbook matches the cache is intent-checker scope, and a scenario that changes chart data says so in its `intent_checks`.
+
 ## Private scenarios
 
 A scenario built on a client deck lives in `$GOLDEN_PRIVATE_DIR/<name>/` and never enters the repo. It names its deck by file and hash:

@@ -33,6 +33,7 @@ changes:
       - Slide 10's header still says the market grows to $2bn over the next 5 years, now from $410m, and the table's 2022 market-size cell reads $410m.
       - Slide 10's title keeps the 2022-27 period; only the 2022 size and the growth rate moved.
       - Slide 2 still reads as one sentence about the $11B opportunity, the CAGR, and the $2B near-term potential, with only the growth rate changed.
+      - The slide 10 chart's embedded workbook holds 410 for 2022, matching the cached value the chart draws, so PowerPoint's Edit Data does not bring back 380.
 
 non_changes:
   - id: n1
