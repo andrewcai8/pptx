@@ -118,7 +118,7 @@ A fact names the thing that must be true, not one phrasing of it. Each fact has 
 
 A `require` passes when the fact is on the slide. A `forbid` or `absent` fails when it is there. Matching ignores case, Unicode composition, runs of whitespace, and curly quotes. A match cannot sit inside a longer word or number, so `39%` matches `+39%` but not `139%` or `1.39%`, and `day` does not match `days`. `evals/test_facts.py` lists the cases.
 
-A dash or "to" between two numbers is a range, and a range states both ends. That reading has a cost: "rose from 39 to 37%" states 39% as well, which is right for a forbid, because the old value is on the slide. A money range needs the currency in front, so `380-410m$` is read as $410M only.
+A dash or "to" between two numbers is a range, and a range states both ends. So "rose from 39 to 37%" states 39% as well. That is right for a forbid, because the old value is still on the slide. A money range needs the currency in front, so `380-410m$` is read as $410M only.
 
 The parser does not read numbers spelled out past twenty, such as `forty-eight percent`. A fact written that way is not found, so a `require` fails and a `forbid` passes. The intent checker sees the wording either way.
 
