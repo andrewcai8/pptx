@@ -10,12 +10,12 @@ changes:
     intent: Add a text slide straight after Next steps that unpacks STEP 1 Diagnose as a 6-week diagnostic across all 10 levers, ending in the 2 December steering-committee readout.
     said: ["00:01:09", "00:01:31", "00:02:08", "00:03:24", "00:04:09", "00:04:39"]
     require:
-      - text: ["6 weeks", "6-week", "six weeks", "six-week"]
+      - count: "6 weeks"
         from: {said: "00:03:24"}
-      - text: ["10 levers", "ten levers", "all 10"]
+      - count: "10 levers"
         from: {said: "00:02:08"}
     forbid:
-      - {text: ["8 weeks", "8-week", "eight weeks", "eight-week"], superseded: "00:01:40"}
+      - {count: "8 weeks", superseded: "00:01:40"}
     intent_checks:
       - The title names the Diagnose step or the diagnostic, so the slide reads as the unpacking of STEP 1 on slide 13.
       - The steering-committee readout on 2 December appears as the end point of the diagnostic.

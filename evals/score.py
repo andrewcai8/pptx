@@ -23,6 +23,7 @@ from deckcheck.cli import write_atomic
 from deckcheck.diff import diff_decks, outline
 from deckcheck.model import DeckError, Slide, Violation
 from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
+from facts import Value, describe, match, to_json
 from scenario import (
     AddSlide,
     Ambiguous,
@@ -33,7 +34,6 @@ from scenario import (
     FromSlide,
     NewSlot,
     NonChange,
-    Phrase,
     Provenance,
     Scenario,
     Slot,
@@ -43,7 +43,6 @@ from scenario import (
     Where,
     corpus,
     find,
-    holds,
     open_scenario,
     snapshot,
 )
@@ -87,7 +86,7 @@ class FactResult:
     ref: str
     slide: SlideRef
     kind: Literal["require", "forbid", "absent"]
-    text: Phrase
+    value: Value
     where: Where
     found: str | None
     ok: bool
@@ -135,10 +134,6 @@ def slide_name(ref: SlideRef) -> str:
     return f"slide {ref}" if isinstance(ref, int) else f"the slide {ref} adds"
 
 
-def alternatives(phrase: Phrase) -> str:
-    return " or ".join(repr(alt) for alt in phrase)
-
-
 def failure_key(f: Failure) -> tuple:
     slide = (0, f.slide, "") if isinstance(f.slide, int) else (1, 0, f.slide or "")
     return (list(Code).index(f.code), slide, f.ref or "", f.message)
@@ -152,6 +147,10 @@ def line(sc_name: str, verdict: Verdict, deferred: int) -> str:
     if verdict.passed:
         return f"SCENARIO PASS {sc_name} ({verdict.checks} checks, {deferred} intent checks deferred)"
     return "SCENARIO FAIL: " + "; ".join(f"[{f.code}] {f.message}" for f in verdict.failures)
+
+
+def place_name(ref: SlideRef, where: Where) -> str:
+    return f"the title of {slide_name(ref)}" if where == "title" else slide_name(ref)
 
 
 def non_change_code(nc: NonChange) -> Code:
@@ -261,7 +260,7 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix
             elif e.kind != "restyle" and not text_changed:
                 failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k}"))
         if edits and text_changed:
-            forbids = [f.text for e in edits for f in e.slides[k].forbid if f.superseded is None]
+            forbids = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None]
             if lost := lost_lines(sc.source.deck.slides[k - 1], out.deck.slides[i], forbids, source_prefix):
                 shown = ", ".join(repr(x) for x in lost[:3]) + (f", and {len(lost) - 3} more" if len(lost) > 3 else "")
                 failures.append(Failure(Code.SCOPE, k, edits[0].id, f"{edits[0].id} does not ask to change these lines on slide {k}, but they are gone or changed: {shown}"))
@@ -276,7 +275,7 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix
     return failures, changed
 
 
-def lost_lines(before: Slide, after: Slide, forbids: list[Phrase], source_prefix: str) -> list[str]:
+def lost_lines(before: Slide, after: Slide, forbids: list[Value], source_prefix: str) -> list[str]:
     kept = Counter(outline(after))
     lost = []
     for shape in before.shapes:
@@ -285,7 +284,7 @@ def lost_lines(before: Slide, after: Slide, forbids: list[Phrase], source_prefix
             entry = f"{shape.name}: {text}"
             if kept[entry]:
                 kept[entry] -= 1
-            elif not text.startswith(source_prefix) and not any(holds(f, text) for f in forbids):
+            elif not text.startswith(source_prefix) and not any(match(f, text) for f in forbids):
                 lost.append(entry)
     return lost
 
@@ -299,22 +298,21 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
         slide = out.deck.slides[placement.index[slot]]
         ref = slot_ref(slot)
         for r in facts.require:
-            found = find(r.text, slide, r.where)
-            results.append(FactResult(change.id, ref, "require", r.text, r.where, found, found is not None, source=r.source))
+            found = find(r.value, r.where, slide)
+            results.append(FactResult(change.id, ref, "require", r.value, r.where, found, found is not None, source=r.source))
             if found is None:
-                target = f"the title of {slide_name(ref)}" if r.where == "title" else slide_name(ref)
-                failures.append(Failure(Code.MISSING, ref, change.id, f"{change.id}: {alternatives(r.text)} is not on {target}"))
+                failures.append(Failure(Code.MISSING, ref, change.id, f"{change.id}: {describe(r.value)} is not on {place_name(ref, r.where)}"))
         for f in facts.forbid:
-            found = find(f.text, slide, f.where)
-            results.append(FactResult(change.id, ref, "forbid", f.text, f.where, found, found is None, superseded=f.superseded))
+            found = find(f.value, f.where, slide)
+            results.append(FactResult(change.id, ref, "forbid", f.value, f.where, found, found is None, superseded=f.superseded))
             if found and f.superseded:
-                failures.append(Failure(Code.FORBIDDEN, ref, change.id, f"{change.id}: {found!r} is on {slide_name(ref)}; it was abandoned after {f.superseded}"))
+                failures.append(Failure(Code.FORBIDDEN, ref, change.id, f"{change.id}: {found!r} is on {place_name(ref, f.where)}; it was abandoned after {f.superseded}"))
             elif found:
-                failures.append(Failure(Code.FORBIDDEN, ref, change.id, f"{change.id}: {found!r} is still on {slide_name(ref)}"))
+                failures.append(Failure(Code.FORBIDDEN, ref, change.id, f"{change.id}: {found!r} is still on {place_name(ref, f.where)}"))
     for nc in sc.non_changes:
-        for phrase in nc.absent:
-            hits = [(slot_ref(slot), found) for slot, s in zip(placement.slots, out.deck.slides, strict=True) if (found := find(phrase, s))]
-            results.append(FactResult(nc.id, "deck", "absent", phrase, "slide", hits[0][1] if hits else None, not hits))
+        for value in nc.absent:
+            hits = [(slot_ref(slot), found) for slot, s in zip(placement.slots, out.deck.slides, strict=True) if (found := find(value, "slide", s))]
+            results.append(FactResult(nc.id, "deck", "absent", value, "slide", hits[0][1] if hits else None, not hits))
             failures += [Failure(non_change_code(nc), ref, nc.id, f"{nc.id}: {found!r} is on {slide_name(ref)}, but {non_change_reason(nc)}") for ref, found in hits]
     return results, failures
 
@@ -375,7 +373,7 @@ def report(sc: Scenario, output: Path, out: Snapshot | None, verdict: Verdict) -
                 "ref": f.ref,
                 "slide": f.slide,
                 "kind": f.kind,
-                "text": list(f.text),
+                "fact": to_json(f.value),
                 "where": f.where,
                 "found": f.found,
                 "ok": f.ok,

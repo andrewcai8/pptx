@@ -11,6 +11,8 @@ A scenario directory holds these files:
 
 Source decks are never committed. A public scenario names a deck in `.claude/skills/verify-pptx/corpus/known-good.yaml` by id and sha256, and the scorer reads it from the corpus cache. Generated decks and `score.json` files go under `artifacts/evals/`.
 
+Run the scorer's unit tests with `uv run --project deckcheck pytest evals`.
+
 ## The one contract a maker keeps
 
 The maker edits a copy of the source deck. The scorer tells the slides apart by their slide ids (`p:sldId/@id`), which python-pptx and PowerPoint keep when a slide is edited, deleted, or moved. A new slide gets a fresh id. An output that shares no slide id with the source fails with one `structure` failure, because the scorer cannot tell which slide is which.
@@ -59,10 +61,10 @@ changes:
     slides:
       5:
         require:
-          - {text: ["48%", "48 percent"], where: title, from: {data: data/client-survey.csv, row: millennials-2027, column: share_pct}}
+          - {percent: "48%", where: title, from: {data: data/client-survey.csv, row: millennials-2027, column: share_pct}}
         forbid:
-          - {text: "ca. 50%", where: title}
-          - {text: "45%", superseded: "00:04:10"}
+          - {percent: "50%", where: title}
+          - {percent: "45%", superseded: "00:04:10"}
     intent_checks: [What only a reader can judge.]
   - {id: c2, kind: delete-slide, slide: 2, intent: ..., said: [...]}
   - {id: c3, kind: move-slide, slide: 14, after: 11, intent: ..., said: [...]}
@@ -75,15 +77,25 @@ non_changes:
 The loader lints every field against the real deck and transcript, and a bad scenario exits 2 with the field named. These are the main rules:
 
 - Each `said` and `superseded` timestamp is a transcript turn.
-- A `require` alternative that has a digit needs `from`. The value is `{said: <ts>}` when the turn says the number, `{data: <csv>, row: <first-column key>, column: <header>}` when the cell value appears in the text, or `{slide: <n>}` when the text is already on that source slide.
-- A plain `forbid` is an old value, so at least one alternative must be on the source slide. A `superseded` forbid is the abandoned answer from a change of mind. Its timestamp is the turn where that answer was said, so that turn must say some alternative, or every number in it. Every alternative must be absent from the source slide.
-- Every `absent` alternative must be absent from the whole source deck.
+- A `require` with a number needs `from`. The value is `{said: <ts>}` when the turn states it, `{data: <csv>, row: <first-column key>, column: <header>}` when the cell value appears in the fact, or `{slide: <n>}` when it is already on that source slide.
+- A `require` on an edited slide must not already hold on the source slide, or it could not show the edit happened.
+- A plain `forbid` is an old value, so it must be on the source slide. A `superseded` forbid is the abandoned answer from a change of mind. Its timestamp is the turn where that answer was said, so that turn must state it. It must be absent from the source slide.
+- Every `absent` fact must be absent from the whole source deck.
 - An added slide's `layout` must be a layout that some source slide uses.
 - A non-change cannot name a slide that a change edits or deletes. It can name a moved slide, because a moved slide keeps its content.
 
-A fact's `text` is one string or a list of alternatives, the wordings a good maker might use. A `require` passes when any alternative is on the slide. A `forbid` or `absent` fails when any alternative is there. Matching ignores case, Unicode composition, runs of whitespace, and curly quotes. A match cannot sit inside a longer word or number, so `39%` matches `+39%` but not `139%` or `1.39%`.
+A fact names the thing that must be true, not one phrasing of it. Each fact has exactly one of these keys:
 
-A wording that only one exact phrasing satisfies, and that no list of alternatives can cover, belongs in `intent_checks`.
+| key | value | matches |
+|---|---|---|
+| `money` | `"$100M"` | any amount of the same currency and value: `$100M`, `$100 million`, `$100m`, `US$100M`, `USD 100 million`, `$0.1bn` |
+| `percent` | `"48%"` | `48%`, `48 %`, `48 per cent`, `48 percent` |
+| `count` | `"6 weeks"` | the number in digits or words up to twenty, then the unit, with at most one word between: `6 weeks`, `six-week`, `6 calendar weeks` |
+| `text` | a string or a list | the load-bearing concept, with the few wordings it needs, such as `["cap", "limit"]` |
+
+A `require` passes when the fact is on the slide. A `forbid` or `absent` fails when it is there. Matching ignores case, Unicode composition, runs of whitespace, and curly quotes. A match cannot sit inside a longer word or number, so `39%` matches `+39%` but not `139%` or `1.39%`, and `day` does not match `days`. `evals/test_facts.py` lists the cases.
+
+Anything that is really about wording, such as tone, which phrase was used, or where a bullet sits, belongs in `intent_checks`.
 
 ## What the script decides and what it defers
 
@@ -92,7 +104,7 @@ The script decides these checks, in this order:
 1. `source` checks that the source deck still has its pinned hash and that the output is not the source file.
 2. `structure` maps every output slide to a source slide by slide id, or to an added slide in order of appearance. It reports a kept slide that is missing, a deleted slide that is still there, a new slide that no change asks for, an added slide that is missing, and a slide out of order. When two slides could explain one displacement, it blames the slide a change moved or added.
 3. `scope` runs on every slide the mapping pairs, even when `structure` failed. A slide no change edits must look the same: the same text, the same slide XML, and the same related parts (charts and their embedded workbooks, images and other media, notes), followed recursively. A changed slide gets `guessed` when an ambiguous non-change names it, `non-change` when a not-a-change names it, and `scope` otherwise. On an edited slide, every source paragraph must still be there, unless it holds one of that slide's plain `forbid` values or starts with the house-style source prefix. An edit target that did not change fails `missing`. A change to the deck's slide layouts, masters, or themes is one `scope` failure.
-4. `missing` and `forbidden` check the `require` and `forbid` facts on each changed slide, and the `absent` strings across the deck.
+4. `missing` and `forbidden` check the `require` and `forbid` facts on each changed slide, and the `absent` facts across the deck.
 5. `layout` checks that each added slide uses its declared layout.
 6. `style` reports house-style violations that the source deck did not already have, matched through the slide mapping.
 

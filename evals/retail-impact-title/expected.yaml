@@ -10,15 +10,15 @@ changes:
     slides:
       15:
         require:
-          - text: "150%"
+          - percent: "150%"
             where: title
             from: {slide: 15}
-          - text: "$100M"
+          - money: "$100M"
             where: title
             from: {slide: 15}
         forbid:
           - {text: "Significant impact was achieved", where: title}
-          - {text: ["tripled", "triple", "tripling", "3x"], superseded: "00:01:59"}
+          - {text: ["tripled", "triple", "triples", "tripling", "trebled", "threefold", "3x", "3×"], superseded: "00:01:59"}
     intent_checks:
       - The title reads as one sentence stating what personalization delivered, a result the board could repeat, not a claim that impact was significant.
       - The 150% is attached to marketing engagement and the $100M to net incremental revenue in year 1; neither figure is described as a tripling.

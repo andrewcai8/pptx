@@ -10,7 +10,6 @@ import importlib.util
 import os
 import re
 import sys
-import unicodedata
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cached_property
@@ -23,7 +22,9 @@ from pptx.opc.constants import CONTENT_TYPE as CT
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part, XmlPart
 
+import facts
 from deckcheck.model import Deck, DeckError, Slide, open_presentation, read_bytes, read_deck
+from facts import Value, Words
 
 ROOT = Path(__file__).resolve().parents[1]
 EVALS = ROOT / "evals"
@@ -84,19 +85,16 @@ class FromSlide:
 
 Provenance = FromSaid | FromData | FromSlide
 
-Phrase = tuple[str, ...]
-
-
 @dataclass(frozen=True)
 class Require:
-    text: Phrase
+    value: Value
     where: Where
     source: Provenance | None
 
 
 @dataclass(frozen=True)
 class Forbid:
-    text: Phrase
+    value: Value
     where: Where
     superseded: str | None
 
@@ -156,7 +154,7 @@ class NotAChange:
     said: tuple[str, ...]
     why: str
     slides: tuple[int, ...]
-    absent: tuple[Phrase, ...]
+    absent: tuple[Value, ...]
 
 
 @dataclass(frozen=True)
@@ -165,7 +163,7 @@ class Ambiguous:
     said: tuple[str, ...]
     why: str
     slides: tuple[int, ...]
-    absent: tuple[Phrase, ...]
+    absent: tuple[Value, ...]
     flag: str
 
 
@@ -296,36 +294,11 @@ def skeleton(n_source: int, changes: Sequence[Change]) -> tuple[Slot, ...]:
     return tuple(slots)
 
 
-WHITESPACE = re.compile(r"\s+")
-QUOTES = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
 NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 
 
-def normalize(text: str) -> str:
-    return WHITESPACE.sub(" ", unicodedata.normalize("NFC", text).translate(QUOTES)).strip().casefold()
-
-
-def _joined(a: str, b: str, c: str) -> bool:
-    return a.isalnum() and b.isalnum() or a.isdigit() and b in ".," and c.isdigit()
-
-
-def contains(fact: str, text: str) -> bool:
-    fact, text = normalize(fact), f"  {normalize(text)}  "
-    start = text.find(fact)
-    while start >= 0:
-        end = start + len(fact)
-        if not _joined(fact[0], text[start - 1], text[start - 2]) and not _joined(fact[-1], text[end], text[end + 1]):
-            return True
-        start = text.find(fact, start + 1)
-    return False
-
-
-def holds(phrase: Phrase, text: str) -> str | None:
-    return next((alt for alt in phrase if contains(alt, text)), None)
-
-
 def says_number(number: str, text: str) -> bool:
-    return re.search(rf"(?<![\d.,]){re.escape(number)}(?![\d]|[.,]\d)", normalize(text)) is not None
+    return re.search(rf"(?<![\d.,]){re.escape(number)}(?![\d]|[.,]\d)", facts.normalize(text)) is not None
 
 
 def texts(slide: Slide, where: Where) -> list[str]:
@@ -334,8 +307,12 @@ def texts(slide: Slide, where: Where) -> list[str]:
     return [p.text for shape in slide.shapes for p in shape.paragraphs]
 
 
-def find(phrase: Phrase, slide: Slide, where: Where = "slide") -> str | None:
-    return next((alt for t in texts(slide, where) if (alt := holds(phrase, t))), None)
+def find(value: Value, where: Where, slide: Slide) -> str | None:
+    return next((hit for t in texts(slide, where) if (hit := facts.match(value, t))), None)
+
+
+def find_in(snap: Snapshot, k: int, value: Value, where: Where = "slide") -> str | None:
+    return find(value, where, snap.deck.slides[k - 1])
 
 
 def sha256(path: Path) -> str:
@@ -344,7 +321,6 @@ def sha256(path: Path) -> str:
 
 SHARED = frozenset({CT.PML_SLIDE_LAYOUT, CT.PML_SLIDE_MASTER, CT.OFC_THEME})
 NOT_SLIDE_CONTENT = frozenset({RT.SLIDE, RT.SLIDE_LAYOUT, RT.SLIDE_MASTER, RT.NOTES_MASTER})
-
 
 def snapshot(path: Path) -> Snapshot:
     data = read_bytes(path)
@@ -504,6 +480,18 @@ def _where(raw: Any, where: str) -> Where:
     return raw
 
 
+def _fact(raw: Any, where: str, optional: Sequence[str] = ()) -> tuple[Value, Where, dict[str, Any]]:
+    raw = _keys(raw, where, (), (*facts.KINDS, "where", *optional))
+    kinds = [k for k in facts.KINDS if k in raw]
+    if len(kinds) != 1:
+        raise BadScenario(f"{where}: name exactly one of {', '.join(facts.KINDS)}")
+    try:
+        value = facts.parse(kinds[0], raw[kinds[0]])
+    except ValueError as e:
+        raise BadScenario(f"{where}.{kinds[0]}: {e}") from e
+    return value, _where(raw.get("where", "slide"), where), raw
+
+
 def _deck_ref(raw: Any, private: bool) -> DeckRef:
     if isinstance(raw, dict) and "file" in raw:
         raw = _keys(raw, "deck", required=("file", "sha256"))
@@ -525,28 +513,17 @@ def _provenance(raw: Any, where: str) -> Provenance:
     return FromData(_str(raw["data"], f"{where}.data"), str(raw["row"]), _str(raw["column"], f"{where}.column"))
 
 
-def _phrase(raw: Any, where: str) -> Phrase:
-    if isinstance(raw, str):
-        return (_str(raw, where),)
-    alternatives = _strs(raw, where)
-    if not alternatives:
-        raise BadScenario(f"{where}: expected a string or a non-empty list of alternatives")
-    return alternatives
-
-
 def _facts(raw: dict[str, Any], where: str) -> Facts:
     require = []
     for i, r in enumerate(_list(raw.get("require") or [], f"{where}.require")):
         w = f"{where}.require[{i}]"
-        r = _keys(r, w, ("text",), ("where", "from"))
-        source = _provenance(r["from"], f"{w}.from") if "from" in r else None
-        require.append(Require(_phrase(r["text"], f"{w}.text"), _where(r.get("where", "slide"), w), source))
+        value, at, r = _fact(r, w, ("from",))
+        require.append(Require(value, at, _provenance(r["from"], f"{w}.from") if "from" in r else None))
     forbid = []
     for i, f in enumerate(_list(raw.get("forbid") or [], f"{where}.forbid")):
         w = f"{where}.forbid[{i}]"
-        f = _keys(f, w, ("text",), ("where", "superseded"))
-        superseded = _stamp(f["superseded"], f"{w}.superseded") if "superseded" in f else None
-        forbid.append(Forbid(_phrase(f["text"], f"{w}.text"), _where(f.get("where", "slide"), w), superseded))
+        value, at, f = _fact(f, w, ("superseded",))
+        forbid.append(Forbid(value, at, _stamp(f["superseded"], f"{w}.superseded") if "superseded" in f else None))
     return Facts(tuple(require), tuple(forbid))
 
 
@@ -607,10 +584,7 @@ def _non_change(raw: Any, where: str) -> NonChange:
     said = _stamps(raw["said"], f"{where}.said")
     why = _str(raw["why"], f"{where}.why")
     slides = tuple(_int(s, f"{where}.slides[{i}]") for i, s in enumerate(_list(raw.get("slides") or [], f"{where}.slides")))
-    absent = tuple(
-        _phrase(_keys(a, f"{where}.absent[{i}]", ("text",))["text"], f"{where}.absent[{i}].text")
-        for i, a in enumerate(_list(raw.get("absent") or [], f"{where}.absent"))
-    )
+    absent = tuple(_fact(a, f"{where}.absent[{i}]")[0] for i, a in enumerate(_list(raw.get("absent") or [], f"{where}.absent")))
     if kind == "not-a-change":
         return NotAChange(nid, said, why, slides, absent)
     if "flag" not in raw:
@@ -703,53 +677,68 @@ def _problems(sc: Scenario) -> Iterator[str]:
             yield from in_range(k, f"{nc.id}.slides")
             if k in targets:
                 yield f"{nc.id}.slides: slide {k} is edited or deleted, so a non-change cannot name it"
-        for phrase in nc.absent:
-            if found := next((alt for s in slides if (alt := find(phrase, s))), None):
+        for value in nc.absent:
+            if found := next((hit for k in range(1, n + 1) if (hit := find_in(sc.source, k, value))), None):
                 yield f"{nc.id}.absent: {found!r} is already in the source deck"
     if dup := sorted({k for k in named if named.count(k) > 1}):
         yield f"slides {', '.join(map(str, dup))} are named by two non-changes"
 
 
-def _said(alt: str, turn: Turn) -> bool:
+def _said(value: Value, text: str) -> bool:
+    match value:
+        case Words(alternatives):
+            return any(facts.match(Words((alt,)), text) or _says_numbers(alt, text) for alt in alternatives)
+    return facts.match(value, text) is not None
+
+
+def _says_numbers(alt: str, text: str) -> bool:
     numbers = NUMBER.findall(alt)
-    return contains(alt, turn.text) or bool(numbers) and all(says_number(num, turn.text) for num in numbers)
+    return bool(numbers) and all(says_number(num, text) for num in numbers)
+
+
+def _numbered(value: Value) -> list[Value]:
+    if isinstance(value, Words):
+        return [Words((alt,)) for alt in value.alternatives if any(ch.isdigit() for ch in alt)]
+    return [value]
 
 
 def _fact_problems(sc: Scenario, turns: dict[str, Turn]) -> Iterator[str]:
-    slides = sc.source.deck.slides
-    for change, slot, facts in sc.fact_targets:
-        src = slides[slot.slide - 1] if isinstance(slot, SourceSlot) and 1 <= slot.slide <= len(slides) else None
+    n = len(sc.source.deck.slides)
+    for change, slot, fs in sc.fact_targets:
+        src = slot.slide if isinstance(slot, SourceSlot) and 1 <= slot.slide <= n else None
         label = f"{change.id} slide {slot.slide}" if isinstance(slot, SourceSlot) else f"{change.id}"
-        for r in facts.require:
-            for alt in (a for a in r.text if any(ch.isdigit() for ch in a)):
+        for r in fs.require:
+            if src is not None and (found := find_in(sc.source, src, r.value, r.where)):
+                yield f"{label} require {found!r}: already on the source slide ({r.where}), so it cannot show the edit happened"
+            for piece in _numbered(r.value):
                 if r.source is None:
-                    yield f"{label} require {alt!r}: a fact with a number needs `from`"
+                    yield f"{label} require {facts.describe(piece)}: a fact with a number needs `from`"
                 else:
-                    yield from (f"{label} require {alt!r}: {p}" for p in _provenance_problems(sc, alt, r.source, turns))
-        for f in facts.forbid:
+                    yield from (f"{label} require {facts.describe(piece)}: {p}" for p in _provenance_problems(sc, piece, r.source, turns))
+        for f in fs.forbid:
             if f.superseded is not None:
                 if f.superseded not in turns:
-                    yield f"{label} forbid {f.text!r}: no transcript turn at {f.superseded}"
-                elif not any(_said(alt, turns[f.superseded]) for alt in f.text):
-                    yield f"{label} forbid {f.text!r}: the turn at {f.superseded} must say the abandoned value"
-                if src is not None and (found := find(f.text, src, f.where)):
+                    yield f"{label} forbid {facts.describe(f.value)}: no transcript turn at {f.superseded}"
+                elif not _said(f.value, turns[f.superseded].text):
+                    yield f"{label} forbid {facts.describe(f.value)}: the turn at {f.superseded} must say the abandoned value"
+                if src is not None and (found := find_in(sc.source, src, f.value, f.where)):
                     yield f"{label} forbid {found!r}: a superseded value must be absent from the source slide"
-            elif src is not None and not find(f.text, src, f.where):
-                yield f"{label} forbid {f.text!r}: an old value must be on the source slide ({f.where})"
+            elif src is not None and not find_in(sc.source, src, f.value, f.where):
+                yield f"{label} forbid {facts.describe(f.value)}: an old value must be on the source slide ({f.where})"
 
 
-def _provenance_problems(sc: Scenario, text: str, source: Provenance, turns: dict[str, Turn]) -> Iterator[str]:
+def _provenance_problems(sc: Scenario, value: Value, source: Provenance, turns: dict[str, Turn]) -> Iterator[str]:
     match source:
         case FromSaid(at):
             if at not in turns:
                 yield f"no transcript turn at {at}"
-            elif missing := [num for num in NUMBER.findall(text) if not says_number(num, turns[at].text)]:
-                yield f"the turn at {at} does not say {', '.join(missing)}"
+            elif not _said(value, turns[at].text):
+                yield f"the turn at {at} does not say it"
         case FromSlide(k):
             if not 1 <= k <= len(sc.source.deck.slides):
                 yield f"from.slide {k} is outside the deck"
-            elif not find((text,), sc.source.deck.slides[k - 1]):
-                yield f"the text is not on source slide {k}"
+            elif not find_in(sc.source, k, value):
+                yield f"it is not on source slide {k}"
         case FromData(data, row, column):
             path = (sc.dir / data).resolve()
             if sc.dir not in path.parents or not path.is_file():
@@ -759,9 +748,10 @@ def _provenance_problems(sc: Scenario, text: str, source: Provenance, turns: dic
                 rows = list(csv.reader(f))
             header = rows[0] if rows else []
             hits = [r for r in rows[1:] if r and r[0] == row]
+            spec = value.alternatives[0] if isinstance(value, Words) else value.text
             if column not in header:
                 yield f"from.data: {data} has no column {column!r}"
             elif len(hits) != 1:
                 yield f"from.data: {data} has {len(hits)} rows keyed {row!r}, expected 1"
-            elif not says_number(cell := hits[0][header.index(column)].strip(), text):
-                yield f"from.data: {data} {row}/{column} is {cell!r}, which the fact text does not contain"
+            elif not says_number(cell := hits[0][header.index(column)].strip(), spec):
+                yield f"from.data: {data} {row}/{column} is {cell!r}, which the fact does not contain"

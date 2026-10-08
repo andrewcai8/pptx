@@ -10,11 +10,11 @@ changes:
     slides:
       4:
         require:
-          - {text: ["office days", "days in the office", "office day"]}
-          - {text: ["site cap", "site's cap", "site capacity", "site limit", "per-site cap"]}
+          - {text: "days"}
+          - {text: ["cap", "caps", "limit", "limits", "capacity"]}
         forbid:
           - {text: "Flexibility to teams"}
-          - {text: "pick their own schedule", superseded: "00:02:42"}
+          - {text: ["schedule", "schedules"], superseded: "00:02:42"}
     intent_checks:
       - The reworded bullet replaces "Flexibility to teams" in the same place in the illustrative principles list, between the customers bullet and the individual choice bullet, not as an extra bullet.
       - The bullet reads as a bounded choice (teams decide their days, inside a per-site limit), not as open-ended flexibility or flexible hours.

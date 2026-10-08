@@ -10,12 +10,12 @@ changes:
     slides:
       5:
         require:
-          - text: "48%"
+          - percent: "48%"
             where: title
             from: {data: data/client-survey.csv, row: millennials-2027, column: share_pct}
         forbid:
-          - {text: "ca. 50%", where: title}
-          - {text: "45%", superseded: "00:04:10"}
+          - {percent: "50%", where: title}
+          - {percent: "45%", superseded: "00:04:10"}
     intent_checks:
       - The headline still makes one argument about the new generations; only the figure changed.
       - The new figure is attributed to the client's member survey, not to the US census footnote.
