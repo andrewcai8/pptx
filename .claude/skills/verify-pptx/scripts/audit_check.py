@@ -17,7 +17,7 @@ RESULTS = {
     "C7": PASS_FAIL_NA,
     "C8": PASS_FAIL,
 }
-ADVISORY_WHEN_SUBSTITUTED = ["C3", "C4"]
+ADVISORY_WHEN_SUBSTITUTED = ["C3", "C4", "C5"]
 VERDICT = {False: "good", True: "needs-work"}
 FIELDS = {"slide": int, "checks": dict, "evidence": dict, "advisory": list, "verdict": str}
 

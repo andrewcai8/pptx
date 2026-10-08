@@ -2,11 +2,11 @@
 
 Audit each slide PNG you were given. Judge only what the PNG shows. Fail only on something you can point to in the image, and name it in the evidence. When unsure, pass.
 
-Read `fonts.json` next to the PNGs before you judge. If any font in it has `"substituted": true`, the render used a stand-in font whose different widths move wraps and edges. C3 and C4 are then advisory on every slide of the deck. Still judge them and report what you see.
+Read `fonts.json` next to the PNGs before you judge. If any font in it has `"substituted": true`, the render used a stand-in font whose different widths move wraps and edges. C3, C4, and C5 are then advisory on every slide of the deck. Still judge them and report what you see.
 
 Each check returns `pass`, `fail`, or `n/a`. Only C1, C5, C6, and C7 may be `n/a`, and only where the check says so. C2, C3, C4, and C8 are always `pass` or `fail`.
 
-**C1 action-title.** Pass when the title asserts a finding or recommendation about its subject: a sentence or clause with a main verb, or a quantified or comparative assertion. A kicker before a colon ("Looking back: value creation has lagged") is ignored, and the part after it is judged. Fail when the title only names the subject, including a noun phrase carrying a relative clause ("Seven practices leading retailers are considering", "Impact scores by seniority level", "Layout changes"). `n/a` for biography, agenda, contents, and section divider slides.
+**C1 action-title.** Pass when the title asserts a finding or recommendation about its subject: a sentence or clause with a main verb, or a quantified or comparative assertion. A kicker before a colon ("Looking back: value creation has lagged") is ignored, and the part after it is judged. Fail when the title only names the subject, including a noun phrase carrying a relative clause ("Seven practices leading retailers are considering", "Impact scores by seniority level", "Layout changes"). `n/a` for cover, biography, agenda, contents, and section divider slides.
 
 **C2 one-message.** Pass when every chart, table, and text block supports or details the title's claim. Several charts on the same subject pass. Fail when a block presents a subject the title does not cover and that does not feed the claim.
 
@@ -24,7 +24,7 @@ Each check returns `pass`, `fail`, or `n/a`. Only C1, C5, C6, and C7 may be `n/a
 
 Verdict: `needs-work` when any check outside `advisory` fails, otherwise `good`. An advisory fail alone leaves the slide `good`.
 
-Write one JSON array to the `audit.json` path you were given, with one entry per PNG. `slide` is the N in `slide-N.png`. `evidence` holds one entry for every failed check. `advisory` is `["C3", "C4"]` when `fonts.json` shows a substituted font, and `[]` otherwise.
+Write one JSON array to the `audit.json` path you were given, with one entry per PNG. `slide` is the N in `slide-N.png`. `evidence` holds one entry for every failed check. `advisory` is `["C3", "C4", "C5"]` when `fonts.json` shows a substituted font, and `[]` otherwise.
 
 ```json
 [
@@ -32,7 +32,7 @@ Write one JSON array to the `audit.json` path you were given, with one entry per
     "slide": 3,
     "checks": {"C1": "fail", "C2": "pass", "C3": "fail", "C4": "pass", "C5": "n/a", "C6": "pass", "C7": "pass", "C8": "pass"},
     "evidence": {"C1": "title 'Market overview' names the subject only", "C3": "the 2024 data label overlaps the legend"},
-    "advisory": ["C3", "C4"],
+    "advisory": ["C3", "C4", "C5"],
     "verdict": "needs-work"
   }
 ]
