@@ -92,13 +92,15 @@ A fact names the thing that must be true, not one phrasing of it. Each fact has 
 
 | key | value | matches |
 |---|---|---|
-| `money` | `"$100M"` | any amount of the same currency and value: `$100M`, `$100 million`, `$100m`, `US$100M`, `USD 100 million`, `$0.1bn` |
-| `percent` | `"48%"` | `48%`, `48 %`, `48 per cent`, `48 percent` |
-| `count` | `"6 weeks"` | the number in digits or words up to twenty, then the unit, with at most one word between: `6 weeks`, `six-week`, `6 calendar weeks` |
+| `money` | `"$100M"` | any amount of the same currency and value, with the currency before or after the number: `$100M`, `$100MM`, `$100 million`, `US$ 100 million`, `USD 100 million`, `$0.1bn`, `100m$`, `100 million dollars` |
+| `percent` | `"48%"` | `48%`, `+48%`, `48 %`, `48 per cent`, `48 percent`, and either end of a range such as `45-48%` or `45–48%`. `-48%` is a different value |
+| `count` | `"6 weeks"` | the number in digits or words up to twenty, then the unit, with up to three words between that are neither a number nor a plural: `6 weeks`, `six-week`, `6 calendar weeks`, `all 10 of the levers`, `10 key value levers` |
 | `chart` | `410` | a value in the slide's chart data, as python-pptx reads it from the chart part. It takes no `where` |
-| `text` | a string or a list | the load-bearing concept, with the few wordings it needs, such as `["cap", "limit"]` |
+| `text` | a string or a list | the load-bearing concept, with the few wordings it needs, such as `["cap", "limit"]`. A `#` stands for any count in digits or words up to twenty, so `"# consultants"` matches `2 consultants` and `two consultants` |
 
 A `require` passes when the fact is on the slide. A `forbid` or `absent` fails when it is there. Matching ignores case, Unicode composition, runs of whitespace, and curly quotes. A match cannot sit inside a longer word or number, so `39%` matches `+39%` but not `139%` or `1.39%`, and `day` does not match `days`. `evals/test_facts.py` lists the cases.
+
+The parser does not read numbers spelled out past twenty, such as `forty-eight percent`, or money ranges, such as `$380-410m`. A fact written that way is not found, so a `require` fails and a `forbid` passes. The intent checker sees the wording either way.
 
 Anything that is really about wording, such as tone, which phrase was used, or where a bullet sits, belongs in `intent_checks`.
 

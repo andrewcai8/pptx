@@ -7,12 +7,13 @@ import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
+from functools import cache
 
 WHITESPACE = re.compile(r"\s+")
 QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
 NUMBER = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
-CURRENCIES = {"$": "USD", "us$": "USD", "usd": "USD", "€": "EUR", "eur": "EUR", "£": "GBP", "gbp": "GBP"}
-SCALES = {"k": 3, "thousand": 3, "m": 6, "mn": 6, "million": 6, "b": 9, "bn": 9, "billion": 9}
+CURRENCIES = {"$": "USD", "us$": "USD", "usd": "USD", "dollar": "USD", "dollars": "USD", "€": "EUR", "eur": "EUR", "euro": "EUR", "euros": "EUR", "£": "GBP", "gbp": "GBP"}
+SCALES = {"k": 3, "thousand": 3, "m": 6, "mm": 6, "mn": 6, "million": 6, "b": 9, "bn": 9, "billion": 9}
 NUMBER_WORDS = {
     w: n
     for n, w in enumerate(
@@ -20,14 +21,25 @@ NUMBER_WORDS = {
     )
 }
 
-MONEY = re.compile(
-    rf"(?<![\w$€£])(?P<currency>us\$|usd|eur|gbp|[$€£])\s?(?P<number>{NUMBER})"
-    rf"(?:\s?(?P<scale>thousand|million|billion|mn|bn|k|m|b)(?![a-z]))?(?![.,]?\d)"
-)
 START = r"(?<!\w)(?<!\d[.,])"
-PERCENT = re.compile(rf"{START}(?P<number>{NUMBER})\s?(?:%|per ?cent(?![a-z]))")
+CURRENCY = r"us\$|usd|eur|gbp|[$€£]"
+SCALE = r"thousand|million|billion|mm|mn|bn|k|m|b"
+# A currency either leads the number ($100m, US$ 100 million) or follows it (100m$, 100 million dollars). A trailing
+# symbol must not lead a number of its own, so "top 5 $100M deals" is $100M and not $5.
+MONEY = re.compile(
+    rf"(?<![\w$€£])(?P<currency>{CURRENCY})\s?(?P<number>{NUMBER})(?:\s?(?P<scale>{SCALE})(?![a-z]))?(?![.,]?\d)"
+    rf"|{START}(?<![$€£])(?P<number_after>{NUMBER})\s?(?:(?P<scale_after>{SCALE})\s?)?(?P<currency_after>{CURRENCY}|dollars?|euros?)(?![a-z]|\s?\d)"
+)
+PERCENT_UNIT = r"\s?(?:%|per ?cent(?![a-z]))"
+# A minus sign makes a different value: -48% is not 48%. A dash between two numbers is a range, and a range states both.
+PERCENT = re.compile(rf"{START}(?P<sign>[-−+](?=\d))?(?P<number>{NUMBER}){PERCENT_UNIT}")
+PERCENT_RANGE = re.compile(rf"{START}(?P<low>{NUMBER})(?:{PERCENT_UNIT})?\s?[-–—]\s?(?P<high>{NUMBER}){PERCENT_UNIT}")
+NUMBER_WORD = rf"(?:{'|'.join(NUMBER_WORDS)})(?![a-z])"
 COUNT_WORD = rf"\d+|{'|'.join(NUMBER_WORDS)}"
 COUNT_SPEC = re.compile(rf"(?P<number>{COUNT_WORD})[\s-](?P<unit>[a-z]+?)s?")
+# Up to three words may sit between a count and its noun ("all 10 of the levers"), but not another number, and not a
+# plural that already ends the phrase, so "6 days and then weeks" is not 6 weeks.
+COUNT_GAP = rf"(?:(?!{NUMBER_WORD})(?![a-z-]*[^s]s[\s-])[a-z][a-z-]*[\s-]){{0,3}}"
 
 
 def normalize(text: str) -> str:
@@ -91,7 +103,7 @@ def parse(kind: str, raw: object) -> Value:
             raise ValueError(f"{raw!r} is not a count such as {EXAMPLES[kind]!r}")
         return Count(_count(m["number"]), m["unit"], raw)
     found = [q for q in _quantities(kind, text) if q[1] == (0, len(text))]
-    if not found:
+    if len(found) != 1:
         raise ValueError(f"{raw!r} is not one {kind} such as {EXAMPLES[kind]!r}")
     return replace(found[0][0], text=raw)
 
@@ -101,9 +113,9 @@ def match(value: Money | Percent | Count | Words, text: str) -> str | None:
     text = normalize(text)
     match value:
         case Words(alternatives):
-            return next((alt for alt in alternatives if _contains(normalize(alt), text)), None)
+            return next((m[0] for alt in alternatives if (m := _phrase(normalize(alt)).search(text))), None)
         case Count(n, unit):
-            pattern = re.compile(rf"{START}(?P<number>{COUNT_WORD})[\s-](?:[a-z][a-z-]*[\s-])?{re.escape(unit)}s?(?![a-z])")
+            pattern = re.compile(rf"{START}(?P<number>{COUNT_WORD})[\s-]{COUNT_GAP}{re.escape(unit)}s?(?![a-z])")
             return next((m[0] for m in pattern.finditer(text) if _count(m["number"]) == n), None)
         case Money() | Percent():
             kind = "money" if isinstance(value, Money) else "percent"
@@ -141,10 +153,24 @@ def to_json(value: Value) -> dict[str, object]:
 def _quantities(kind: str, text: str) -> list[tuple[Money | Percent, tuple[int, int]]]:
     if kind == "money":
         return [
-            (Money(_number(m["number"]).scaleb(SCALES.get(m["scale"] or "", 0)), CURRENCIES[m["currency"]], m[0]), m.span())
+            (
+                Money(
+                    _number(m["number"] or m["number_after"]).scaleb(SCALES.get(m["scale"] or m["scale_after"] or "", 0)),
+                    CURRENCIES[m["currency"] or m["currency_after"]],
+                    m[0],
+                ),
+                m.span(),
+            )
             for m in MONEY.finditer(text)
         ]
-    return [(Percent(_number(m["number"]), m[0]), m.span()) for m in PERCENT.finditer(text)]
+    ranges = list(PERCENT_RANGE.finditer(text))
+    found = [(Percent(_number(m[end]), m[0]), m.span()) for m in ranges for end in ("low", "high")]
+    found += [
+        (Percent(-_number(m["number"]) if m["sign"] in ("-", "−") else _number(m["number"]), m[0]), m.span())
+        for m in PERCENT.finditer(text)
+        if not any(r.start() <= m.start() < r.end() for r in ranges)
+    ]
+    return sorted(found, key=lambda q: q[1])
 
 
 def _number(digits: str) -> Decimal:
@@ -155,16 +181,11 @@ def _count(word: str) -> int:
     return NUMBER_WORDS[word] if word in NUMBER_WORDS else int(word)
 
 
-def _joined(a: str, b: str, c: str) -> bool:
-    return a.isalnum() and b.isalnum() or a.isdigit() and b in ".," and c.isdigit()
-
-
-def _contains(fact: str, text: str) -> bool:
-    text = f"  {text}  "
-    start = text.find(fact)
-    while start >= 0:
-        end = start + len(fact)
-        if not _joined(fact[0], text[start - 1], text[start - 2]) and not _joined(fact[-1], text[end], text[end + 1]):
-            return True
-        start = text.find(fact, start + 1)
-    return False
+# A phrase cannot start or end inside a longer word or number. A # in it stands for any count, in digits or in words
+# up to twenty, so "# consultants" matches "2 consultants" and "two consultants".
+@cache
+def _phrase(fact: str) -> re.Pattern[str]:
+    body = rf"(?:{COUNT_WORD})".join(re.escape(part) for part in fact.split("#"))
+    head = (r"(?<![^\W_])" if fact[0].isalnum() or fact[0] == "#" else "") + (r"(?<!\d[.,])" if fact[0].isdigit() or fact[0] == "#" else "")
+    tail = (r"(?![^\W_])" if fact[-1].isalnum() or fact[-1] == "#" else "") + (r"(?![.,]\d)" if fact[-1].isdigit() or fact[-1] == "#" else "")
+    return re.compile(head + body + tail)
