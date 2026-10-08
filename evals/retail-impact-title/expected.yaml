@@ -6,7 +6,7 @@ changes:
   - id: c1
     kind: edit-text
     intent: Replace slide 15's topic title with an action title that states the Starbucks result using the engagement and revenue figures already on the slide.
-    said: ["00:01:36", "00:02:42", "00:02:52", "00:05:20", "00:05:46"]
+    said: ["00:01:34", "00:02:51", "00:03:04", "00:03:14", "00:06:17", "00:06:40", "00:06:46", "00:06:54"]
     slides:
       15:
         require:
@@ -18,7 +18,7 @@ changes:
             from: {slide: 15}
         forbid:
           - {text: "Significant impact was achieved", where: title}
-          - {text: ["tripled", "triple", "triples", "tripling", "trebled", "threefold", "3x", "3×"], superseded: "00:01:59"}
+          - {text: ["tripled", "triple", "triples", "tripling", "trebled", "threefold", "3x", "3×"], superseded: "00:02:07"}
     intent_checks:
       - The title reads as one sentence stating what personalization delivered, a result the board could repeat, not a claim that impact was significant.
       - The 150% is attached to marketing engagement and the $100M to net incremental revenue in year 1; neither figure is described as a tripling.
@@ -28,17 +28,17 @@ changes:
 non_changes:
   - id: n1
     kind: not-a-change
-    said: ["00:04:25", "00:04:36", "00:04:47"]
+    said: ["00:05:09", "00:05:23", "00:05:41"]
     why: Slide 14's title is weak too, but the client wants to rework it next week after settling what the propensity table shows.
     slides: [14]
   - id: n2
     kind: not-a-change
-    said: ["00:03:36", "00:04:05"]
+    said: ["00:03:59", "00:04:39"]
     why: Running the email-offer analysis on the client's own loyalty data is a follow-up scoping piece after the board, and the deck stays about the sector.
     slides: [12]
     absent: [{text: "Norrmark"}]
   - id: n3
     kind: not-a-change
-    said: ["00:04:52", "00:05:01", "00:05:17"]
-    why: The four-dot last bullets on slide 6 are deliberate continuation marks and the client chose to leave them.
+    said: ["00:05:50", "00:06:01", "00:06:09"]
+    why: The four-dot last bullets on slide 6 are deliberate continuation marks from the original; Pieter wondered about them and nobody asked for a change.
     slides: [6]

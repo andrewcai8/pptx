@@ -6,7 +6,7 @@ changes:
   - id: c1
     kind: edit-text
     intent: Reword the flexibility principle on slide 4 so it says teams choose their own office days within the site cap, replacing "Flexibility to teams".
-    said: ["00:01:38", "00:02:42", "00:03:17", "00:03:27"]
+    said: ["00:01:51", "00:03:14", "00:04:03", "00:04:16"]
     slides:
       4:
         require:
@@ -14,17 +14,15 @@ changes:
           - {text: ["cap", "caps", "limit", "limits", "capacity"]}
         forbid:
           - {text: "Flexibility to teams"}
-          - {text: ["schedule", "schedules"], superseded: "00:02:42"}
+          - {text: ["schedule", "schedules"], superseded: "00:03:14"}
     intent_checks:
       - The reworded bullet replaces "Flexibility to teams" in the same place in the illustrative principles list, between the customers bullet and the individual choice bullet, not as an extra bullet.
       - The bullet reads as a bounded choice (teams decide their days, inside a per-site limit), not as open-ended flexibility or flexible hours.
-      - No site headcount (the 420 or 380 Mississauga figure) appears on the slide; Daniel said the cap belongs in the facilities plan.
-      - The "Business profitability, market share, etc." bullet is left as is.
 
 non_changes:
   - id: n1
     kind: not-a-change
-    said: ["00:04:22", "00:04:36", "00:05:10"]
+    said: ["00:05:34", "00:05:50", "00:06:35"]
     why: The team debated whether the timing slide still holds before the province's workplace guidance and decided to leave slide 7 as it is until the announcement.
     slides: [7]
     absent:
@@ -32,9 +30,17 @@ non_changes:
       - {text: "provincial"}
   - id: n2
     kind: not-a-change
-    said: ["00:05:31", "00:05:57", "00:06:02"]
-    why: Who sends the pre-read and whether to stamp the cover as a draft are logistics; Daniel will send it himself and said to leave the cover alone.
-    slides: [1]
-    absent:
-      - {text: "Draft for ExCo"}
-      - {text: "pre-read"}
+    said: ["00:07:36", "00:07:51"]
+    why: Whether to call out Calgary's later opening on the site page is parked until Daniel has seen real estate next week.
+    slides: [12]
+    absent: [{text: "Calgary"}]
+  - id: n3
+    kind: not-a-change
+    said: ["00:07:03", "00:07:13", "00:07:24", "00:07:30"]
+    why: Who sends the pre-read and when is logistics; Daniel sends it through Martine's assistant.
+    absent: [{text: "pre-read"}]
+  - id: n4
+    kind: not-a-change
+    said: ["00:02:47", "00:03:05"]
+    why: The Mississauga daily cap is facilities-plan detail that differs by site and will move, so Daniel and Claire kept the number off the slide.
+    absent: [{text: "380"}, {text: "Mississauga"}]

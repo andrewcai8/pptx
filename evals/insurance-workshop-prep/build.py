@@ -48,7 +48,7 @@ def kept_credentials(d: DeckEdit) -> None:
     d.move_slide(14, after=11)
 
 
-@variant(base=good, fails={("non-change", 1)})
+@variant(base=good, fails={("scope", 1), ("non-change", 1)})
 def acted_on_logistics(d: DeckEdit) -> None:
     """Puts the Oversight Office on the cover although the invitation is the client's action and unconfirmed."""
     d.replace(1, "Ljubljana, September 4th, 2017", "Joint workshop with the Oversight Office, Ljubljana")
@@ -76,7 +76,7 @@ def shrunk_footnote(d: DeckEdit) -> None:
 
 @variant(base=good, fails={("structure", 18), ("guessed", 18)})
 def dropped_regulator_slide(d: DeckEdit) -> None:
-    """Deletes the closing regulator slide as a way of making the deck punchier."""
+    """Deletes the closing regulator slide as a way of making "the regulator slide" punchier."""
     d.delete_slide(18)
 
 

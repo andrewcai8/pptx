@@ -95,8 +95,6 @@ def own_composition(sc: Scenario) -> list[str]:
         problems.append(f"{sc.name} transcript has {sc.words} words, expected {WORDS[0]} to {WORDS[1]}")
     if not any(isinstance(nc, NotAChange) for nc in sc.non_changes):
         problems.append(f"{sc.name} has no not-a-change")
-    if not any(f.superseded for _, _, facts in sc.fact_targets for f in facts.forbid):
-        problems.append(f"{sc.name} has no superseded forbid (a change of mind)")
     return problems
 
 

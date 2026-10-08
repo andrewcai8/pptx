@@ -44,10 +44,16 @@ def kept_first_answer(d: DeckEdit) -> None:
     d.replace(4, OLD, "Let teams pick their own schedule")
 
 
-@variant(base=good, fails={("non-change", 1)})
-def stamped_cover(d: DeckEdit) -> None:
-    """The cover is stamped as a draft though Daniel said to leave it alone."""
-    d.replace(1, "Edition #1: June 2020", "Edition #1: June 2020 | Draft for ExCo")
+@variant(base=good, fails={("non-change", 12)})
+def called_out_calgary(d: DeckEdit) -> None:
+    """The site page names Calgary's later opening although Daniel parked it until next week."""
+    d.replace(12, "Determine office site and maintenance modifications required for safe return", "Determine office site and maintenance modifications required for safe return, with Calgary to follow")
+
+
+@variant(base=good, fails={("non-change", 4)})
+def cap_number_on_slide(d: DeckEdit) -> None:
+    """The reworded bullet quotes Mississauga's 380 a day although Daniel said to keep the number off the slide."""
+    d.replace(4, NEW, NEW + " (e.g., Mississauga: 380 a day)")
 
 
 @variant(base=good, fails={("scope", 4)})

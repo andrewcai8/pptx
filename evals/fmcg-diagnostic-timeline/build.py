@@ -35,7 +35,7 @@ def appended_at_end(d: DeckEdit) -> None:
 
 @variant(fails={("structure", "c1")})
 def placed_after_contacts(d: DeckEdit) -> None:
-    """Diagnostic slide placed after the contacts page, the placement the client took back."""
+    """Diagnostic slide placed after the contacts page, the placement Nadia talked the client out of."""
     add_diagnostic(d, after=14)
 
 
@@ -66,7 +66,7 @@ def kept_eight_weeks(d: DeckEdit) -> None:
 
 @variant(base=good, fails={("non-change", 14)})
 def edited_contacts(d: DeckEdit) -> None:
-    """Contacts page edited to swap an original author for the consultant, which marketing ruled out."""
+    """Contacts page edited to swap an original author for the consultant, which Nadia parked until marketing has been asked."""
     d.replace(14, "Matt Gamber", "Nadia Brennan")
 
 
