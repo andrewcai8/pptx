@@ -1,3 +1,5 @@
+import copy
+
 from pptx.oxml.ns import qn
 
 from deckedit import DeckEdit, variant
@@ -72,7 +74,7 @@ def rounded_to_400(d: DeckEdit) -> None:
     _refresh(d, size="400")
 
 
-@variant(base=good, fails={("guessed", 10), ("scope", 10)})
+@variant(base=good, fails={("guessed", 10), ("lost", 10)})
 def guessed_ppa_tariff(d: DeckEdit) -> None:
     """The $0.08 tariff in slide 10's table is swapped for the PPA tariff, a guess at an unanswered question."""
     d.replace(10, "$0.08", "$0.07")
@@ -120,3 +122,56 @@ def untouched_chart_drawn_in_3d(d: DeckEdit) -> None:
 def header_hedged_380_to_410(d: DeckEdit) -> None:
     """Slide 10's header hedges the market as "$380-410m", keeping the old $380m beside the new figure."""
     d.replace(10, "$410m market", "$380-410m market")
+
+
+def _remove(d: DeckEdit, slide: int, name: str) -> None:
+    shape = next(s for s in d.slide(slide).shapes if s.name == name)
+    shape._element.getparent().remove(shape._element)
+
+
+@variant(base=good, fails={("lost", 2)})
+def contents_icon_deleted(d: DeckEdit) -> None:
+    """Slide 2 moves to 37%, and one of its three contents icons is deleted, which no change asks for."""
+    _remove(d, 2, "Graphic 11")
+
+
+@variant(base=good, fails={("lost", 10)})
+def market_table_deleted(d: DeckEdit) -> None:
+    """Slide 10's figures move, and its market table is deleted rather than updated."""
+    _remove(d, 10, "Table 39")
+
+
+@variant(base=good)
+def source_line_extended(d: DeckEdit) -> None:
+    """Slide 10's source line is extended with Priya's updated market model, the source of the new figures."""
+    d.replace(10, "Expert interviews; BCG analysis", "Expert interviews; BCG analysis; updated market model (2023)")
+
+
+@variant(base=good)
+def second_source_line(d: DeckEdit) -> None:
+    """Slide 10 gains a second source line for Priya's updated market model under the existing one."""
+    footnotes = next(s for s in d.slide(10).shapes if s.name == "ee4pFootnotes")
+    source = footnotes.text_frame.paragraphs[-1]._p
+    extra = copy.deepcopy(source)
+    source.addnext(extra)
+    extra.r_lst[0].text = "Source: updated market model, 2023"
+    for r in extra.r_lst[1:]:
+        extra.remove(r)
+
+
+@variant(base=good, intent=("c1", "Slide 2 still reads as one sentence"))
+def contents_hedged_up_to_11b(d: DeckEdit) -> None:
+    """Slide 2 moves to 37% but also hedges the opportunity as "up to $11B", inside the sentence the CAGR edit rewrites."""
+    d.replace(2, "the $11B C&I", "the up to $11B C&I")
+
+
+@variant(base=good, intent=("c1", "header still says the market grows to $2bn"))
+def header_grows_to_3bn(d: DeckEdit) -> None:
+    """Slide 10's header moves to $410m but now says the market grows to $3bn, inside the line the edit rewrites."""
+    d.replace(10, "grow to $2bn", "grow to $3bn")
+
+
+@variant(base=good, intent=("c1", "keeps the 2022-27 period"))
+def title_period_rolled_forward(d: DeckEdit) -> None:
+    """Slide 10's title moves to $410m and 37% but its period rolls forward to 2023-28."""
+    d.replace(10, "over 2022-27", "over 2023-28")

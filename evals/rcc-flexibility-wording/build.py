@@ -1,3 +1,5 @@
+import copy
+
 from pptx.oxml.xmlchemy import OxmlElement
 
 from deckedit import DeckEdit, variant
@@ -56,7 +58,7 @@ def cap_number_on_slide(d: DeckEdit) -> None:
     d.replace(4, NEW, NEW + " (e.g., Mississauga: 380 a day)")
 
 
-@variant(base=good, fails={("scope", 4)})
+@variant(base=good, fails={("lost", 4)})
 def dropped_profitability_bullet(d: DeckEdit) -> None:
     """The flexibility bullet is reworded, and the business profitability bullet next to it is emptied."""
     d.replace(4, "Business profitability, market share, etc.", "")
@@ -121,3 +123,24 @@ def read_notes_after_edit(d: DeckEdit) -> None:
 def reminder_note_on_timing_slide(d: DeckEdit) -> None:
     """Slide 7 gets a speaker note to revisit it after the provincial guidance, though the team agreed to leave slide 7."""
     d.slide(7).notes_slide.notes_text_frame.text = "Revisit once the provincial workplace guidance is out"
+
+
+def split_bullet(d: DeckEdit, first: str, second: str, *, level: int) -> None:
+    d.replace(4, OLD, first)
+    bullet = next(p for s in d.slide(4).shapes if s.has_text_frame for p in s.text_frame.paragraphs if p.text == first)
+    extra = copy.deepcopy(bullet._p)
+    bullet._p.addnext(extra)
+    extra.r_lst[0].text = second
+    extra.get_or_add_pPr().set("lvl", str(level))
+
+
+@variant(intent=("c1", "not as an extra bullet"))
+def split_into_two_bullets(d: DeckEdit) -> None:
+    """The flexibility bullet becomes two bullets, "Teams choose their own office days" and "Within the site cap", where Sam said one goes in its place."""
+    split_bullet(d, "Teams choose their own office days", "Within the site cap", level=1)
+
+
+@variant(intent=("c1", "not split into a bullet and a sub-bullet"))
+def split_into_bullet_and_sub_bullet(d: DeckEdit) -> None:
+    """The flexibility bullet becomes a bullet with a sub-bullet for the site cap, where Sam said one bullet goes in its place."""
+    split_bullet(d, "Teams choose their own office days", "Within the site cap", level=2)

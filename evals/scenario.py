@@ -105,19 +105,9 @@ class Forbid:
 
 
 @dataclass(frozen=True)
-class Growth:
-    """A shape on an edited slide that may grow: each of its source lines must survive, extended or not, and any text
-    it gains must state `adds`."""
-
-    shape: str
-    adds: Value
-
-
-@dataclass(frozen=True)
 class Facts:
     require: tuple[Require, ...]
     forbid: tuple[Forbid, ...]
-    may_change: tuple[Growth, ...]
 
 
 @dataclass(frozen=True)
@@ -229,11 +219,29 @@ class Look:
 
 @dataclass(frozen=True)
 class Charts:
-    """The values a slide's charts draw, the plot types of any chart python-pptx cannot read, and every chart's plot types."""
+    """The values a slide's charts draw, and the plot types of any chart python-pptx cannot read."""
 
     values: tuple[Decimal, ...]
     unreadable: tuple[str, ...]
-    types: tuple[str, ...]
+
+
+PieceKind = Literal["picture", "chart", "table", "object", "group"]
+
+
+@dataclass(frozen=True)
+class Piece:
+    """A non-text thing on a slide, matched across decks by kind and a signature an edit does not change: a picture's
+    image hash, a chart's series, a table's shape, an embedded object's type, a group's member kinds. A chart
+    also carries its plot types, so a redraw in another type is told apart from a lost chart."""
+
+    kind: PieceKind
+    signature: str
+    name: str
+    plots: tuple[str, ...] = ()
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return self.kind, self.signature
 
 
 @dataclass(frozen=True)
@@ -242,6 +250,7 @@ class Snapshot:
     ids: tuple[int, ...]
     looks: tuple[Look, ...]
     charts: tuple[Charts, ...]
+    pieces: tuple[tuple[Piece, ...], ...]
     shared: str
 
 
@@ -383,8 +392,9 @@ def _snapshot(prs: Presentation, path: Path, data: bytes) -> Snapshot:
         _content(p) for m in prs.slide_masters for p in (m.part, m.part.part_related_by(RT.THEME), *(layout.part for layout in m.slide_layouts))
     )
     charts = tuple(_read_charts(s.shapes) for s in slides)
+    pieces = tuple(tuple(_pieces(s.shapes, prs.slide_width, prs.slide_height)) for s in slides)
     deck = read_deck(prs, str(path), hashlib.sha256(data).hexdigest())
-    return Snapshot(deck, tuple(s.slide_id for s in slides), looks, charts, _digest(shared))
+    return Snapshot(deck, tuple(s.slide_id for s in slides), looks, charts, pieces, _digest(shared))
 
 
 def _digest(items: Iterable[str]) -> str:
@@ -427,16 +437,51 @@ def _blank_notes(rel) -> bool:
 def _read_charts(shapes: SlideShapes) -> Charts:
     values: list[Decimal] = []
     unreadable: list[str] = []
-    types: list[str] = []
     for chart in _charts(shapes):
-        plots = [etree.QName(x).localname for x in chart._chartSpace.plotArea.iter_xCharts()]
-        types += plots
         try:
             values += [Decimal(str(v)) for plot in chart.plots for series in plot.series for v in series.values if v is not None]
         except ValueError:
             # python-pptx models no 3D, stock, surface, or of-pie plot, and raises ValueError on reading one.
-            unreadable += plots
-    return Charts(tuple(values), tuple(unreadable), tuple(types))
+            unreadable += _plots(chart)
+    return Charts(tuple(values), tuple(unreadable))
+
+
+def _plots(chart: Chart) -> tuple[str, ...]:
+    return tuple(etree.QName(x).localname for x in chart._chartSpace.plotArea.iter_xCharts())
+
+
+# Pieces are read from the XML, never through python-pptx getters that add elements, and a piece counts only while its
+# top-level shape overlaps the slide, so moving it off the slide loses it.
+def _pieces(shapes: SlideShapes, width: int, height: int, top_level: bool = True) -> Iterator[Piece]:
+    for shape in shapes:
+        if top_level and not _on_slide(shape, width, height):
+            continue
+        el = shape._element
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            members = sorted(etree.QName(child).localname for child in shape.shapes._spTree.iter_shape_elms())
+            yield Piece("group", " ".join(members), shape.name)
+            yield from _pieces(shape.shapes, width, height, top_level=False)
+        elif shape.has_chart:
+            chart = shape.chart
+            series = [" ".join(v.text or "" for tx in ser.iterchildren(qn("c:tx")) for v in tx.iter(qn("c:v"))) for ser in chart._chartSpace.iter(qn("c:ser"))]
+            yield Piece("chart", f"{len(series)} series: " + ", ".join(series), shape.name, _plots(chart))
+        elif shape.has_table:
+            yield Piece("table", f"{len(el.findall('.//' + qn('a:tr')))} rows x {len(el.findall('.//' + qn('a:gridCol')))} columns", shape.name)
+        elif el.tag == qn("p:pic"):
+            blip = el.find(".//" + qn("a:blip"))
+            rid = blip.get(qn("r:embed")) if blip is not None else None
+            image = hashlib.sha256(shape.part.related_part(rid).blob).hexdigest() if rid in shape.part.rels else shape.name
+            yield Piece("picture", image, shape.name)
+        elif el.tag == qn("p:graphicFrame"):
+            data = el.find(".//" + qn("a:graphicData"))
+            ole = el.find(".//" + qn("p:oleObj"))
+            yield Piece("object", " ".join(filter(None, (data.get("uri") if data is not None else None, ole.get("progId") if ole is not None else None))), shape.name)
+
+
+def _on_slide(shape, width: int, height: int) -> bool:
+    if None in (shape.left, shape.top, shape.width, shape.height):
+        return True
+    return shape.left < width and shape.top < height and shape.left + shape.width > 0 and shape.top + shape.height > 0
 
 
 def _charts(shapes: SlideShapes) -> Iterator[Chart]:
@@ -618,16 +663,7 @@ def _facts(raw: dict[str, Any], where: str) -> Facts:
         w = f"{where}.forbid[{i}]"
         value, at, f = _fact(f, w, ("superseded",))
         forbid.append(Forbid(value, at, _stamp(f["superseded"], f"{w}.superseded") if "superseded" in f else None))
-    growth = tuple(_growth(g, f"{where}.may_change[{i}]") for i, g in enumerate(_list(raw.get("may_change") or [], f"{where}.may_change")))
-    return Facts(tuple(require), tuple(forbid), growth)
-
-
-def _growth(raw: Any, where: str) -> Growth:
-    raw = _keys(raw, where, ("shape", "adds"))
-    value, _, adds = _fact(raw["adds"], f"{where}.adds")
-    if "where" in adds or isinstance(value, ChartValue):
-        raise BadScenario(f"{where}.adds: name the fact the added text states, with no where and no chart value")
-    return Growth(_str(raw["shape"], f"{where}.shape"), value)
+    return Facts(tuple(require), tuple(forbid))
 
 
 COMMON = ("id", "kind", "intent", "said")
@@ -644,7 +680,7 @@ def _change(raw: Any, where: str) -> Change:
         if not isinstance(raw["slides"], dict) or not raw["slides"]:
             raise BadScenario(f"{where}.slides: expected a mapping of source slide number to require/forbid")
         slides = {
-            _int(k, f"{where}.slides key"): _facts(_keys(v or {}, f"{where}.slides.{k}", (), ("require", "forbid", "may_change")), f"{where}.slides.{k}")
+            _int(k, f"{where}.slides key"): _facts(_keys(v or {}, f"{where}.slides.{k}", (), ("require", "forbid")), f"{where}.slides.{k}")
             for k, v in raw["slides"].items()
         }
         return Edit(cid, kind, _str(raw["intent"], f"{where}.intent"), _stamps(raw["said"], f"{where}.said"), slides, _strs(raw.get("intent_checks"), f"{where}.intent_checks"))
@@ -748,10 +784,8 @@ def _problems(sc: Scenario) -> Iterator[str]:
     for c in sc.changes:
         match c:
             case Edit():
-                for k, fs in c.slides.items():
+                for k in c.slides:
                     yield from in_range(k, f"{c.id}.slides")
-                    if 1 <= k <= n and (unknown := [g.shape for g in fs.may_change if not any(sh.name == g.shape and sh.paragraphs for sh in slides[k - 1].shapes)]):
-                        yield f"{c.id}.slides.{k}.may_change: slide {k} has no text shape named {', '.join(map(repr, unknown))}"
             case AddSlide():
                 yield from in_range(c.after, f"{c.id}.after", low=0)
                 if c.layout not in {s.layout_name for s in slides}:

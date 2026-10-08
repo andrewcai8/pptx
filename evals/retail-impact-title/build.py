@@ -38,7 +38,7 @@ def title_too_long(d: DeckEdit) -> None:
     )
 
 
-@variant(base=good, fails={("scope", 15)})
+@variant(base=good, fails={("lost", 15)})
 def trimmed_quote(d: DeckEdit) -> None:
     """The first Starbucks quote is shortened although the client wanted the quotes verbatim."""
     d.replace(15, "within our app... Our digital flywheel momentum accelerated ... with the launch of", "within our app...")
@@ -66,3 +66,10 @@ def revenue_in_dollars_after(d: DeckEdit) -> None:
 def hyphenated_100_million(d: DeckEdit) -> None:
     """The action title writes the revenue as a $100-million uplift, the same figure as the slide's +$100M."""
     d.replace(15, OLD_TITLE, "Starbucks personalization lifted marketing engagement by 150%, a $100-million uplift in year one")
+
+
+@variant()
+def title_split_into_two_paragraphs(d: DeckEdit) -> None:
+    """The action title is split into two paragraphs, as pressing Enter in PowerPoint gives; Pieter allows two lines."""
+    d.slide(15).shapes.title.text_frame.text = "Starbucks personalisation lifted marketing engagement by 150%\nand added $100M net revenue in year one"
+

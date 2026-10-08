@@ -24,6 +24,7 @@ changes:
       - The 150% is attached to marketing engagement and the $100M to net incremental revenue in year 1; neither figure is described as a tripling.
       - The title names Starbucks so the page stands on its own when read out of sequence.
       - The title fits on one line, two at most, on the slide as rendered.
+      - Slide 15 adds nothing beyond the new title; the quotes, the result callouts and their figures stay as they were.
 
 non_changes:
   - id: n1

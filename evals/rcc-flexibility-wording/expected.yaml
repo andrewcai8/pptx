@@ -16,7 +16,8 @@ changes:
           - {text: "Flexibility to teams"}
           - {text: ["schedule", "schedules"], superseded: "00:03:03"}
     intent_checks:
-      - The reworded bullet replaces "Flexibility to teams" in the same place in the illustrative principles list, between the customers bullet and the individual choice bullet, not as an extra bullet.
+      - The reworded bullet replaces "Flexibility to teams" in the same place in the illustrative principles list, between the customers bullet and the individual choice bullet, not as an extra bullet and not split into a bullet and a sub-bullet.
+      - Slide 4 adds nothing beyond the reworded bullet, such as a new principle, a caveat, or a site's cap figure.
       - The bullet reads as a bounded choice (teams decide their days, inside a per-site limit), not as open-ended flexibility or flexible hours.
 
 non_changes:

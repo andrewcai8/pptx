@@ -114,17 +114,7 @@ def test_a_private_deck_scenario_opens_only_under_the_repos_private_folder(folde
         shutil.rmtree(top, ignore_errors=True)
 
 
-def edit_slide_1(may_change: list) -> list[dict]:
-    return [{"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {"may_change": may_change}}}]
-
-
-def test_may_change_names_a_text_shape_and_what_it_may_add(private_dir):
-    sc = open_scenario(scenario_at(private_dir / "callout", edit_slide_1([{"shape": "Rectangle 3", "adds": {"text": "survey"}}])))
-    assert [(g.shape, g.adds.alternatives) for g in sc.changes[0].slides[1].may_change] == [("Rectangle 3", ("survey",))]
-    with pytest.raises(BadScenario, match="slide 1 has no text shape named 'Footnote'"):
-        open_scenario(scenario_at(private_dir / "footnote", edit_slide_1([{"shape": "Footnote", "adds": {"text": "survey"}}])))
-    with pytest.raises(BadScenario, match=r"may_change\[0\]: missing adds"):
-        open_scenario(scenario_at(private_dir / "bare", edit_slide_1([{"shape": "Rectangle 3"}])))
+EDIT_SLIDE_1 = [{"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {}}}]
 
 
 def chart_deck(path: Path, plot: str = "barChart") -> Path:
@@ -141,8 +131,8 @@ def chart_deck(path: Path, plot: str = "barChart") -> Path:
 
 @pytest.mark.parametrize("plot", ["bar3DChart", "line3DChart", "pie3DChart", "stockChart", "surfaceChart", "surface3DChart", "ofPieChart"])
 def test_a_chart_python_pptx_cannot_read_is_reported_by_type(tmp_path, plot):
-    assert snapshot(chart_deck(tmp_path / "unreadable.pptx", plot)).charts == (Charts((), (plot,), (plot,)),)
-    assert snapshot(chart_deck(tmp_path / "bar.pptx")).charts == (Charts((Decimal("410.0"), Decimal("2000.0")), (), ("barChart",)),)
+    assert snapshot(chart_deck(tmp_path / "unreadable.pptx", plot)).charts == (Charts((), (plot,)),)
+    assert snapshot(chart_deck(tmp_path / "bar.pptx")).charts == (Charts((Decimal("410.0"), Decimal("2000.0")), ()),)
 
 
 def built(tmp_path: Path, scenario: str, variant: str) -> Path:
@@ -283,5 +273,5 @@ def test_flag_slides_names_only_a_slide_a_change_edits(private_dir):
     ask = {**UNCLEAR_CALLOUT, "slides": [], "flag_slides": [1]}
     with pytest.raises(BadScenario, match="n1.flag_slides: no change edits or deletes slide 1, so list it under slides"):
         open_scenario(scenario_at(private_dir / "unedited", non_changes=[ask]))
-    sc = open_scenario(scenario_at(private_dir / "edited", edit_slide_1([]), non_changes=[ask]))
+    sc = open_scenario(scenario_at(private_dir / "edited", EDIT_SLIDE_1, non_changes=[ask]))
     assert sc.non_changes[0].cited_by == {1}

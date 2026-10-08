@@ -13,6 +13,7 @@ import json
 import os
 import re
 import reprlib
+import string
 import sys
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -25,7 +26,7 @@ from deckcheck.cli import write_atomic
 from deckcheck.diff import diff_decks
 from deckcheck.model import DeckError, Slide, Violation
 from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
-from facts import ChartValue, Value, describe, match, to_json
+from facts import ChartValue, Value, describe, match, normalize, to_json
 from scenario import (
     AddSlide,
     Ambiguous,
@@ -37,6 +38,7 @@ from scenario import (
     FromSlide,
     NewSlot,
     NonChange,
+    Piece,
     Provenance,
     Scenario,
     Slot,
@@ -59,6 +61,7 @@ class Code(StrEnum):
     SCOPE = "scope"
     NON_CHANGE = "non-change"
     GUESSED = "guessed"
+    LOST = "lost"
     MISSING = "missing"
     FORBIDDEN = "forbidden"
     LAYOUT = "layout"
@@ -208,7 +211,7 @@ def score(sc: Scenario, out: Snapshot, rules: RuleSet) -> Verdict:
         return Verdict((Failure(Code.STRUCTURE, None, None, message),), checks=1)
     placement = place(sc, out)
     structure = check_structure(sc, placement)
-    scope, changed = check_scope(sc, out, placement, rules.params["source-on-data-slides"]["prefix"])
+    scope, changed = check_scope(sc, out, placement)
     applied = {c.source for c in changed if c.diff or any(e.kind == "restyle" for e in sc.edits.get(c.source, ()))}
     facts, fact_failures = check_facts(sc, out, placement, applied, {c.source for c in changed if c.redrawn})
     layout = check_layout(sc, out, placement)
@@ -280,7 +283,7 @@ def out_of_order(expected: list[Slot], actual: list[Slot], weight) -> list[Slot]
     return [s for s in expected if s not in kept]
 
 
-def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix: str) -> tuple[list[Failure], list[Changed]]:
+def check_scope(sc: Scenario, out: Snapshot, placement: Placement) -> tuple[list[Failure], list[Changed]]:
     pairs = [(s.slide, placement.index[s]) for s in sc.skeleton if isinstance(s, SourceSlot) and s in placement.index]
     old = replace(sc.source.deck, slides=tuple(sc.source.deck.slides[k - 1] for k, _ in pairs))
     new = replace(out.deck, slides=tuple(out.deck.slides[i] for _, i in pairs))
@@ -291,31 +294,27 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix
         text_changed = d.status == "changed"
         look_changed = text_changed or before != after
         edits = sc.edits.get(k, ())
-        redrawn = sc.source.charts[k - 1].types != out.charts[i].types
+        redraws = redrawn(sc.source.pieces[k - 1], out.pieces[i])
         if look_changed:
-            changed.append(Changed(k, i + 1, tuple(e.id for e in edits), d.diff, redrawn))
-        if edits and redrawn:
-            was, now = (", ".join(c.types) or "no chart" for c in (sc.source.charts[k - 1], out.charts[i]))
-            failures.append(Failure(Code.SCOPE, k, edits[0].id, f"{edits[0].id} does not ask to change the type of slide {k}'s chart, but {was} became {now}"))
-        for e in edits:
-            if e.kind == "restyle" and text_changed:
-                failures.append(Failure(Code.SCOPE, k, e.id, f"{e.id} restyles slide {k} but its text changed"))
-            elif e.kind == "restyle" and not look_changed:
-                failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k} (no restyle)"))
-            elif e.kind != "restyle" and not text_changed:
-                failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k}"))
-        if edits and text_changed:
-            forbids = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None and not isinstance(f.value, ChartValue)]
-            growth = {g.shape: g.adds for e in edits for g in e.slides[k].may_change}
-            lines = unasked_lines(sc.source.deck.slides[k - 1], out.deck.slides[i], forbids, source_prefix, growth)
+            changed.append(Changed(k, i + 1, tuple(e.id for e in edits), d.diff, bool(redraws)))
+        if edits:
             by = edits[0].id
-            if lines.lost:
-                failures.append(Failure(Code.SCOPE, k, by, f"{by} does not ask to change these lines on slide {k}, but they are gone or changed: {shown(lines.lost)}"))
-            if lines.added:
-                failures.append(Failure(Code.SCOPE, k, by, f"{by} does not ask to add these lines to slide {k}: {shown(lines.added)}"))
-            for shape, grown in lines.off_topic.items():
-                failures.append(Failure(Code.SCOPE, k, by, f"{by} lets {shape} on slide {k} gain only text that states {describe(growth[shape])}, but it gains: {shown(grown)}"))
-        if edits or not look_changed:
+            failures += [Failure(Code.SCOPE, k, by, f"{by} does not ask to change the type of slide {k}'s chart, but {', '.join(was.plots)} became {', '.join(now.plots)}") for was, now in redraws]
+            for e in edits:
+                if e.kind == "restyle" and text_changed:
+                    failures.append(Failure(Code.SCOPE, k, e.id, f"{e.id} restyles slide {k} but its text changed"))
+                elif e.kind == "restyle" and not look_changed:
+                    failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k} (no restyle)"))
+                elif e.kind != "restyle" and not text_changed:
+                    failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k}"))
+            # An edited slide must keep everything its edits do not replace. What it gains is the intent checker's to judge.
+            replaced = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None and not isinstance(f.value, ChartValue)]
+            if text := lost_text(sc.source.deck.slides[k - 1], out.deck.slides[i], replaced):
+                failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to change this text on slide {k}, but it is gone or reworded: {shown(text)}"))
+            if pieces := lost_pieces(sc.source.pieces[k - 1], out.pieces[i]):
+                failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to remove these from slide {k}, but they are gone: {', '.join(f'{p.kind} {p.name!r}' for p in pieces)}"))
+            continue
+        if not look_changed:
             continue
         what = "changed its text" if text_changed else "changed its XML with the same text" if before.xml != after.xml else "changed a chart, image, media, or notes part"
         nc = sc.named.get(k)
@@ -330,59 +329,69 @@ def shown(lines: list[str]) -> str:
     return ", ".join(repr(x) for x in lines[:3]) + (f", and {len(lines) - 3} more" if len(lines) > 3 else "")
 
 
-@dataclass(frozen=True)
-class Unasked:
-    lost: list[str]
-    added: list[str]
-    off_topic: dict[str, list[str]]
+LIST_MARKER = re.compile(r"^\s*\(?(?:\d{1,2}|[a-z]|[ivx]{1,4})[.)]\s+(?=\S)", re.IGNORECASE)
+CLAUSE_END = re.compile(r"(?<=[.!?;:…])\s+")
+# A dot after a short word or inside one ends no clause: "ca. 50%", "etc.", "U.S. Census", "e.g. Mississauga".
+ABBREVIATION = re.compile(r"(?:^|\s)(?:[^\s.]{1,3}|\S*\.[^\s.]+)\.$")
+EDGE_PUNCTUATION = "".join(c for c in string.punctuation if c not in "$%") + "…–—•·«»"
+# A preserved clause may gain words: up to this many new words may sit between any two of its words.
+GAP = 3
 
 
-def unasked_lines(before: Slide, after: Slide, forbids: list[Value], source_prefix: str, growth: dict[str, Value]) -> Unasked:
-    """The lines an edited slide changed beyond its edit, compared shape by shape.
+def words(text: str) -> tuple[str, ...]:
+    return tuple(w for token in normalize(text).split() if (w := token.strip(EDGE_PUNCTUATION)))
 
-    A source line must survive unless it is released (it holds an old value or is a source line), and a released line
-    may be replaced by one new line in its shape. In a shape that may grow, every source line must survive, extended or
-    not, and every added stretch of text must state what the growth names. A blank paragraph adds no text.
-    """
-    def released(text: str) -> bool:
-        return text.startswith(source_prefix) or any(match(f, text) for f in forbids)
 
-    old, new = _lines(before), _lines(after)
-    lost: list[str] = []
-    added: list[str] = []
-    off_topic: dict[str, list[str]] = {}
-    for name in [*old, *(n for n in new if n not in old)]:
-        fresh = list(new.get(name, []))
-        gone = []
-        for text in old.get(name, []):
-            if text in fresh:
-                fresh.remove(text)
+def clauses(slide: Slide) -> list[str]:
+    """The slide's text as clauses: each paragraph split at sentence or clause punctuation, with any list marker such
+    as "1." dropped. A line break ends no clause, because it only wraps one."""
+    found: list[str] = []
+    for p in (p for shape in slide.shapes for p in shape.paragraphs):
+        pieces: list[str] = []
+        for piece in CLAUSE_END.split(LIST_MARKER.sub("", p.text)):
+            if pieces and ABBREVIATION.search(pieces[-1]):
+                pieces[-1] += " " + piece
             else:
-                gone.append(text)
-        fresh = [text for text in fresh if text]
-        if name in growth:
-            off = []
-            for text in gone:
-                if grown := next((f for f in fresh if text and text in f), None):
-                    fresh.remove(grown)
-                    if any(any(ch.isalnum() for ch in piece) and not match(growth[name], piece) for piece in grown.split(text, 1)):
-                        off.append(grown)
-                elif not released(text):
-                    lost.append(f"{name}: {text}")
-            off += [f for f in fresh if not match(growth[name], f)]
-            if off:
-                off_topic[name] = off
-            continue
-        lost += [f"{name}: {text}" for text in gone if not released(text)]
-        added += [f"{name}: {text}" for text in fresh[sum(map(released, gone)) :]]
-    return Unasked(lost, added, off_topic)
+                pieces.append(piece)
+        found += [c for c in pieces if words(c)]
+    return found
 
 
-def _lines(slide: Slide) -> dict[str, list[str]]:
-    lines: dict[str, list[str]] = {}
-    for shape in slide.shapes:
-        lines.setdefault(shape.name, []).extend(p.text.strip() for p in shape.paragraphs)
-    return lines
+def lost_text(before: Slide, after: Slide, replaced: list[Value]) -> list[str]:
+    """Source clauses no output shape still says, in order, with at most GAP new words between two of their words. A
+    clause that states a value the edit replaces is the edit's own to rewrite."""
+    shapes = [words(" ".join(p.text for p in shape.paragraphs)) for shape in after.shapes]
+    return [c for c in clauses(before) if not any(match(v, c) for v in replaced) and not any(says(words(c), text) for text in shapes)]
+
+
+def says(clause: tuple[str, ...], text: tuple[str, ...]) -> bool:
+    ends = {j for j, w in enumerate(text) if w == clause[0]}
+    for word in clause[1:]:
+        ends = {j for j, w in enumerate(text) if w == word and any(j - g in ends for g in range(1, GAP + 2))}
+    return bool(ends)
+
+
+def lost_pieces(had: tuple[Piece, ...], has: tuple[Piece, ...]) -> list[Piece]:
+    left = Counter(p.key for p in has)
+    lost = []
+    for p in had:
+        if left[p.key]:
+            left[p.key] -= 1
+        else:
+            lost.append(p)
+    return lost
+
+
+def redrawn(had: tuple[Piece, ...], has: tuple[Piece, ...]) -> list[tuple[Piece, Piece]]:
+    """Each source chart kept on the slide, paired with its output chart, whose plot type changed."""
+    pool = [p for p in has if p.kind == "chart"]
+    pairs = []
+    for was in (p for p in had if p.kind == "chart"):
+        if now := next((p for p in pool if p.key == was.key), None):
+            pool.remove(now)
+            if now.plots != was.plots:
+                pairs.append((was, now))
+    return pairs
 
 
 def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[int], redrawn: set[int]) -> tuple[list[FactResult], list[Failure]]:

@@ -22,6 +22,7 @@ changes:
       - The deliverables are the peer benchmark and a per-lever heatmap of where the client is ahead, behind or at risk.
       - Team size is left off the slide entirely, with no placeholder for it.
       - The slide talks about the 10 levers without mapping them to the five imperatives or adding imperative content.
+      - The slide holds only the duration, the levers, the deliverables and the readout, with nothing about budget, staffing, or the contacts page.
 
 non_changes:
   - id: n1

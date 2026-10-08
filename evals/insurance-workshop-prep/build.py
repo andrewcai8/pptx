@@ -1,6 +1,7 @@
 import copy
 
 from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.util import Inches, Pt
 
 from deckedit import DeckEdit, variant
 
@@ -33,6 +34,20 @@ def rewrite_footnote(d: DeckEdit, line: int, text: str) -> None:
         note.remove(r)
 
 
+def shape(d: DeckEdit, name: str):
+    return next(s for s in d.slide(5).shapes if s.name == name)
+
+
+def note_box(d: DeckEdit, text: str) -> None:
+    """A new text box under the Footnote, set in the Footnote's own font and size."""
+    footnote = shape(d, "Footnote")
+    run = footnote.text_frame.paragraphs[0].runs[0]
+    box = d.slide(5).shapes.add_textbox(footnote.left, footnote.top + footnote.height, footnote.width, Pt(12))
+    box.text_frame.text = text
+    font = box.text_frame.paragraphs[0].runs[0].font
+    font.size, font.name = run.font.size or Pt(8), run.font.name
+
+
 def refresh(d: DeckEdit) -> None:
     d.replace(5, "ca. 50%", "ca. 48%")
     d.delete_slide(2)
@@ -60,7 +75,7 @@ def survey_footnote_listed_first(d: DeckEdit) -> None:
     cite_survey(d, text="Headline share: Insurers' Association member survey 2026 (2027 projection)", first=True)
 
 
-@variant(base=good, fails={("scope", 5)})
+@variant(base=good, fails={("lost", 5)})
 def fixed_callout_spelling(d: DeckEdit) -> None:
     """Beyond the headline and footnote, slide 5's callout gets "Millenials" corrected, a line no change asks about."""
     d.replace(5, "...and Millenials have", "...and Millennials have")
@@ -167,21 +182,21 @@ def hedged_range_45_to_48_in_words(d: DeckEdit) -> None:
     cite_survey(d)
 
 
-@variant(fails={("scope", 5)})
+@variant(fails={("lost", 5)})
 def survey_replaced_footnote_2(d: DeckEdit) -> None:
     """Footnote 2, the BCG survey behind the callout, is overwritten with the member survey, the likely misreading of "point the footnote at your survey file"."""
     refresh(d)
     rewrite_footnote(d, 1, "2. Insurers' Association member survey 2026, 2027 projection")
 
 
-@variant(fails={("scope", 5)})
+@variant(fails={("lost", 5)})
 def survey_replaced_census_line(d: DeckEdit) -> None:
     """Footnote 1 is overwritten with the member survey, so the curve loses its US census source."""
     refresh(d)
     rewrite_footnote(d, 0, "1. Insurers' Association member survey 2026, 2027 projection")
 
 
-@variant(fails={("scope", 5)})
+@variant(fails={("lost", 5)})
 def footnote_rewritten(d: DeckEdit) -> None:
     """The whole footnote is rewritten into one survey line and a short source line."""
     refresh(d)
@@ -189,13 +204,13 @@ def footnote_rewritten(d: DeckEdit) -> None:
     rewrite_footnote(d, 1, "Curve: U.S. Census Bureau 2014")
 
 
-@variant(base=good, fails={("scope", 5)})
+@variant(base=good, intent=("c1", "adds nothing unrelated to the survey citation"))
 def lunch_added_to_footnote(d: DeckEdit) -> None:
     """Beside the survey line, the footnote gains a sentence about lunch, which no change asks for."""
     cite_survey(d, text="Lunch at the workshop is provided by the hotel")
 
 
-@variant(base=good, fails={("scope", 5)})
+@variant(base=good, intent=("c1", "adds nothing unrelated to the survey citation"))
 def lunch_added_in_a_text_box(d: DeckEdit) -> None:
     """Slide 5 gains a new text box about lunch at the workshop, which no change asks for."""
     title = d.slide(5).shapes.title
@@ -207,3 +222,65 @@ def old_share_in_footnote(d: DeckEdit) -> None:
     """The footnote cites the survey but keeps the old ca. 50% beside it, a value the meeting replaced."""
     refresh(d)
     cite_survey(d, text="3. Insurers' Association member survey 2026, 2027 projection; ca. 50% in the 2017 material")
+
+
+@variant()
+def title_split_into_two_paragraphs(d: DeckEdit) -> None:
+    """The headline is split at its dash into two paragraphs, as pressing Enter in PowerPoint gives, with the survey figure in the second."""
+    refresh(d)
+    cite_survey(d)
+    d.slide(5).shapes.title.text_frame.text = "The emergence of new Generations further accelerates the digitalization\nBy 2027 in Slovenia Millennials will account for ca. 48% of the client base"
+
+
+@variant()
+def survey_footnote_in_a_new_text_box(d: DeckEdit) -> None:
+    """The survey citation is footnote 3 in a new text box under the Footnote, not inside it."""
+    refresh(d)
+    note_box(d, "3. Insurers' Association member survey (2026), 2027 projection")
+
+
+@variant()
+def source_line_in_a_new_box(d: DeckEdit) -> None:
+    """A new box under the footnotes says "Source: Insurers' Association member survey 2026" for the headline."""
+    refresh(d)
+    note_box(d, "Source: Insurers' Association member survey 2026")
+
+
+@variant()
+def footnotes_renumbered_survey_first(d: DeckEdit) -> None:
+    """The survey becomes footnote 1, and the census and BCG footnotes are renumbered 2 and 3."""
+    refresh(d)
+    cite_survey(d, text="1. Insurers' Association member survey 2026, 2027 projection", first=True)
+    d.replace(5, CENSUS_NOTE, "2" + CENSUS_NOTE[1:])
+    d.replace(5, "2. BCG digital satisfaction survey", "3. BCG digital satisfaction survey")
+
+
+@variant(fails={("lost", 5)})
+def curve_graphic_deleted(d: DeckEdit) -> None:
+    """The generations curve, an embedded graph, is deleted from slide 5 while the headline is updated."""
+    refresh(d)
+    cite_survey(d)
+    curve = shape(d, "Object 12")
+    curve._element.getparent().remove(curve._element)
+
+
+@variant(fails={("lost", 5)})
+def curve_graphic_moved_off_slide(d: DeckEdit) -> None:
+    """The generations curve is dragged past the slide's right edge, so the slide no longer shows it."""
+    refresh(d)
+    cite_survey(d)
+    shape(d, "Object 12").left = Inches(30)
+
+
+@variant(base=good, intent=("c1", "an extended footnote gains only words about the survey"))
+def footnote_extended_with_unrelated_words(d: DeckEdit) -> None:
+    """Footnote 1 is extended with the survey and with a remark about the workshop venue, which no change asks for."""
+    d.replace(5, CENSUS_NOTE, CENSUS_NOTE + "; headline share: member survey; workshop venue to be confirmed")
+
+
+@variant()
+def headline_reworded_whole(d: DeckEdit) -> None:
+    """The whole headline, one sentence across a line break, is reworded around the survey figure; the footnote cites the survey."""
+    refresh(d)
+    cite_survey(d)
+    d.slide(5).shapes.title.text_frame.text = "New generations speed up digitalization: by 2027 millennials will be ca. 48% of Slovenian insurers' clients"
