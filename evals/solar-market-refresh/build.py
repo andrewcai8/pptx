@@ -104,9 +104,9 @@ def chart_bar_left_at_380(d: DeckEdit) -> None:
     _chart_2022_bar(d, "410", "380")
 
 
-@variant(base=good, fails={("unreadable", 10)})
+@variant(base=good, fails={("scope", 10)})
 def chart_drawn_in_3d(d: DeckEdit) -> None:
-    """Slide 10 is refreshed and its market chart is redrawn as a 3D bar chart, which the chart fact cannot read."""
+    """Slide 10 is refreshed and its market chart is redrawn as a 3D bar chart, a change of chart type nobody asked for."""
     _draw_in_3d(d, 10)
 
 
@@ -114,3 +114,9 @@ def chart_drawn_in_3d(d: DeckEdit) -> None:
 def untouched_chart_drawn_in_3d(d: DeckEdit) -> None:
     """A chart on slide 12, which no change touches and no chart fact reads, is redrawn in 3D; scoring goes on and finds the change."""
     _draw_in_3d(d, 12)
+
+
+@variant(base=good, fails={("forbidden", 10)})
+def header_hedged_380_to_410(d: DeckEdit) -> None:
+    """Slide 10's header hedges the market as "$380-410m", keeping the old $380m beside the new figure."""
+    d.replace(10, "$410m market", "$380-410m market")

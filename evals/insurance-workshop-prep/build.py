@@ -25,6 +25,14 @@ def cite_survey(d: DeckEdit, *, text: str = SURVEY_NOTE, first: bool = False) ->
         notes[-1].addnext(note)
 
 
+def rewrite_footnote(d: DeckEdit, line: int, text: str) -> None:
+    note = footnote_paragraphs(d)[line]
+    run, *rest = note.r_lst
+    run.text = text
+    for r in rest:
+        note.remove(r)
+
+
 def refresh(d: DeckEdit) -> None:
     d.replace(5, "ca. 50%", "ca. 48%")
     d.delete_slide(2)
@@ -149,3 +157,53 @@ def cleared_regulator_panel(d: DeckEdit) -> None:
 def autofit_sandbox_title(d: DeckEdit) -> None:
     """Slide 17's title is set to shrink on overflow, which renders it smaller on the sandbox page Marko called fine."""
     d.slide(17).shapes.title.text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+
+
+@variant(fails={("forbidden", 5)})
+def hedged_range_45_to_48_in_words(d: DeckEdit) -> None:
+    """The headline hedges with "ca. 45 to 48%", the same range as 45-48% written with "to"."""
+    refresh(d)
+    d.replace(5, "ca. 48%", "ca. 45 to 48%")
+    cite_survey(d)
+
+
+@variant(fails={("scope", 5)})
+def survey_replaced_footnote_2(d: DeckEdit) -> None:
+    """Footnote 2, the BCG survey behind the callout, is overwritten with the member survey, the likely misreading of "point the footnote at your survey file"."""
+    refresh(d)
+    rewrite_footnote(d, 1, "2. Insurers' Association member survey 2026, 2027 projection")
+
+
+@variant(fails={("scope", 5)})
+def survey_replaced_census_line(d: DeckEdit) -> None:
+    """Footnote 1 is overwritten with the member survey, so the curve loses its US census source."""
+    refresh(d)
+    rewrite_footnote(d, 0, "1. Insurers' Association member survey 2026, 2027 projection")
+
+
+@variant(fails={("scope", 5)})
+def footnote_rewritten(d: DeckEdit) -> None:
+    """The whole footnote is rewritten into one survey line and a short source line."""
+    refresh(d)
+    rewrite_footnote(d, 0, "Headline share: Insurers' Association member survey 2026 (2027 projection)")
+    rewrite_footnote(d, 1, "Curve: U.S. Census Bureau 2014")
+
+
+@variant(base=good, fails={("scope", 5)})
+def lunch_added_to_footnote(d: DeckEdit) -> None:
+    """Beside the survey line, the footnote gains a sentence about lunch, which no change asks for."""
+    cite_survey(d, text="Lunch at the workshop is provided by the hotel")
+
+
+@variant(base=good, fails={("scope", 5)})
+def lunch_added_in_a_text_box(d: DeckEdit) -> None:
+    """Slide 5 gains a new text box about lunch at the workshop, which no change asks for."""
+    title = d.slide(5).shapes.title
+    d.slide(5).shapes.add_textbox(title.left, title.top + title.height, title.width, title.height).text_frame.text = "Lunch at the workshop is provided by the hotel"
+
+
+@variant(fails={("forbidden", 5)})
+def old_share_in_footnote(d: DeckEdit) -> None:
+    """The footnote cites the survey but keeps the old ca. 50% beside it, a value the meeting replaced."""
+    refresh(d)
+    cite_survey(d, text="3. Insurers' Association member survey 2026, 2027 projection; ca. 50% in the 2017 material")

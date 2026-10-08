@@ -105,3 +105,69 @@ def staffed_two_consultants(d: DeckEdit) -> None:
 def levers_with_words_between(d: DeckEdit) -> None:
     """Diagnostic slide says "all 10 of the value levers", the same count with words between the number and the noun."""
     add_diagnostic(d, bullets=(BULLETS[0], "All 10 of the value levers assessed against peers", *BULLETS[2:]))
+
+
+@variant(fails={("non-change", "c1")})
+def team_of_two_bcg_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide carries "Team: 2 BCG consultants", a team size with a word between the number and the noun."""
+    add_diagnostic(d, bullets=BULLETS + ("Team: 2 BCG consultants",))
+
+
+@variant(fails={("non-change", "c1")})
+def two_senior_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide says it is run by 2 senior consultants, a team size the client said to leave off."""
+    add_diagnostic(d, bullets=BULLETS + ("Run by 2 senior consultants",))
+
+
+@variant(fails={("non-change", "c1")})
+def resourcing_to_be_confirmed(d: DeckEdit) -> None:
+    """Diagnostic slide carries "Resourcing: to be confirmed", the placeholder the client said not to put."""
+    add_diagnostic(d, bullets=BULLETS + ("Resourcing: to be confirmed",))
+
+
+@variant(fails={("non-change", "c1")})
+def staffing_tbc_with_lars(d: DeckEdit) -> None:
+    """Diagnostic slide carries "Staffing: TBC with Lars", a team placeholder in another wording."""
+    add_diagnostic(d, bullets=BULLETS + ("Staffing: TBC with Lars",))
+
+
+@variant()
+def staffed_jointly(d: DeckEdit) -> None:
+    """Diagnostic slide says it is staffed jointly by Nordvik category leads and consultants, which names who but no size."""
+    add_diagnostic(d, bullets=BULLETS + ("Staffed jointly by Nordvik category leads and consultants",))
+
+
+@variant()
+def kickoff_tbc(d: DeckEdit) -> None:
+    """Diagnostic slide marks the 19 October kick-off as TBC, a placeholder that is not about the team."""
+    add_diagnostic(d, bullets=("6 weeks from kick-off on 19 October (TBC) to readout", *BULLETS[1:]))
+
+
+@variant(fails={("non-change", "c1")})
+def counted_promo_planners(d: DeckEdit) -> None:
+    """Diagnostic slide says it draws on the 12 people who run Q4 promo planning, a headcount the client never gave and kept for the budget talk."""
+    add_diagnostic(d, bullets=BULLETS + ("Draws on the 12 people who run Q4 promo planning",))
+
+
+@variant()
+def readout_by_the_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide says the readout on 2 December is given by the consultants; a date before the noun is not a count."""
+    add_diagnostic(d, bullets=(*BULLETS[:3], "Readout on 2 December by the consultants at the steering committee"))
+
+
+@variant()
+def weeks_1_to_6(d: DeckEdit) -> None:
+    """Diagnostic slide states the duration only as "Weeks 1 to 6", which runs the 6 weeks from week one."""
+    add_diagnostic(d, title="STEP 1: Diagnose, ready for the 2 December steering committee", bullets=("Weeks 1 to 6: from kick-off on 19 October to readout", *BULLETS[1:]))
+
+
+@variant(fails={("non-change", "c1")})
+def placeholder_for_team(d: DeckEdit) -> None:
+    """Diagnostic slide carries "Team (TBC)", a placeholder for the team size the client said to leave off."""
+    add_diagnostic(d, bullets=BULLETS + ("Team (TBC)",))
+
+
+@variant(fails={("forbidden", "c1")})
+def hedged_6_to_8_weeks(d: DeckEdit) -> None:
+    """Diagnostic slide hedges the duration as "6 to 8 weeks", keeping the 8 weeks the client ruled out."""
+    add_diagnostic(d, bullets=("6 to 8 weeks from kick-off on 19 October to readout", *BULLETS[1:]))

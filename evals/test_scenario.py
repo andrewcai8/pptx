@@ -1,7 +1,9 @@
 import hashlib
 import json
+import re
 import shutil
 import uuid
+import zipfile
 from decimal import Decimal
 from pathlib import Path
 
@@ -112,15 +114,17 @@ def test_a_private_deck_scenario_opens_only_under_the_repos_private_folder(folde
         shutil.rmtree(top, ignore_errors=True)
 
 
-def edit_slide_1(may_change: list[str]) -> list[dict]:
+def edit_slide_1(may_change: list) -> list[dict]:
     return [{"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {"may_change": may_change}}}]
 
 
-def test_may_change_names_a_text_shape_on_the_edited_slide(private_dir):
-    sc = open_scenario(scenario_at(private_dir / "callout", edit_slide_1(["Rectangle 3"])))
-    assert sc.changes[0].slides[1].may_change == ("Rectangle 3",)
+def test_may_change_names_a_text_shape_and_what_it_may_add(private_dir):
+    sc = open_scenario(scenario_at(private_dir / "callout", edit_slide_1([{"shape": "Rectangle 3", "adds": {"text": "survey"}}])))
+    assert [(g.shape, g.adds.alternatives) for g in sc.changes[0].slides[1].may_change] == [("Rectangle 3", ("survey",))]
     with pytest.raises(BadScenario, match="slide 1 has no text shape named 'Footnote'"):
-        open_scenario(scenario_at(private_dir / "footnote", edit_slide_1(["Footnote"])))
+        open_scenario(scenario_at(private_dir / "footnote", edit_slide_1([{"shape": "Footnote", "adds": {"text": "survey"}}])))
+    with pytest.raises(BadScenario, match=r"may_change\[0\]: missing adds"):
+        open_scenario(scenario_at(private_dir / "bare", edit_slide_1([{"shape": "Rectangle 3"}])))
 
 
 def chart_deck(path: Path, plot: str = "barChart") -> Path:
@@ -141,22 +145,48 @@ def test_a_chart_python_pptx_cannot_read_is_reported_by_type(tmp_path, plot):
     assert snapshot(chart_deck(tmp_path / "bar.pptx")).charts == (Charts((Decimal("410.0"), Decimal("2000.0")), ()),)
 
 
-@pytest.mark.parametrize(
-    ("variant", "code", "verdict", "failures"),
-    [
-        ("chart_drawn_in_3d", score.BAD, "UNREADABLE", [("unreadable", 10, "slide 10 chart: bar3DChart cannot be read; check by hand")]),
-        ("untouched_chart_drawn_in_3d", score.FAIL, "FAIL", [("scope", 12, "slide 12 changed a chart, image, media, or notes part, but no change asks for it")]),
-    ],
-)
-def test_a_3d_chart_on_a_copy_of_the_solar_deck_is_scored_without_a_crash(tmp_path, variant, code, verdict, failures):
-    sc = open_scenario("solar-market-refresh")
+def built(tmp_path: Path, scenario: str, variant: str) -> Path:
+    sc = open_scenario(scenario)
     d = DeckEdit(sc)
     next(v for v in load_variants(sc.dir / "build.py") if v.name == variant).apply(d)
     d.save(tmp_path / "output.pptx")
-    assert score.main(["solar-market-refresh", str(tmp_path / "output.pptx")]) == code
+    return tmp_path / "output.pptx"
+
+
+@pytest.mark.parametrize(
+    ("variant", "failures"),
+    [
+        ("chart_drawn_in_3d", [("scope", 10, "c1 does not ask to change the type of slide 10's chart, but barChart became bar3DChart")]),
+        ("untouched_chart_drawn_in_3d", [("scope", 12, "slide 12 changed a chart, image, media, or notes part, but no change asks for it")]),
+    ],
+)
+def test_a_3d_chart_on_a_copy_of_the_solar_deck_fails_scope(tmp_path, variant, failures):
+    assert score.main(["solar-market-refresh", str(built(tmp_path, "solar-market-refresh", variant))]) == score.FAIL
     report = json.loads((tmp_path / "score.json").read_text())
-    assert report["verdict"] == verdict
+    assert report["verdict"] == "FAIL"
     assert [(f["code"], f["slide"], f["message"]) for f in report["failures"]] == failures
+
+
+def test_a_chart_the_scorer_cannot_read_leaves_the_deck_unreadable(private_dir, tmp_path, capsys):
+    gone = [{"id": "n1", "kind": "not-a-change", "said": ["00:00:05"], "why": "The 2022 bar stays.", "absent": [{"chart": 380}]}]
+    d = scenario_at(private_dir / "bar3d", make=lambda path: chart_deck(path, "bar3DChart"), non_changes=gone)
+    shutil.copy(d / "input.pptx", tmp_path / "output.pptx")
+    assert score.main([str(d), str(tmp_path / "output.pptx")]) == score.BAD
+    assert capsys.readouterr().out.splitlines()[0] == "SCENARIO UNREADABLE: [unreadable] slide 1 chart: bar3DChart cannot be read; check by hand"
+    assert json.loads((tmp_path / "score.json").read_text())["verdict"] == "UNREADABLE"
+
+
+def test_a_chart_relationship_to_a_missing_part_is_a_bad_output(tmp_path, capsys):
+    source = open_scenario("solar-market-refresh").source_path
+    with zipfile.ZipFile(source) as zin, zipfile.ZipFile(tmp_path / "output.pptx", "w") as zout:
+        for name in zin.namelist():
+            data = zin.read(name)
+            if name == "ppt/slides/_rels/slide10.xml.rels":
+                data = re.sub(rb'Target="\.\./charts/chart\d+\.xml"', b'Target="../charts/chartMISSING.xml"', data, count=1)
+            zout.writestr(name, data)
+    assert score.main(["solar-market-refresh", str(tmp_path / "output.pptx")]) == score.BAD
+    assert "error: cannot read deck" in capsys.readouterr().err
+    assert not (tmp_path / "score.json").exists()
 
 
 def test_a_chart_fact_cannot_target_a_source_chart_that_cannot_be_read(private_dir):
@@ -190,17 +220,51 @@ def test_flags_json_next_to_the_deck_is_reported_beside_the_verdict(private_dir,
 
 
 @pytest.mark.parametrize(
-    ("flags", "error"),
+    ("text", "printed"),
     [
-        ("not json", "Expecting value"),
-        ('{"question": "Which callout?"}', "expected a list of flags"),
-        ('[{"question": "Which callout?"}]', "flags.json[0]: name the transcript turns"),
-        ('[{"question": "Which callout?", "said": ["5 minutes in"]}]', "flags.json[0].said: expected a list of hh:mm:ss"),
+        ('\ufeff[{"question": "Which callout?", "slides": [1]}]', "flags (reported, not scored): raised n1; missing none; 0 unmatched"),
+        ('[{"question": "Which callout?", "said": ["0:05"], "id": "f1", "reason": "unclear"}]', "flags (reported, not scored): raised n1; missing none; 0 unmatched"),
+        ('[{"question": "Which callout?", "slides": ["1"]}]', "flags (reported, not scored): raised n1; missing none; 0 unmatched"),
+        ('[{"question": "Which callout?", "said": "00:00:05"}]', "flags (reported, not scored): raised n1; missing none; 0 unmatched"),
+        ("not json", "flags (reported, not scored): raised none; missing n1; 0 unmatched; unreadable (flags.json: Expecting value: line 1 column 1 (char 0))"),
+        ('{"question": "Which callout?"}', "flags (reported, not scored): raised none; missing n1; 0 unmatched; unreadable (flags.json: expected a list of flags)"),
+        ('[{"question": "Which callout?"}]', "flags (reported, not scored): raised none; missing n1; 0 unmatched; unreadable (flags.json[0]: name the transcript turns in said or the source slides in slides)"),
+        (
+            '[{"question": "Which callout?", "said": ["5 minutes in"]}, {"question": "Which callout?", "slides": [1]}]',
+            "flags (reported, not scored): raised n1; missing none; 0 unmatched; unreadable (flags.json[0].said: '5 minutes in' is not a transcript timestamp such as 00:08:05)",
+        ),
+        ('[{"question": "Which callout?", "said": ["1:05"]}]', "flags (reported, not scored): raised none; missing n1; 1 unmatched"),
+        ('[{"question": "Which callout?", "slides": ["slide 1"]}]', "flags (reported, not scored): raised none; missing n1; 0 unmatched; unreadable (flags.json[0].slides: 'slide 1' is not a source slide number)"),
     ],
 )
-def test_a_malformed_flags_json_is_a_bad_output(private_dir, tmp_path, capsys, flags, error):
+def test_a_flags_json_in_any_shape_is_reported_and_the_deck_still_scored(private_dir, tmp_path, capsys, text, printed):
     d = scenario_at(private_dir / "flags", non_changes=[UNCLEAR_CALLOUT])
     shutil.copy(d / "input.pptx", tmp_path / "output.pptx")
-    (tmp_path / "flags.json").write_text(flags)
-    assert score.main([str(d), str(tmp_path / "output.pptx")]) == score.BAD
-    assert error in capsys.readouterr().err
+    (tmp_path / "flags.json").write_text(text, encoding="utf-8")
+    assert score.main([str(d), str(tmp_path / "output.pptx")]) == score.OK
+    assert capsys.readouterr().out.splitlines()[1] == printed
+    assert json.loads((tmp_path / "score.json").read_text())["verdict"] == "PASS"
+
+
+def test_a_flags_file_never_hides_a_failing_deck(tmp_path, capsys):
+    output = built(tmp_path, "insurance-workshop-prep", "kept_first_answer")
+    (tmp_path / "flags.json").write_text(json.dumps([{"question": "Which regulator slide?", "slides": [18], "id": "f1"}]))
+    assert score.main(["insurance-workshop-prep", str(output)]) == score.FAIL
+    report = json.loads((tmp_path / "score.json").read_text())
+    assert (report["verdict"], report["flags"]["raised"], report["flags"]["unreadable"]) == ("FAIL", ["n2"], [])
+    assert capsys.readouterr().out.splitlines()[1] == "flags (reported, not scored): raised n2; missing none; 0 unmatched"
+
+
+def test_a_garbage_flags_file_still_lets_the_deck_fail(tmp_path, capsys):
+    output = built(tmp_path, "insurance-workshop-prep", "kept_first_answer")
+    (tmp_path / "flags.json").write_bytes(b"\xff\xfe garbage")
+    assert score.main(["insurance-workshop-prep", str(output)]) == score.FAIL
+    assert json.loads((tmp_path / "score.json").read_text())["verdict"] == "FAIL"
+    assert capsys.readouterr().out.splitlines()[1].startswith("flags (reported, not scored): raised none; missing n2; 0 unmatched; unreadable (flags.json: ")
+
+
+def test_a_solar_flag_on_the_slide_that_holds_the_tariff_raises_the_tariff_question(tmp_path):
+    output = built(tmp_path, "solar-market-refresh", "good")
+    (tmp_path / "flags.json").write_text(json.dumps([{"question": "Which of Priya's tariffs replaces the $0.08?", "slides": [10]}]))
+    assert score.main(["solar-market-refresh", str(output)]) == score.OK
+    assert json.loads((tmp_path / "score.json").read_text())["flags"]["raised"] == ["n1"]
