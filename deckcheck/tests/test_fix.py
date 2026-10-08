@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -14,7 +15,7 @@ from pptx.util import Emu, Inches, Pt
 
 from deckcheck import model
 from deckcheck.cli import main
-from deckcheck.fix import FIXERS
+from deckcheck.fix import FIXERS, Change, fix_bullet_end
 from deckcheck.rules import RULES
 from make_sample_decks import build_clean, build_dirty
 
@@ -69,7 +70,7 @@ def test_fix_dirty_deck_fixes_four_and_reports_four(tmp_path: Path, capsys: pyte
 
     assert (code, err) == (1, "")
     assert out == (
-        f"FAIL {deck} -> {fixed}: 4 fixed, 4 remain (2 passes)\n"
+        f"FAIL {deck} -> {fixed}: 4 fixed in 1 pass, 4 remain\n"
         "fixed slide 2 [max-fonts-per-slide] 4 fonts on slide, max 3 | font Georgia -> +mn-lt (Calibri), 1 run\n"
         "fixed slide 2 [no-bullet-end-punctuation] Content Placeholder 2: bullet ends with '.' | "
         "text 'Three competitors exited the segment in 2025.' -> 'Three competitors exited the segment in 2025'\n"
@@ -90,7 +91,7 @@ def test_fix_dirty_deck_fixes_four_and_reports_four(tmp_path: Path, capsys: pyte
     assert (report["input_sha256"], report["output_sha256"], report["passes"], report["passed"]) == (
         before,
         sha256(fixed),
-        2,
+        1,
         False,
     )
     assert [(f["slide"], f["rule"], f["pass"]) for f in report["fixed"]] == [
@@ -145,7 +146,7 @@ def test_fixing_a_fixed_deck_changes_nothing(tmp_path: Path, capsys: pytest.Capt
 
     code, out, _ = run(["fix", str(first), "--out", str(second), "--rules", str(HOUSE_STYLE)], capsys)
 
-    assert (code, out.splitlines()[0]) == (1, f"FAIL {first} -> {second}: 0 fixed, 4 remain (1 pass)")
+    assert (code, out.splitlines()[0]) == (1, f"FAIL {first} -> {second}: 0 fixed, 4 remain")
     assert second.read_bytes() == first.read_bytes()
 
 
@@ -155,7 +156,7 @@ def test_fix_copies_a_clean_deck_byte_for_byte(tmp_path: Path, capsys: pytest.Ca
 
     assert run(["fix", str(deck), "--out", str(fixed), "--rules", str(HOUSE_STYLE)], capsys) == (
         0,
-        f"PASS {deck} -> {fixed}: 0 fixed, 0 remain (1 pass)\n",
+        f"PASS {deck} -> {fixed}: 0 fixed, 0 remain\n",
         "",
     )
     assert fixed.read_bytes() == deck.read_bytes()
@@ -302,6 +303,12 @@ def bullet_texts(path: Path) -> list[str]:
         ("Margins held.;", "Margins held"),
         ("Rates of 3.5.", "Rates of 3.5"),
         ("One group per location/lab/classroom.", "One group per location/lab/classroom"),
+        ("Pursue M&A.", "Pursue M&A"),
+        ("Strengthen R&D.", "Strengthen R&D"),
+        ("Close with a Q&A.", "Close with a Q&A"),
+        ("Margins won't.", "Margins won't"),
+        ("Report to the CEO's.", "Report to the CEO's"),
+        ("Report to the CEO’s.", "Report to the CEO’s"),
     ],
 )
 def test_bullet_fix_strips_sentence_endings(
@@ -535,6 +542,54 @@ def test_bounds_fix_writes_a_group_child_in_group_coordinates(
     assert box(group) == (Inches(6), Inches(1), Inches(4), Inches(2))
 
 
+def offset_group(slide, ext_cx: Emu, child_left: Emu):
+    group = slide.shapes.add_group_shape()
+    text_box(group.shapes, "Grouped label", child_left, Inches(1), Inches(1), Inches(1))
+    xfrm = group._element.grpSpPr.find(qn("a:xfrm"))
+    xfrm.off.x, xfrm.off.y, xfrm.ext.cx, xfrm.ext.cy = 2, Inches(1), ext_cx, Inches(1)
+    xfrm.chOff.x, xfrm.chOff.y, xfrm.chExt.cx, xfrm.chExt.cy = 2, Inches(1), Inches(1), Inches(1)
+    return group
+
+
+def test_bounds_fix_rounds_a_group_child_onto_the_slide(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prs = Presentation()
+    offset_group(prs.slides.add_slide(prs.slide_layouts[BLANK]), Inches(3), Inches(-0.5))
+    deck, fixed = tmp_path / "group.pptx", tmp_path / "fixed.pptx"
+    prs.save(str(deck))
+
+    code, _, _ = run(
+        ["fix", str(deck), "--out", str(fixed), "--rules", str(write_rules(tmp_path, BOUNDS_RULES))], capsys
+    )
+
+    child = Presentation(str(fixed)).slides[0].shapes[0].shapes[0]
+    assert (code, box(child)) == (0, (2, Inches(1), Inches(1), Inches(1)))
+
+
+def test_bounds_fix_declines_a_child_of_a_group_with_zero_width(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prs = Presentation()
+    group = offset_group(prs.slides.add_slide(prs.slide_layouts[BLANK]), 0, Inches(1))
+    group.shapes[0].top = Inches(7)
+    deck, fixed = tmp_path / "group.pptx", tmp_path / "fixed.pptx"
+    prs.save(str(deck))
+
+    code, out, _ = run(
+        ["fix", str(deck), "--out", str(fixed), "--rules", str(write_rules(tmp_path, BOUNDS_RULES))], capsys
+    )
+
+    assert (code, out.splitlines()[1:]) == (
+        1,
+        [
+            (
+                "remains slide 1 [within-slide-bounds] Grouped label: text shape extends 36pt past the slide edge, "
+                "tolerance 18pt | box (2, 6400800, 2, 7315200) vs slide (9144000, 6858000) EMU "
+                "(declined: inside a group with zero width or height)"
+            )
+        ],
+    )
+
+
 def test_bounds_fix_shrinks_only_a_box_wider_than_the_slide(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     prs = Presentation()
     for left, width, rotation in [(Inches(-1), Inches(12), 0.0), (Inches(3), Inches(9), 90.0)]:
@@ -587,6 +642,71 @@ def test_bounds_fix_declines_oversized_tables_and_rotated_groups(
         ],
     )
     assert fixed.read_bytes() == deck.read_bytes()
+
+
+def small_text_deck(path: Path) -> Path:
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[BLANK])
+    run_ = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(1)).text_frame.paragraphs[0].add_run()
+    run_.text, run_.font.size = "Footnote", Pt(6)
+    prs.save(str(path))
+    return path
+
+
+def test_a_fix_that_does_not_stick_is_reported_with_its_change(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deck, fixed = small_text_deck(tmp_path / "small.pptx"), tmp_path / "fixed.pptx"
+    rules = write_rules(tmp_path, "rules:\n  min-font-size:\n    min_pt: 7\n")
+    monkeypatch.setitem(FIXERS, "min-font-size", lambda s, deck, params: (Change("size", "6pt", "7pt, 1 run"),))
+
+    code, out, _ = run(
+        ["fix", str(deck), "--out", str(fixed), "--rules", str(rules), "--report", str(tmp_path)], capsys
+    )
+
+    assert (code, out) == (
+        1,
+        f"FAIL {deck} -> {fixed}: 1 fixed in 1 pass, 1 remains\n"
+        "fixed slide 1 [min-font-size] TextBox 1: 6pt text, min 7pt | size 6pt -> 7pt, 1 run\n"
+        "remains slide 1 [min-font-size] TextBox 1: 6pt text, min 7pt | Footnote "
+        "(did-not-stick: fixed in pass 1 and still fires)\n",
+    )
+    report = json.loads((tmp_path / "fix.json").read_text())
+    assert [(f["rule"], f["pass"]) for f in report["fixed"]] == [("min-font-size", 1)]
+    assert [(r["rule"], r["why"]) for r in report["remaining"]] == [("min-font-size", "did-not-stick")]
+    assert fixed.read_bytes() == deck.read_bytes()
+
+
+def test_fix_stops_after_three_passes_that_each_cause_a_new_violation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deck, fixed = bullet_deck(tmp_path / "bullets.pptx", ["Grew."]), tmp_path / "fixed.pptx"
+
+    def strip_and_add_another(p, deck, params):
+        p.xml.addnext(copy.deepcopy(p.xml))
+        return fix_bullet_end(p, deck, params)
+
+    monkeypatch.setitem(FIXERS, "no-bullet-end-punctuation", strip_and_add_another)
+
+    code, out, _ = run(
+        ["fix", str(deck), "--out", str(fixed), "--rules", str(write_rules(tmp_path, BULLET_RULES))], capsys
+    )
+
+    fixed_line = (
+        "fixed slide 1 [no-bullet-end-punctuation] Content Placeholder 2: bullet ends with '.' | text 'Grew.' -> 'Grew'"
+    )
+    assert (code, out.splitlines()) == (
+        1,
+        [
+            f"FAIL {deck} -> {fixed}: 3 fixed in 3 passes, 1 remains",
+            fixed_line,
+            fixed_line,
+            fixed_line,
+            "remains slide 1 [no-bullet-end-punctuation] Content Placeholder 2: bullet ends with '.' | Grew. "
+            "(pass-limit: first fired after pass 3)",
+        ],
+    )
+    assert bullet_texts(fixed) == ["Grew\nGrew\nGrew\nGrew."]
 
 
 def test_doctor_lists_the_fixable_rules(capsys: pytest.CaptureFixture[str]) -> None:

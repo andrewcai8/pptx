@@ -88,11 +88,14 @@ def fix_deck(data: bytes, rules: RuleSet, path: str) -> FixResult:
     at_open = [_canonical(s) for s in prs.slides]
     fixed: dict[tuple, Fixed] = {}
     declined: dict[tuple, str] = {}
-    for passes in range(1, MAX_PASSES + 1):
+    passes = 0
+    for pass_no in range(1, MAX_PASSES + 2):
         deck = read_deck(prs, path, sha)
         final = run_rules(deck, rules)
-        if passes == 1:
+        if pass_no == 1:
             _check_read_is_pure(prs, at_open, path)
+        if pass_no > MAX_PASSES:
+            break
         applied = 0
         for v in final:
             if v.rule not in FIXERS or _key(v) in fixed:
@@ -101,15 +104,13 @@ def fix_deck(data: bytes, rules: RuleSet, path: str) -> FixResult:
             if isinstance(result, Declined):
                 declined[_key(v)] = result.reason
             else:
-                fixed[_key(v)] = Fixed(v, result, passes)
+                fixed[_key(v)] = Fixed(v, result, pass_no)
                 applied += 1
         if not applied:
             break
-    else:
-        final = run_rules(read_deck(prs, path, sha), rules)
+        passes = pass_no
 
-    still = {_key(v) for v in final}
-    outcomes: list[Outcome] = [f for k, f in fixed.items() if k not in still]
+    outcomes: list[Outcome] = list(fixed.values())
     for v in final:
         k = _key(v)
         if v.rule not in FIXERS:
@@ -197,7 +198,8 @@ def fix_fonts(slide: Slide, deck: Deck, params: dict[str, Any]) -> tuple[Change,
     )
 
 
-DOTTED_WORD = re.compile(r"[^\W\d_]+(?:\.[^\W\d_]+)*$")
+WORD = r"(?:[^\W\d_]|[&'’])+"
+DOTTED_WORD = re.compile(rf"{WORD}(?:\.{WORD})*$")
 
 
 def end_punctuation(text: str, chars: str) -> int | Declined:
@@ -261,6 +263,8 @@ def fix_min_size(s: Shape, deck: Deck, params: dict[str, Any]) -> tuple[Change, 
 def fitted_box(s: Shape, slide_w: int, slide_h: int) -> tuple[int, int, int, int] | Declined:
     if s.to_slide.rotated:
         return Declined("inside a rotated or flipped group")
+    if not (s.to_slide.sx and s.to_slide.sy):
+        return Declined("inside a group with zero width or height")
     left, top, right, bottom = visual_box(s)
     width, height = s.width, s.height
     if right - left > slide_w or bottom - top > slide_h:
@@ -285,6 +289,11 @@ def fitted_box(s: Shape, slide_w: int, slide_h: int) -> tuple[int, int, int, int
     return s.left + dx, s.top + dy, width, height
 
 
+# Rounding to nearest could put a box clamped to the slide edge back outside it, so round the way it moved.
+def _inward(child: float, up: bool) -> int:
+    return math.ceil(round(child, 6)) if up else math.floor(round(child, 6))
+
+
 def _box(left: int, top: int, width: int, height: int) -> str:
     return f"({left}, {top}) {width}x{height} EMU"
 
@@ -295,10 +304,14 @@ def fix_bounds(s: Shape, deck: Deck, params: dict[str, Any]) -> tuple[Change, ..
         return box
     left, top, width, height = box
     t = s.to_slide
-    s.xml.x = round((left - t.dx) / t.sx)
-    s.xml.y = round((top - t.dy) / t.sy)
-    s.xml.cx = round(width / t.sx)
-    s.xml.cy = round(height / t.sy)
+    if width != s.width:
+        s.xml.cx = _inward(width / t.sx, up=False)
+    if height != s.height:
+        s.xml.cy = _inward(height / t.sy, up=False)
+    if left != s.left:
+        s.xml.x = _inward((left - t.dx) / t.sx, up=left > s.left)
+    if top != s.top:
+        s.xml.y = _inward((top - t.dy) / t.sy, up=top > s.top)
     return (Change("box", _box(s.left, s.top, s.width, s.height), _box(*box)),)
 
 

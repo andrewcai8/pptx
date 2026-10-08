@@ -200,10 +200,8 @@ def write_atomic(path: Path, data: bytes) -> None:
 
 
 def fix_summary(result: FixResult) -> str:
-    return (
-        f"{len(result.fixed)} fixed, {plural(len(result.remaining), 'remains', 'remain')} "
-        f"({plural(result.passes, 'pass', 'passes')})"
-    )
+    passes = f" in {plural(result.passes, 'pass', 'passes')}" if result.passes else ""
+    return f"{len(result.fixed)} fixed{passes}, {plural(len(result.remaining), 'remains', 'remain')}"
 
 
 def format_change(c: Change) -> str:
