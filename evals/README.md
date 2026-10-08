@@ -65,6 +65,7 @@ changes:
         forbid:
           - {percent: "50%", where: title}
           - {percent: "45%", superseded: "00:04:10"}
+        may_change: [Footnote]     # shapes whose lines the edit may rewrite
     intent_checks: [What only a reader can judge.]
   - {id: c2, kind: delete-slide, slide: 2, intent: ..., said: [...]}
   - {id: c3, kind: move-slide, slide: 14, after: 11, intent: ..., said: [...]}
@@ -79,6 +80,7 @@ The loader lints every field against the real deck and transcript, and a bad sce
 - Each `said` and `superseded` timestamp is a transcript turn.
 - A `require` with a number needs `from`. The value is `{said: <ts>}` when the turn states it, `{data: <csv>, row: <first-column key>, column: <header>}` when the cell value appears in the fact, or `{slide: <n>}` when it is already on that source slide.
 - A `require` on an edited slide must not already hold on the source slide, or it could not show the edit happened.
+- `may_change` names shapes on the source slide, by shape name, whose lines the asked edit may rewrite or replace. Use it when the meeting asks for an edit that could land on more than one line, such as "point the footnote at the survey file", which a maker can do by extending footnote 1 or by adding a footnote. Each name must be a shape with text on that slide. The wording of those lines goes to `intent_checks`.
 - A plain `forbid` is an old value, so it must be on the source slide. A `superseded` forbid is the abandoned answer from a change of mind. Its timestamp is the turn where that answer was said, so that turn must state it. It must be absent from the source slide.
 - Every `absent` fact must be absent from the whole source deck.
 - An added slide's `layout` must be a layout that some source slide uses.
@@ -104,7 +106,7 @@ The script decides these checks, in this order:
 
 1. `source` checks that the source deck still has its pinned hash and that the output is not the source file.
 2. `structure` maps every output slide to a source slide by slide id, or to an added slide in order of appearance. It reports a kept slide that is missing, a deleted slide that is still there, a new slide that no change asks for, an added slide that is missing, and a slide out of order. When two slides could explain one displacement, it blames the slide a change moved or added.
-3. `scope` runs on every slide the mapping pairs, even when `structure` failed. A slide no change edits must look the same: the same text, the same slide XML, and the same related parts (charts and their embedded workbooks, images and other media, notes), followed recursively. A notes page with no text counts as no notes page. A changed slide gets `guessed` when an ambiguous non-change names it, `non-change` when a not-a-change names it, and `scope` otherwise. On an edited slide, every source paragraph must still be there, unless it holds one of that slide's plain `forbid` values or starts with the house-style source prefix. An edit target that did not change fails `missing`. A change to the deck's slide layouts, masters, or themes is one `scope` failure.
+3. `scope` runs on every slide the mapping pairs, even when `structure` failed. A slide no change edits must look the same: the same text, the same slide XML, and the same related parts (charts and their embedded workbooks, images and other media, notes), followed recursively. A notes page with no text counts as no notes page. A changed slide gets `guessed` when an ambiguous non-change names it, `non-change` when a not-a-change names it, and `scope` otherwise. On an edited slide, every source paragraph must still be there, unless it holds one of that slide's plain `forbid` values, starts with the house-style source prefix, or sits in a shape the slide's `may_change` names. An edit target that did not change fails `missing`. A change to the deck's slide layouts, masters, or themes is one `scope` failure.
 4. `missing` and `forbidden` check the `require` and `forbid` facts on each changed slide, and the `absent` facts across the deck.
 5. `layout` checks that each added slide uses its declared layout.
 6. `style` reports house-style violations that the source deck did not already have, matched through the slide mapping.

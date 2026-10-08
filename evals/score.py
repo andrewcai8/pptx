@@ -261,7 +261,8 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix
                 failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k}"))
         if edits and text_changed:
             forbids = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None and not isinstance(f.value, ChartValue)]
-            if lost := lost_lines(sc.source.deck.slides[k - 1], out.deck.slides[i], forbids, source_prefix):
+            free = {name for e in edits for name in e.slides[k].may_change}
+            if lost := lost_lines(sc.source.deck.slides[k - 1], out.deck.slides[i], forbids, free, source_prefix):
                 shown = ", ".join(repr(x) for x in lost[:3]) + (f", and {len(lost) - 3} more" if len(lost) > 3 else "")
                 failures.append(Failure(Code.SCOPE, k, edits[0].id, f"{edits[0].id} does not ask to change these lines on slide {k}, but they are gone or changed: {shown}"))
         if edits or not look_changed:
@@ -275,10 +276,12 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix
     return failures, changed
 
 
-def lost_lines(before: Slide, after: Slide, forbids: list[Value], source_prefix: str) -> list[str]:
+def lost_lines(before: Slide, after: Slide, forbids: list[Value], free: set[str], source_prefix: str) -> list[str]:
     kept = Counter(outline(after))
     lost = []
     for shape in before.shapes:
+        if shape.name in free:
+            continue
         for p in shape.paragraphs:
             text = p.text.strip()
             entry = f"{shape.name}: {text}"

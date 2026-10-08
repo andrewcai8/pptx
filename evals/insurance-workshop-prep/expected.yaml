@@ -16,9 +16,10 @@ changes:
         forbid:
           - {percent: "50%", where: title}
           - {percent: "45%", superseded: "00:02:32"}
+        may_change: [Footnote]
     intent_checks:
       - The headline still makes one argument about the new generations; only the figure changed.
-      - The new figure is attributed to the client's member survey, not to the US census footnote.
+      - The footnotes attribute the headline figure to the client's member survey, by a new footnote or by extending an existing one, and the curve keeps its US census source.
 
   - id: c2
     kind: delete-slide

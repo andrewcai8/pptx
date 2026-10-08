@@ -75,13 +75,20 @@ def test_an_edit_outside_the_read_artifacts_changes_the_slide(tmp_path, edit):
     assert seen(deck(tmp_path / "edited.pptx", edit)) != seen(deck(tmp_path / "source.pptx"))
 
 
-def scenario_at(d: Path) -> Path:
+def scenario_at(d: Path, changes: list | None = None) -> Path:
     d.mkdir(parents=True)
     source = deck(d / "input.pptx")
     deck_ref = {"file": "input.pptx", "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
-    (d / "expected.yaml").write_text(yaml.safe_dump({"deck": deck_ref, "changes": []}))
+    (d / "expected.yaml").write_text(yaml.safe_dump({"deck": deck_ref, "changes": changes or []}))
     (d / "transcript.md").write_text("[00:00:05] Ana Ruiz (Principal, Kestrel Advisory): Nothing to change today.\n")
     return d
+
+
+@pytest.fixture
+def private_dir():
+    top = ROOT / "private" / f"pytest-{uuid.uuid4().hex[:8]}"
+    yield top
+    shutil.rmtree(top, ignore_errors=True)
 
 
 @pytest.mark.parametrize(("folder", "opens"), [("private", True), ("artifacts", False), ("evals", False)])
@@ -96,3 +103,14 @@ def test_a_private_deck_scenario_opens_only_under_the_repos_private_folder(folde
                 open_scenario(d)
     finally:
         shutil.rmtree(top, ignore_errors=True)
+
+
+def edit_slide_1(may_change: list[str]) -> list[dict]:
+    return [{"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {"may_change": may_change}}}]
+
+
+def test_may_change_names_a_text_shape_on_the_edited_slide(private_dir):
+    sc = open_scenario(scenario_at(private_dir / "callout", edit_slide_1(["Rectangle 3"])))
+    assert sc.changes[0].slides[1].may_change == ("Rectangle 3",)
+    with pytest.raises(BadScenario, match="slide 1 has no text shape named 'Footnote'"):
+        open_scenario(scenario_at(private_dir / "footnote", edit_slide_1(["Footnote"])))

@@ -106,6 +106,7 @@ class Forbid:
 class Facts:
     require: tuple[Require, ...]
     forbid: tuple[Forbid, ...]
+    may_change: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -568,7 +569,7 @@ def _facts(raw: dict[str, Any], where: str) -> Facts:
         w = f"{where}.forbid[{i}]"
         value, at, f = _fact(f, w, ("superseded",))
         forbid.append(Forbid(value, at, _stamp(f["superseded"], f"{w}.superseded") if "superseded" in f else None))
-    return Facts(tuple(require), tuple(forbid))
+    return Facts(tuple(require), tuple(forbid), _strs(raw.get("may_change"), f"{where}.may_change"))
 
 
 COMMON = ("id", "kind", "intent", "said")
@@ -585,7 +586,7 @@ def _change(raw: Any, where: str) -> Change:
         if not isinstance(raw["slides"], dict) or not raw["slides"]:
             raise BadScenario(f"{where}.slides: expected a mapping of source slide number to require/forbid")
         slides = {
-            _int(k, f"{where}.slides key"): _facts(_keys(v or {}, f"{where}.slides.{k}", (), ("require", "forbid")), f"{where}.slides.{k}")
+            _int(k, f"{where}.slides key"): _facts(_keys(v or {}, f"{where}.slides.{k}", (), ("require", "forbid", "may_change")), f"{where}.slides.{k}")
             for k, v in raw["slides"].items()
         }
         return Edit(cid, kind, _str(raw["intent"], f"{where}.intent"), _stamps(raw["said"], f"{where}.said"), slides, _strs(raw.get("intent_checks"), f"{where}.intent_checks"))
@@ -687,8 +688,10 @@ def _problems(sc: Scenario) -> Iterator[str]:
     for c in sc.changes:
         match c:
             case Edit():
-                for k in c.slides:
+                for k, fs in c.slides.items():
                     yield from in_range(k, f"{c.id}.slides")
+                    if 1 <= k <= n and (unknown := [name for name in fs.may_change if not any(sh.name == name and sh.paragraphs for sh in slides[k - 1].shapes)]):
+                        yield f"{c.id}.slides.{k}.may_change: slide {k} has no text shape named {', '.join(map(repr, unknown))}"
             case AddSlide():
                 yield from in_range(c.after, f"{c.id}.after", low=0)
                 if c.layout not in {s.layout_name for s in slides}:
