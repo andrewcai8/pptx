@@ -6,13 +6,14 @@ rules:
   no-bullet-end-punctuation:
     chars: ".;,"
   slide-has-title:
-    exempt_layouts: ["Title Slide", "Section Header"]
+    exempt_layouts: ["Title Slide", "Section Header", "End", "D. End", "Disclaimer", "D. Disclaimer", "Quote", "D. Quote"]
   title-max-chars:
-    max: 120
+    max: 150
   min-font-size:
-    min_pt: 10
+    min_pt: 7
   no-placeholder-text:
     patterns: ["click to add", "lorem ipsum", "\\bTBD\\b", "\\bXX+\\b", "\\[insert", "\\?\\?\\?"]
-  within-slide-bounds: {}
+  within-slide-bounds:
+    tolerance_pt: 18
   source-on-data-slides:
     prefix: "Source"

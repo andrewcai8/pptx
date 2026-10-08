@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -8,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from deckcheck.model import Deck, Violation
+from deckcheck.model import Deck, Shape, Violation
 
 Rule = Callable[[Deck, dict[str, Any]], Iterable[Violation]]
 Param = Callable[[Any], Any]
@@ -128,23 +129,28 @@ def no_bullet_end_punctuation(deck: Deck, params: dict[str, Any]) -> Iterator[Vi
                     )
 
 
+# PowerPoint names a copied layout "1_Title Slide".
+COPY_PREFIX = re.compile(r"^\d+_")
+
+
 @rule("slide-has-title", exempt_layouts=_str_list)
 def slide_has_title(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
-        if slide.layout_name not in params["exempt_layouts"] and not slide.title:
+        layout = COPY_PREFIX.sub("", slide.layout_name)
+        if layout not in params["exempt_layouts"] and not slide.title:
             yield Violation("slide-has-title", slide.index, None, "slide has no title", f"layout {slide.layout_name}")
 
 
 @rule("title-max-chars", max=_int)
 def title_max_chars(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
-        if len(slide.title) > params["max"] and slide.title_shape:
+        if len(slide.headline) > params["max"] and slide.title_shape:
             yield Violation(
                 "title-max-chars",
                 slide.index,
                 slide.title_shape.name,
-                f"title is {len(slide.title)} chars, max {params['max']}",
-                slide.title,
+                f"title is {len(slide.headline)} chars, max {params['max']}",
+                slide.headline,
             )
 
 
@@ -182,30 +188,61 @@ def no_placeholder_text(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
                     )
 
 
-@rule("within-slide-bounds")
+EMU_PER_PT = 12700
+
+
+# The axis-aligned box a shape covers once rotated about its centre.
+def _visual_box(s: Shape) -> tuple[int, int, int, int]:
+    angle = math.radians(s.rotation)
+    cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
+    width, height = s.width * cos + s.height * sin, s.width * sin + s.height * cos
+    cx, cy = s.left + s.width / 2, s.top + s.height / 2
+    return round(cx - width / 2), round(cy - height / 2), round(cx + width / 2), round(cy + height / 2)
+
+
+@rule("within-slide-bounds", tolerance_pt=_number)
 def within_slide_bounds(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
+    tolerance = params["tolerance_pt"] * EMU_PER_PT
     for slide in deck.slides:
         for s in slide.shapes:
-            if s.left < 0 or s.top < 0 or s.left + s.width > deck.slide_width or s.top + s.height > deck.slide_height:
+            if not s.paragraphs and s.kind != "chart":
+                continue
+            left, top, right, bottom = _visual_box(s)
+            if right <= 0 or bottom <= 0 or left >= deck.slide_width or top >= deck.slide_height:
+                continue
+            overhang = max(-left, -top, right - deck.slide_width, bottom - deck.slide_height)
+            if overhang > tolerance:
                 yield Violation(
                     "within-slide-bounds",
                     slide.index,
                     s.name,
-                    "shape extends past the slide edge",
-                    f"box ({s.left}, {s.top}, {s.left + s.width}, {s.top + s.height}) "
-                    f"vs slide ({deck.slide_width}, {deck.slide_height}) EMU",
+                    f"text shape extends {overhang / EMU_PER_PT:.0f}pt past the slide edge, "
+                    f"tolerance {params['tolerance_pt']:g}pt",
+                    f"box ({left}, {top}, {right}, {bottom}) vs slide ({deck.slide_width}, {deck.slide_height}) EMU",
                 )
+
+
+# A table holds data when a cell has a percent, a currency symbol, or a number like 3.5 or 1,200.
+NUMBER_LIKE = re.compile(r"[%$€£¥]|\d[.,]\d")
+
+
+def _is_data(shape: Shape) -> bool:
+    return shape.kind == "chart" or (
+        shape.kind == "table" and any(NUMBER_LIKE.search(p.text) for p in shape.paragraphs)
+    )
 
 
 @rule("source-on-data-slides", prefix=_str)
 def source_on_data_slides(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
-        data = [s for s in slide.shapes if s.kind in ("chart", "table")]
+        data = [s for s in slide.shapes if _is_data(s)]
+        label = re.compile(rf"\s{re.escape(params['prefix'])}s?\s*:")
         has_source = any(
-            p.text.strip().startswith(params["prefix"])
+            line.startswith(params["prefix"]) or label.search(line)
             for s in slide.shapes
             if s.kind != "table"
             for p in s.paragraphs
+            for line in p.lines
         )
         if data and not has_source:
             yield Violation(
