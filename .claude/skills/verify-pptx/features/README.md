@@ -33,4 +33,5 @@ Each feature file starts with an H1 title and one paragraph describing the behav
 - [Diff against the source deck](./diff-decks.md) covers scoping a change to the requested slides and proving the source is untouched.
 - [Fix a deck](./fix-deck.md) covers writing a copy with the three fixable rules repaired and the rest reported.
 - [Render slides](./render-slides.md) covers PNG previews through LibreOffice and the missing-tool path.
+- [Audit slides](./audit-slides.md) covers the advisory review of rendered slides against the rubric, the font report, and `audit_check.py`.
 - [Pass the known-good corpus](./known-good-corpus.md) covers the real BCG decks that the house style must accept and their waivers.
