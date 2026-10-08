@@ -6,29 +6,56 @@ artifacts/
 private/
 .claude/settings.local.json
 
-# Client material never belongs in this public repo.
+# A backstop for client material, which belongs only in private/.
 *.pptx
 *.pptm
 *.ppt
 *.potx
 *.ppsx
 *.key
+*.potm
+*.ppsm
+*.odp
 *.xlsx
 *.xlsm
 *.xls
+*.xlsb
+*.ods
+*.numbers
 *.csv
 *.docx
 *.doc
+*.docm
+*.odt
+*.pages
+*.rtf
+*.txt
 *.pdf
 *.png
 *.jpg
 *.jpeg
+*.gif
+*.webp
+*.heic
+*.tif
+*.tiff
+*.svg
 *.vtt
 *.srt
+*.m4a
+*.mp3
+*.wav
+*.mp4
+*.mov
+*.webm
 fix.md
 fix.json
 report.json
 outline.md
+diff.md
+diff.json
+audit.json
+fonts.json
 
 # Synthetic eval data is made up and safe to commit.
-!evals/**/*.csv
+!evals/*/data/*.csv
