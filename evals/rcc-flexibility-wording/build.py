@@ -80,6 +80,18 @@ def reworded_daily_limit(d: DeckEdit) -> None:
     d.replace(4, OLD, "Teams choose their days in the office, within the site's daily limit")
 
 
+@variant()
+def reworded_daily_maximum(d: DeckEdit) -> None:
+    """Slide 4 says teams choose their office days within each site's daily maximum, a faithful rewording."""
+    d.replace(4, OLD, "Teams choose their own office days within each site's daily maximum")
+
+
+@variant()
+def reworded_attendance_ceiling(d: DeckEdit) -> None:
+    """Slide 4 says teams pick their office days under each site's attendance ceiling, a faithful rewording."""
+    d.replace(4, OLD, "Teams pick their office days under each site's attendance ceiling")
+
+
 @variant(base=good, fails={("scope", 6)})
 def bullets_off_working_model(d: DeckEdit) -> None:
     """An empty buNone on slide 6's eight factor paragraphs hides their bullets on a slide nobody asked about."""

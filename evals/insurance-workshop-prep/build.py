@@ -5,26 +5,63 @@ from pptx.enum.text import MSO_AUTO_SIZE
 from deckedit import DeckEdit, variant
 
 SURVEY_NOTE = "3. Insurers' Association member survey 2026, 2027 projection"
+CENSUS_NOTE = "1. U.S. Census Bureau, Population Division.  2014 estimate of population; Generations as defined by Pew Research Center, 2014"
 
 
-def cite_survey(d: DeckEdit) -> None:
-    footnote = next(s for s in d.slide(5).shapes if s.name == "Footnote")
-    last = footnote.text_frame.paragraphs[-1]._p
-    note = copy.deepcopy(last)
-    first, *rest = note.r_lst
-    first.text = SURVEY_NOTE
+def footnote_paragraphs(d: DeckEdit) -> list:
+    return [p._p for p in next(s for s in d.slide(5).shapes if s.name == "Footnote").text_frame.paragraphs]
+
+
+def cite_survey(d: DeckEdit, *, text: str = SURVEY_NOTE, first: bool = False) -> None:
+    notes = footnote_paragraphs(d)
+    note = copy.deepcopy(notes[-1])
+    run, *rest = note.r_lst
+    run.text = text
     for r in rest:
         note.remove(r)
-    last.addnext(note)
+    if first:
+        notes[0].addprevious(note)
+    else:
+        notes[-1].addnext(note)
+
+
+def refresh(d: DeckEdit) -> None:
+    d.replace(5, "ca. 50%", "ca. 48%")
+    d.delete_slide(2)
+    d.move_slide(14, after=11)
 
 
 @variant()
 def good(d: DeckEdit) -> None:
-    """Survey figure in the headline with a footnote citing the survey, credentials page gone, innovation leads the three roles."""
-    d.replace(5, "ca. 50%", "ca. 48%")
+    """Survey figure in the headline with a new footnote line citing the survey, credentials page gone, innovation leads the three roles."""
+    refresh(d)
     cite_survey(d)
-    d.delete_slide(2)
-    d.move_slide(14, after=11)
+
+
+@variant()
+def survey_added_to_footnote_1(d: DeckEdit) -> None:
+    """Footnote 1 is extended to cite the survey for the headline, the literal reading of "I'll point the footnote at your survey file"."""
+    refresh(d)
+    d.replace(5, CENSUS_NOTE, CENSUS_NOTE + "; headline share: Insurers' Association member survey (2027 projection)")
+
+
+@variant()
+def survey_footnote_listed_first(d: DeckEdit) -> None:
+    """The survey citation is a new footnote line above the census one, the other reading of pointing the footnote at the survey file."""
+    refresh(d)
+    cite_survey(d, text="Headline share: Insurers' Association member survey 2026 (2027 projection)", first=True)
+
+
+@variant(base=good, fails={("scope", 5)})
+def fixed_callout_spelling(d: DeckEdit) -> None:
+    """Beyond the headline and footnote, slide 5's callout gets "Millenials" corrected, a line no change asks about."""
+    d.replace(5, "...and Millenials have", "...and Millennials have")
+
+
+@variant(base=good, fails={("guessed", 18)})
+def flag_in_speaker_note(d: DeckEdit) -> None:
+    """The open question about the regulator slide is written as a speaker note on slide 18 instead of in flags.json, so it is an edit."""
+    d.slide(18).notes_slide.notes_text_frame.text = "Marko: which regulator slide should be punchier? Check before editing."
 
 
 @variant(base=good, fails={("guessed", 18)})
@@ -39,6 +76,14 @@ def kept_first_answer(d: DeckEdit) -> None:
     d.replace(5, "ca. 50%", "ca. 45%")
     d.delete_slide(2)
     d.move_slide(14, after=11)
+
+
+@variant(fails={("forbidden", 5)})
+def hedged_range_45_to_48(d: DeckEdit) -> None:
+    """The headline hedges with "ca. 45-48%", keeping the 45% Marko took back once he had the survey file."""
+    refresh(d)
+    d.replace(5, "ca. 48%", "ca. 45-48%")
+    cite_survey(d)
 
 
 @variant(fails={("structure", 2)})

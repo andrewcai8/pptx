@@ -75,3 +75,27 @@ def after_contacts_and_edited_contacts(d: DeckEdit) -> None:
     """Diagnostic slide placed after the contacts page, and the contacts page edited to name the consultant."""
     add_diagnostic(d, after=14)
     d.replace(14, "Matt Gamber", "Nadia Brennan")
+
+
+@variant()
+def joint_team_named(d: DeckEdit) -> None:
+    """Diagnostic slide says it is run by a joint team of Nordvik category leads and consultants, which names who works on it but no size."""
+    add_diagnostic(d, bullets=BULLETS + ("Run by a joint team of Nordvik category leads and consultants",))
+
+
+@variant(fails={("non-change", "c1")})
+def team_of_two_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide carries "Team: 2 consultants", a team size the client said to leave off."""
+    add_diagnostic(d, bullets=BULLETS + ("Team: 2 consultants",))
+
+
+@variant(fails={("non-change", "c1")})
+def team_tbc_with_lars(d: DeckEdit) -> None:
+    """Diagnostic slide carries "Team: TBC with Lars", the placeholder the client said not to put."""
+    add_diagnostic(d, bullets=BULLETS + ("Team: TBC with Lars",))
+
+
+@variant()
+def levers_with_words_between(d: DeckEdit) -> None:
+    """Diagnostic slide says "all 10 of the value levers", the same count with words between the number and the noun."""
+    add_diagnostic(d, bullets=(BULLETS[0], "All 10 of the value levers assessed against peers", *BULLETS[2:]))

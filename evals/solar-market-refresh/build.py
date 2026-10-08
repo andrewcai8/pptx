@@ -20,6 +20,15 @@ def _chart_2022_bar(d: DeckEdit, old: str, new: str) -> None:
     cells[0].text = new
 
 
+# python-pptx reads no 3D plot, so a chart drawn in 3D is one the scorer cannot read.
+def _draw_in_3d(d: DeckEdit, slide: int) -> None:
+    chart = next(s.chart for s in d.slide(slide).shapes if s.has_chart)
+    plot = chart._chartSpace.plotArea.find(qn("c:barChart"))
+    for el in plot.findall(qn("c:overlap")) + plot.findall(qn("c:serLines")):
+        plot.remove(el)
+    plot.tag = qn("c:bar3DChart")
+
+
 def _table_cell(d: DeckEdit, old: str, new: str) -> None:
     table = next(s.table for s in d.slide(10).shapes if s.has_table)
     runs = [r for row in table.rows for c in row.cells for p in c.text_frame.paragraphs for r in p.runs if r.text == old]
@@ -93,3 +102,9 @@ def frozen_chart_value(d: DeckEdit) -> None:
 def chart_bar_left_at_380(d: DeckEdit) -> None:
     """Every slide 10 label moves to $410m but the 2022 bar's chart data stays at 380, though Daniel asked for the chart data too."""
     _chart_2022_bar(d, "410", "380")
+
+
+@variant(base=good, fails={("scope", 12)})
+def untouched_chart_drawn_in_3d(d: DeckEdit) -> None:
+    """A chart on slide 12, which no change touches and no chart fact reads, is redrawn in 3D; scoring goes on and finds the change."""
+    _draw_in_3d(d, 12)

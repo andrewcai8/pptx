@@ -54,3 +54,9 @@ def cleaned_slide_6_dots(d: DeckEdit) -> None:
 def spelled_out_million(d: DeckEdit) -> None:
     """The action title writes the revenue as $100 million in year one, the same figure as the slide's +$100M."""
     d.replace(15, OLD_TITLE, "Starbucks personalization lifted marketing engagement by 150% and added $100 million in year one")
+
+
+@variant()
+def revenue_in_dollars_after(d: DeckEdit) -> None:
+    """The action title writes the revenue as 100 million dollars, the same figure as the slide's +$100M."""
+    d.replace(15, OLD_TITLE, "Starbucks personalization lifted marketing engagement by 150% and added 100 million dollars in year one")
