@@ -95,6 +95,12 @@ def team_tbc_with_lars(d: DeckEdit) -> None:
     add_diagnostic(d, bullets=BULLETS + ("Team: TBC with Lars",))
 
 
+@variant(fails={("non-change", "c1")})
+def staffed_two_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide says it is staffed with two consultants and a principal, a team size in words."""
+    add_diagnostic(d, bullets=BULLETS + ("Staffed with two consultants and a principal",))
+
+
 @variant()
 def levers_with_words_between(d: DeckEdit) -> None:
     """Diagnostic slide says "all 10 of the value levers", the same count with words between the number and the noun."""
