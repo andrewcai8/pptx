@@ -14,12 +14,10 @@ from lxml import etree
 from pptx.oxml.text import CT_RegularTextRun, CT_TextField, CT_TextLineBreak
 
 from deckcheck.model import Deck, DeckError, Paragraph, Shape, Slide, Violation, open_presentation, read_deck
-from deckcheck.rules import RULES, RuleSet, run_rules, slide_fonts, small_runs, visual_box
+from deckcheck.rules import RuleSet, run_rules, slide_fonts, small_runs, visual_box
 
 MAX_PASSES = 3
 
-# Seeded from the corpus endings etc., mgmt., asst., and reps. A bullet ending in one keeps its period and is
-# reported. A word missing here loses its period, and the fixed line shows it.
 ABBREVIATIONS = frozenset(
     {"etc", "mgmt", "asst", "reps", "approx", "incl", "excl", "esp", "dept", "govt", "vs", "cf", "inc", "ltd", "corp"}
 )
@@ -56,7 +54,8 @@ Outcome = Fixed | Reported
 @dataclass(frozen=True)
 class FixResult:
     data: bytes
-    sha256: str
+    input_sha256: str
+    output_sha256: str
     passes: int
     outcomes: tuple[Outcome, ...]
 
@@ -77,37 +76,10 @@ class Declined:
 FixerFn = Callable[[Any, Deck, dict[str, Any]], tuple[Change, ...] | Declined]
 
 
-@dataclass(frozen=True)
-class Fixer:
-    target: type[Slide | Shape | Paragraph]
-    fn: FixerFn
-
-
-FIXERS: dict[str, Fixer] = {}
-
-
-def fixer(rule_id: str, target: type[Slide | Shape | Paragraph]) -> Callable[[FixerFn], FixerFn]:
-    if rule_id not in RULES:
-        raise KeyError(f"fixer for unknown rule id {rule_id!r}")
-
-    def register(fn: FixerFn) -> FixerFn:
-        FIXERS[rule_id] = Fixer(target, fn)
-        return fn
-
-    return register
-
-
 # lxml hands back the same element object while a reference to it lives, and every key holds one, so a
-# Paragraph or Shape keeps its key across passes although each pass builds new model objects.
-def _key(v: Violation) -> tuple[str, int, object]:
-    return (v.rule, v.slide, None if isinstance(v.target, Slide) else v.target.xml)
-
-
-def _apply(v: Violation, deck: Deck, rules: RuleSet) -> tuple[Change, ...] | Declined:
-    entry = FIXERS[v.rule]
-    if not isinstance(v.target, entry.target):
-        raise TypeError(f"{v.rule} judged a {type(v.target).__name__}, its fixer takes {entry.target.__name__}")
-    return entry.fn(v.target, deck, rules.params[v.rule])
+# Slide, Shape, or Paragraph keeps its key across passes although each pass builds new model objects.
+def _key(v: Violation) -> tuple[str, object]:
+    return (v.rule, v.target.xml)
 
 
 def fix_deck(data: bytes, rules: RuleSet, path: str) -> FixResult:
@@ -125,7 +97,7 @@ def fix_deck(data: bytes, rules: RuleSet, path: str) -> FixResult:
         for v in final:
             if v.rule not in FIXERS or _key(v) in fixed:
                 continue
-            result = _apply(v, deck, rules)
+            result = FIXERS[v.rule](v.target, deck, rules.params[v.rule])
             if isinstance(result, Declined):
                 declined[_key(v)] = result.reason
             else:
@@ -156,7 +128,7 @@ def fix_deck(data: bytes, rules: RuleSet, path: str) -> FixResult:
         if _canonical(s) != before
     }
     out = _repack(data, written) if written else data
-    return FixResult(out, hashlib.sha256(out).hexdigest(), passes, tuple(outcomes))
+    return FixResult(out, sha, hashlib.sha256(out).hexdigest(), passes, tuple(outcomes))
 
 
 def _canonical(slide) -> bytes:
@@ -205,7 +177,6 @@ def fonts_to_replace(slide: Slide, max_fonts: int) -> list[str] | Declined:
     return Declined("theme and symbol fonts alone exceed the maximum")
 
 
-@fixer("max-fonts-per-slide", Slide)
 def fix_fonts(slide: Slide, deck: Deck, params: dict[str, Any]) -> tuple[Change, ...] | Declined:
     drop = fonts_to_replace(slide, params["max"])
     if isinstance(drop, Declined):
@@ -249,7 +220,6 @@ def end_punctuation(text: str, chars: str) -> int | Declined:
     return len(tail)
 
 
-@fixer("no-bullet-end-punctuation", Paragraph)
 def fix_bullet_end(p: Paragraph, deck: Deck, params: dict[str, Any]) -> tuple[Change, ...] | Declined:
     n = end_punctuation(p.text, params["chars"])
     if isinstance(n, Declined):
@@ -273,10 +243,12 @@ def fix_bullet_end(p: Paragraph, deck: Deck, params: dict[str, Any]) -> tuple[Ch
     return (Change("text", before, before[: len(before) - n]),)
 
 
-@fixer("min-font-size", Shape)
+def centipoints_at_least(pt: float) -> int:
+    return math.ceil(round(pt * 100, 6))
+
+
 def fix_min_size(s: Shape, deck: Deck, params: dict[str, Any]) -> tuple[Change, ...] | Declined:
-    # sz is whole centipoints, and rounding down would leave the run below the minimum.
-    sz = math.ceil(round(params["min_pt"] * 100, 6))
+    sz = centipoints_at_least(params["min_pt"])
     sizes = Counter[float]()
     for r in small_runs(s, params["min_pt"]):
         r.xml.get_or_add_rPr().sz = sz
@@ -317,7 +289,6 @@ def _box(left: int, top: int, width: int, height: int) -> str:
     return f"({left}, {top}) {width}x{height} EMU"
 
 
-@fixer("within-slide-bounds", Shape)
 def fix_bounds(s: Shape, deck: Deck, params: dict[str, Any]) -> tuple[Change, ...] | Declined:
     box = fitted_box(s, deck.slide_width, deck.slide_height)
     if isinstance(box, Declined):
@@ -329,3 +300,11 @@ def fix_bounds(s: Shape, deck: Deck, params: dict[str, Any]) -> tuple[Change, ..
     s.xml.cx = round(width / t.sx)
     s.xml.cy = round(height / t.sy)
     return (Change("box", _box(s.left, s.top, s.width, s.height), _box(*box)),)
+
+
+FIXERS: dict[str, FixerFn] = {
+    "max-fonts-per-slide": fix_fonts,
+    "no-bullet-end-punctuation": fix_bullet_end,
+    "min-font-size": fix_min_size,
+    "within-slide-bounds": fix_bounds,
+}

@@ -16,6 +16,7 @@ from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
 from pptx.oxml.shapes.shared import BaseShapeElement
+from pptx.oxml.slide import CT_Slide
 from pptx.oxml.text import CT_RegularTextRun, CT_TextParagraph
 from pptx.presentation import Presentation as PresentationT
 from pptx.shapes.picture import Picture
@@ -34,8 +35,6 @@ class DeckError(Exception):
     pass
 
 
-# `xml` is the live element a node was read from, so fix can write through it. compare=False and repr=False
-# keep it out of equality and test diffs. asdict() would still copy it, so reports serialise explicitly.
 @dataclass(frozen=True)
 class Run:
     text: str
@@ -77,6 +76,7 @@ class Slide:
     layout_name: str
     shapes: tuple[Shape, ...]
     theme: ThemeFonts
+    xml: CT_Slide = field(compare=False, repr=False)
 
     @property
     def title_shape(self) -> Shape | None:
@@ -127,8 +127,6 @@ class ThemeFonts:
         return typeface
 
 
-# x' = x * sx + dx, y' = y * sy + dy: maps group-child coordinates onto the slide. The map ignores group
-# rotation and flips, so `rotated` marks children whose slide box it gets wrong.
 @dataclass(frozen=True)
 class Transform:
     sx: float = 1.0
@@ -164,7 +162,7 @@ def read_deck(prs: PresentationT, path: str, sha256: str) -> Deck:
         layout = slide.slide_layout
         theme = themes.setdefault(id(layout.slide_master.part), _theme_fonts(layout.slide_master))
         shapes = tuple(_shapes(slide.shapes, layout, theme, Transform()))
-        slides.append(Slide(index, layout.name, shapes, theme))
+        slides.append(Slide(index, layout.name, shapes, theme, slide._element))
     return Deck(
         path=path,
         sha256=sha256,

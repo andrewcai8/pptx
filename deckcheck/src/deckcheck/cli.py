@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import sys
 import tempfile
-from dataclasses import asdict, replace
+from dataclasses import asdict, fields, replace
 from importlib.metadata import version
 from pathlib import Path
 
@@ -100,7 +99,7 @@ def cmd_check(deck_path: Path, rules_path: Path | None, out: Path | None) -> int
 
 
 def violation_json(v: Violation) -> dict[str, object]:
-    return {"rule": v.rule, "slide": v.slide, "shape": v.shape, "message": v.message, "evidence": v.evidence}
+    return {f.name: getattr(v, f.name) for f in fields(v) if f.compare}
 
 
 def format_violation(v: Violation) -> str:
@@ -177,11 +176,8 @@ def cmd_fix(deck_path: Path, out: Path, rules_path: Path | None, report: Path | 
         for o in (*result.fixed, *remaining):
             print(format_outcome(o))
         if report:
-            in_sha = hashlib.sha256(data).hexdigest()
-            (report / "fix.json").write_text(
-                json.dumps(fix_json(deck_path, in_sha, out, rules, result), indent=2) + "\n"
-            )
-            (report / "fix.md").write_text(fix_md(deck_path, in_sha, out, rules, result))
+            (report / "fix.json").write_text(json.dumps(fix_json(deck_path, out, rules, result), indent=2) + "\n")
+            (report / "fix.md").write_text(fix_md(deck_path, out, rules, result))
     except OSError as e:
         print(f"error: cannot write the fix output: {e}", file=sys.stderr)
         return USAGE
@@ -223,12 +219,12 @@ def format_outcome(o: Fixed | Reported) -> str:
     return f"remains {format_violation(o.violation)} ({o.why}: {o.detail})"
 
 
-def fix_json(deck_path: Path, in_sha: str, out: Path, rules: RuleSet, result: FixResult) -> dict[str, object]:
+def fix_json(deck_path: Path, out: Path, rules: RuleSet, result: FixResult) -> dict[str, object]:
     return {
         "input": str(deck_path),
-        "input_sha256": in_sha,
+        "input_sha256": result.input_sha256,
         "output": str(out),
-        "output_sha256": result.sha256,
+        "output_sha256": result.output_sha256,
         "rules_path": str(rules.path),
         "rules": list(rules.params),
         "passes": result.passes,
@@ -241,12 +237,12 @@ def fix_json(deck_path: Path, in_sha: str, out: Path, rules: RuleSet, result: Fi
     }
 
 
-def fix_md(deck_path: Path, in_sha: str, out: Path, rules: RuleSet, result: FixResult) -> str:
+def fix_md(deck_path: Path, out: Path, rules: RuleSet, result: FixResult) -> str:
     lines = [
         "# Deck fix",
         "",
-        f"- input: `{deck_path}` sha256 `{in_sha}`",
-        f"- output: `{out}` sha256 `{result.sha256}`",
+        f"- input: `{deck_path}` sha256 `{result.input_sha256}`",
+        f"- output: `{out}` sha256 `{result.output_sha256}`",
         f"- rules: `{rules.path}` ({', '.join(rules.params)})",
         f"- result: {'PASS' if not result.remaining else 'FAIL'}, {fix_summary(result)}",
         "",

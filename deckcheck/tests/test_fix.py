@@ -14,6 +14,8 @@ from pptx.util import Emu, Inches, Pt
 
 from deckcheck import model
 from deckcheck.cli import main
+from deckcheck.fix import FIXERS
+from deckcheck.rules import RULES
 from make_sample_decks import build_clean, build_dirty
 
 HOUSE_STYLE = Path(__file__).resolve().parents[2] / "standards" / "house-style.yaml"
@@ -177,7 +179,10 @@ def test_fix_copies_every_part_it_did_not_write_byte_for_byte(
 
     after = zip_entries(fixed)
     assert list(after) == list(before)
-    assert [name for name in before if after[name] != before[name]] == ["ppt/slides/slide2.xml", "ppt/slides/slide4.xml"]
+    assert [name for name in before if after[name] != before[name]] == [
+        "ppt/slides/slide2.xml",
+        "ppt/slides/slide4.xml",
+    ]
 
 
 def test_fix_writes_nothing_when_reading_the_deck_changes_it(
@@ -591,3 +596,7 @@ def test_doctor_lists_the_fixable_rules(capsys: pytest.CaptureFixture[str]) -> N
         "fixable rule ids: max-fonts-per-slide, no-bullet-end-punctuation, min-font-size, within-slide-bounds"
         in capsys.readouterr().out.splitlines()
     )
+
+
+def test_every_fixer_fixes_a_registered_rule() -> None:
+    assert set(FIXERS) <= set(RULES)
