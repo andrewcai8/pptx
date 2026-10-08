@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Literal
 
 from deckcheck.cli import write_atomic
-from deckcheck.diff import diff_decks, outline
+from deckcheck.diff import diff_decks
 from deckcheck.model import DeckError, Slide, Violation
 from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
 from facts import ChartValue, Value, describe, match, to_json
@@ -297,10 +297,15 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix
                 failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k}"))
         if edits and text_changed:
             forbids = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None and not isinstance(f.value, ChartValue)]
-            free = {name for e in edits for name in e.slides[k].may_change}
-            if lost := lost_lines(sc.source.deck.slides[k - 1], out.deck.slides[i], forbids, free, source_prefix):
-                shown = ", ".join(repr(x) for x in lost[:3]) + (f", and {len(lost) - 3} more" if len(lost) > 3 else "")
-                failures.append(Failure(Code.SCOPE, k, edits[0].id, f"{edits[0].id} does not ask to change these lines on slide {k}, but they are gone or changed: {shown}"))
+            growth = {g.shape: g.adds for e in edits for g in e.slides[k].may_change}
+            lines = unasked_lines(sc.source.deck.slides[k - 1], out.deck.slides[i], forbids, source_prefix, growth)
+            by = edits[0].id
+            if lines.lost:
+                failures.append(Failure(Code.SCOPE, k, by, f"{by} does not ask to change these lines on slide {k}, but they are gone or changed: {shown(lines.lost)}"))
+            if lines.added:
+                failures.append(Failure(Code.SCOPE, k, by, f"{by} does not ask to add these lines to slide {k}: {shown(lines.added)}"))
+            for shape, grown in lines.off_topic.items():
+                failures.append(Failure(Code.SCOPE, k, by, f"{by} lets {shape} on slide {k} gain only text that states {describe(growth[shape])}, but it gains: {shown(grown)}"))
         if edits or not look_changed:
             continue
         what = "changed its text" if text_changed else "changed its XML with the same text" if before.xml != after.xml else "changed a chart, image, media, or notes part"
@@ -312,20 +317,63 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement, source_prefix
     return failures, changed
 
 
-def lost_lines(before: Slide, after: Slide, forbids: list[Value], free: set[str], source_prefix: str) -> list[str]:
-    kept = Counter(outline(after))
-    lost = []
-    for shape in before.shapes:
-        if shape.name in free:
+def shown(lines: list[str]) -> str:
+    return ", ".join(repr(x) for x in lines[:3]) + (f", and {len(lines) - 3} more" if len(lines) > 3 else "")
+
+
+@dataclass(frozen=True)
+class Unasked:
+    lost: list[str]
+    added: list[str]
+    off_topic: dict[str, list[str]]
+
+
+def unasked_lines(before: Slide, after: Slide, forbids: list[Value], source_prefix: str, growth: dict[str, Value]) -> Unasked:
+    """The lines an edited slide changed beyond its edit, compared shape by shape.
+
+    A source line must survive unless it is released (it holds an old value or is a source line), and a released line
+    may be replaced by one new line in its shape. In a shape that may grow, every source line must survive, extended or
+    not, and every added stretch of text must state what the growth names. A blank paragraph adds no text.
+    """
+    def released(text: str) -> bool:
+        return text.startswith(source_prefix) or any(match(f, text) for f in forbids)
+
+    old, new = _lines(before), _lines(after)
+    lost: list[str] = []
+    added: list[str] = []
+    off_topic: dict[str, list[str]] = {}
+    for name in [*old, *(n for n in new if n not in old)]:
+        fresh = list(new.get(name, []))
+        gone = []
+        for text in old.get(name, []):
+            if text in fresh:
+                fresh.remove(text)
+            else:
+                gone.append(text)
+        fresh = [text for text in fresh if text]
+        if name in growth:
+            off = []
+            for text in gone:
+                if grown := next((f for f in fresh if text and text in f), None):
+                    fresh.remove(grown)
+                    if any(any(ch.isalnum() for ch in piece) and not match(growth[name], piece) for piece in grown.split(text, 1)):
+                        off.append(grown)
+                elif not released(text):
+                    lost.append(f"{name}: {text}")
+            off += [f for f in fresh if not match(growth[name], f)]
+            if off:
+                off_topic[name] = off
             continue
-        for p in shape.paragraphs:
-            text = p.text.strip()
-            entry = f"{shape.name}: {text}"
-            if kept[entry]:
-                kept[entry] -= 1
-            elif not text.startswith(source_prefix) and not any(match(f, text) for f in forbids):
-                lost.append(entry)
-    return lost
+        lost += [f"{name}: {text}" for text in gone if not released(text)]
+        added += [f"{name}: {text}" for text in fresh[sum(map(released, gone)) :]]
+    return Unasked(lost, added, off_topic)
+
+
+def _lines(slide: Slide) -> dict[str, list[str]]:
+    lines: dict[str, list[str]] = {}
+    for shape in slide.shapes:
+        lines.setdefault(shape.name, []).extend(p.text.strip() for p in shape.paragraphs)
+    return lines
 
 
 def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[int]) -> tuple[list[FactResult], list[Failure]]:

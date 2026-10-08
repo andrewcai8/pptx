@@ -14,9 +14,11 @@ changes:
             where: title
             from: {data: data/client-survey.csv, row: millennials-2027, column: share_pct}
         forbid:
-          - {percent: "50%", where: title}
+          - {percent: "50%"}
           - {percent: "45%", superseded: "00:02:28"}
-        may_change: [Footnote]
+        may_change:
+          - shape: Footnote
+            adds: {text: ["survey", "surveys"]}
     intent_checks:
       - The headline still makes one argument about the new generations; only the figure changed.
       - The footnotes attribute the headline figure to the client's member survey, by a new footnote or by extending an existing one, and the curve keeps its US census source.

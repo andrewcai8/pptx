@@ -104,10 +104,19 @@ class Forbid:
 
 
 @dataclass(frozen=True)
+class Growth:
+    """A shape on an edited slide that may grow: each of its source lines must survive, extended or not, and any text
+    it gains must state `adds`."""
+
+    shape: str
+    adds: Value
+
+
+@dataclass(frozen=True)
 class Facts:
     require: tuple[Require, ...]
     forbid: tuple[Forbid, ...]
-    may_change: tuple[str, ...]
+    may_change: tuple[Growth, ...]
 
 
 @dataclass(frozen=True)
@@ -588,7 +597,16 @@ def _facts(raw: dict[str, Any], where: str) -> Facts:
         w = f"{where}.forbid[{i}]"
         value, at, f = _fact(f, w, ("superseded",))
         forbid.append(Forbid(value, at, _stamp(f["superseded"], f"{w}.superseded") if "superseded" in f else None))
-    return Facts(tuple(require), tuple(forbid), _strs(raw.get("may_change"), f"{where}.may_change"))
+    growth = tuple(_growth(g, f"{where}.may_change[{i}]") for i, g in enumerate(_list(raw.get("may_change") or [], f"{where}.may_change")))
+    return Facts(tuple(require), tuple(forbid), growth)
+
+
+def _growth(raw: Any, where: str) -> Growth:
+    raw = _keys(raw, where, ("shape", "adds"))
+    value, _, adds = _fact(raw["adds"], f"{where}.adds")
+    if "where" in adds or isinstance(value, ChartValue):
+        raise BadScenario(f"{where}.adds: name the fact the added text states, with no where and no chart value")
+    return Growth(_str(raw["shape"], f"{where}.shape"), value)
 
 
 COMMON = ("id", "kind", "intent", "said")
@@ -709,7 +727,7 @@ def _problems(sc: Scenario) -> Iterator[str]:
             case Edit():
                 for k, fs in c.slides.items():
                     yield from in_range(k, f"{c.id}.slides")
-                    if 1 <= k <= n and (unknown := [name for name in fs.may_change if not any(sh.name == name and sh.paragraphs for sh in slides[k - 1].shapes)]):
+                    if 1 <= k <= n and (unknown := [g.shape for g in fs.may_change if not any(sh.name == g.shape and sh.paragraphs for sh in slides[k - 1].shapes)]):
                         yield f"{c.id}.slides.{k}.may_change: slide {k} has no text shape named {', '.join(map(repr, unknown))}"
             case AddSlide():
                 yield from in_range(c.after, f"{c.id}.after", low=0)
