@@ -1,0 +1,18 @@
+# Company slide standard. The generator writes to it and deckcheck enforces it.
+# Each key under `rules` is a deckcheck rule id. Removing a key disables that rule.
+rules:
+  max-fonts-per-slide:
+    max: 3
+  no-bullet-end-punctuation:
+    chars: ".;,"
+  slide-has-title:
+    exempt_layouts: ["Title Slide", "Section Header"]
+  title-max-chars:
+    max: 120
+  min-font-size:
+    min_pt: 10
+  no-placeholder-text:
+    patterns: ["click to add", "lorem ipsum", "\\bTBD\\b", "\\bXX+\\b", "\\[insert", "\\?\\?\\?"]
+  within-slide-bounds: {}
+  source-on-data-slides:
+    prefix: "Source"

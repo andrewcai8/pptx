@@ -1,0 +1,23 @@
+[project]
+name = "deckcheck"
+version = "0.1.0"
+description = "Verify generated PowerPoint decks against the house style before a human sees them"
+requires-python = ">=3.12"
+dependencies = [
+    "python-pptx>=1.0.2",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+deckcheck = "deckcheck.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["uv_build>=0.10.8,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]

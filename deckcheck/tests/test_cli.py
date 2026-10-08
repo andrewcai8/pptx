@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from pptx import Presentation
+from pptx.oxml.xmlchemy import OxmlElement
+from pptx.util import Inches
+
+from deckcheck.cli import main
+from make_sample_decks import build_clean, build_clean_v2, build_dirty
+
+HOUSE_STYLE = Path(__file__).resolve().parents[2] / "standards" / "house-style.yaml"
+
+
+def run(argv: list[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, str, str]:
+    code = main(argv)
+    out, err = capsys.readouterr()
+    return code, out, err
+
+
+def write_rules(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "rules.yaml"
+    path.write_text(body)
+    return path
+
+
+def test_clean_deck_passes_house_style(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    deck = tmp_path / "clean.pptx"
+    build_clean(deck)
+
+    assert run(["check", str(deck), "--rules", str(HOUSE_STYLE)], capsys) == (
+        0,
+        f"PASS {deck} (4 slides, 8 rules)\n",
+        "",
+    )
+
+
+def test_dirty_deck_reports_one_violation_per_rule(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    deck = tmp_path / "dirty.pptx"
+    build_dirty(deck)
+
+    code, out, _ = run(["check", str(deck), "--rules", str(HOUSE_STYLE), "--out", str(tmp_path / "report")], capsys)
+
+    report = json.loads((tmp_path / "report" / "report.json").read_text())
+    assert code == 1
+    assert out.splitlines()[0] == f"FAIL {deck}: 8 violations"
+    assert report["passed"] is False
+    assert sorted((v["slide"], v["rule"]) for v in report["violations"]) == [
+        (1, "no-placeholder-text"),
+        (2, "max-fonts-per-slide"),
+        (2, "no-bullet-end-punctuation"),
+        (3, "source-on-data-slides"),
+        (3, "title-max-chars"),
+        (4, "min-font-size"),
+        (4, "slide-has-title"),
+        (4, "within-slide-bounds"),
+    ]
+
+
+def test_diff_reports_edited_and_appended_slides(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    old, new = tmp_path / "clean.pptx", tmp_path / "clean-v2.pptx"
+    build_clean(old)
+    build_clean_v2(new)
+
+    code, _, _ = run(["diff", str(old), str(new), "--out", str(tmp_path / "diff")], capsys)
+
+    result = json.loads((tmp_path / "diff" / "diff.json").read_text())
+    assert code == 0
+    assert [(s["slide"], s["status"]) for s in result["slides"]] == [
+        (1, "unchanged"),
+        (2, "changed"),
+        (3, "unchanged"),
+        (4, "unchanged"),
+        (5, "added"),
+    ]
+    changed = result["slides"][1]["diff"].splitlines()
+    assert "-Content Placeholder 2: Enterprise renewals flat at 94%" in changed
+    assert "+Content Placeholder 2: Enterprise renewals flat at 95%" in changed
+
+
+def test_unknown_rule_id_is_a_config_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    deck = tmp_path / "clean.pptx"
+    build_clean(deck)
+    rules = write_rules(tmp_path, "rules:\n  no-comic-sans: {}\n")
+
+    assert run(["check", str(deck), "--rules", str(rules)], capsys) == (
+        2,
+        "",
+        f"error: {rules}: unknown rule id 'no-comic-sans'\n",
+    )
+
+
+def test_theme_fallback_and_theme_refs_resolve_to_theme_fonts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "Fonts"
+    para = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(6), Inches(1)).text_frame.paragraphs[0]
+    for font in ["Arial", "Georgia", "Verdana", "+mn-lt"]:
+        run_ = para.add_run()
+        run_.text = f"{font} "
+        run_.font.name = font
+    deck = tmp_path / "fonts.pptx"
+    prs.save(str(deck))
+    rules = write_rules(tmp_path, "rules:\n  max-fonts-per-slide:\n    max: 3\n")
+
+    assert run(["check", str(deck), "--rules", str(rules)], capsys) == (
+        1,
+        f"FAIL {deck}: 1 violations\n"
+        "slide 1 [max-fonts-per-slide] 4 fonts on slide, max 3 | Arial, Calibri, Georgia, Verdana\n",
+        "",
+    )
+
+
+def test_bu_none_paragraph_in_body_placeholder_is_not_a_bullet(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "Bullets"
+    frame = slide.placeholders[1].text_frame
+    frame.paragraphs[0].text = "A prose sentence."
+    frame.paragraphs[0]._p.get_or_add_pPr().insert(0, OxmlElement("a:buNone"))
+    frame.add_paragraph().text = "An inherited bullet."
+    deck = tmp_path / "bullets.pptx"
+    prs.save(str(deck))
+    rules = write_rules(tmp_path, 'rules:\n  no-bullet-end-punctuation:\n    chars: "."\n')
+
+    assert run(["check", str(deck), "--rules", str(rules)], capsys) == (
+        1,
+        f"FAIL {deck}: 1 violations\n"
+        "slide 1 [no-bullet-end-punctuation] Content Placeholder 2: bullet ends with '.' | An inherited bullet.\n",
+        "",
+    )
