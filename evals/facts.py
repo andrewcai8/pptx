@@ -45,10 +45,20 @@ NUMBER_WORD = rf"(?:{'|'.join(NUMBER_WORDS)})(?![a-z])"
 COUNT_WORD = rf"\d+|{'|'.join(NUMBER_WORDS)}"
 COUNT_SPEC = re.compile(rf"(?P<number>{COUNT_WORD})[\s-](?P<unit>[a-z]+?)s?")
 MONTHS = "january|february|march|april|may|june|july|august|september|october|november|december"
+
 # Up to three words may sit between a count and its noun ("all 10 of the levers"), but not another number, not a
 # plural that already ends the phrase, so "6 days and then weeks" is not 6 weeks, and not a month, so "2 December by
 # the consultants" is a date and not 2 consultants.
-COUNT_GAP = rf"(?:(?!{NUMBER_WORD})(?!(?:{MONTHS})[\s-])(?![a-z-]*[^s]s[\s-])[a-z][a-z-]*[\s-]){{0,3}}"
+def _gap(words: int) -> str:
+    return rf"(?:(?!{NUMBER_WORD})(?!(?:{MONTHS})[\s-])(?![a-z-]*[^s]s[\s-])[a-z][a-z-]*[\s-]){{0,{words}}}"
+
+
+COUNT_GAP = _gap(3)
+# A # in a text fact is a count of people or things named right after it, so it allows one word between ("2 senior
+# consultants") and is never a label's number or a date's day: "Step 1 run by consultants", "Phase 1 consultants",
+# "December 2 consultants".
+LABELS = ("step", "phase", "day", "week", "stage", "wave", "workshop", "month", *MONTHS.split("|"))
+NOT_A_LABEL = "".join(rf"(?<!\b{w}[\s-])(?<!\b{w}s[\s-])" for w in LABELS)
 # A unit may be written short: 8 wks, a 6-wk diagnostic.
 SHORT_UNITS = {"week": "wk"}
 # In a text fact, " ... " stands for up to three words and the punctuation around them, so "team ... tbc" matches
@@ -211,8 +221,7 @@ def _count(word: str) -> int:
 
 
 # A phrase cannot start or end inside a longer word or number. A # in it stands for any count, in digits or in words
-# up to twenty, with the same gap before the next word as a count, so "# consultants" matches "2 consultants", "two
-# consultants", and "2 senior consultants".
+# up to twenty, so "# consultants" matches "2 consultants", "two consultants", and "2 senior consultants".
 @cache
 def _phrase(fact: str) -> re.Pattern[str]:
     body = WORD_GAP.join(_counted(part) for part in fact.split(" ... "))
@@ -225,5 +234,5 @@ def _counted(part: str) -> str:
     first, *rest = part.split("#")
     body = re.escape(first)
     for piece in rest:
-        body += rf"(?:{COUNT_WORD})" + (rf"[\s-]{COUNT_GAP}{re.escape(piece[1:])}" if piece[:1] in (" ", "-") else re.escape(piece))
+        body += rf"{NOT_A_LABEL}(?:{COUNT_WORD})" + (rf"[\s-]{_gap(1)}{re.escape(piece[1:])}" if piece[:1] in (" ", "-") else re.escape(piece))
     return body

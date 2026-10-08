@@ -11,6 +11,9 @@ BULLETS = (
 )
 
 
+NO_PLACEHOLDER = ("n4", "no team-size placeholder")
+
+
 # The layout's level 0 renders as unbulleted 10pt text, unlike the 16 to 18pt bullets on the deck's own text slides.
 def add_diagnostic(d: DeckEdit, *, after: int = 13, title: str = TITLE, bullets=BULLETS) -> None:
     d.add_slide("c1", after=after, layout="D. Title and Text", title=title, bullets=bullets)
@@ -52,9 +55,9 @@ def title_only_with_textbox(d: DeckEdit) -> None:
         tf.add_paragraph().text = b
 
 
-@variant(fails={("style", "c1"), ("non-change", "c1")})
+@variant(fails={("style", "c1")})
 def tbd_team_bullet(d: DeckEdit) -> None:
-    """Diagnostic slide carries a "Team size TBD" placeholder bullet the client asked to leave off."""
+    """Diagnostic slide carries a "Team size TBD" placeholder bullet the client asked to leave off; the house style flags the TBD."""
     add_diagnostic(d, bullets=BULLETS + ("Team size TBD",))
 
 
@@ -89,7 +92,7 @@ def team_of_two_consultants(d: DeckEdit) -> None:
     add_diagnostic(d, bullets=BULLETS + ("Team: 2 consultants",))
 
 
-@variant(fails={("non-change", "c1")})
+@variant(intent=NO_PLACEHOLDER)
 def team_tbc_with_lars(d: DeckEdit) -> None:
     """Diagnostic slide carries "Team: TBC with Lars", the placeholder the client said not to put."""
     add_diagnostic(d, bullets=BULLETS + ("Team: TBC with Lars",))
@@ -119,13 +122,13 @@ def two_senior_consultants(d: DeckEdit) -> None:
     add_diagnostic(d, bullets=BULLETS + ("Run by 2 senior consultants",))
 
 
-@variant(fails={("non-change", "c1")})
+@variant(intent=NO_PLACEHOLDER)
 def resourcing_to_be_confirmed(d: DeckEdit) -> None:
     """Diagnostic slide carries "Resourcing: to be confirmed", the placeholder the client said not to put."""
     add_diagnostic(d, bullets=BULLETS + ("Resourcing: to be confirmed",))
 
 
-@variant(fails={("non-change", "c1")})
+@variant(intent=NO_PLACEHOLDER)
 def staffing_tbc_with_lars(d: DeckEdit) -> None:
     """Diagnostic slide carries "Staffing: TBC with Lars", a team placeholder in another wording."""
     add_diagnostic(d, bullets=BULLETS + ("Staffing: TBC with Lars",))
@@ -161,7 +164,7 @@ def weeks_1_to_6(d: DeckEdit) -> None:
     add_diagnostic(d, title="STEP 1: Diagnose, ready for the 2 December steering committee", bullets=("Weeks 1 to 6: from kick-off on 19 October to readout", *BULLETS[1:]))
 
 
-@variant(fails={("non-change", "c1")})
+@variant(intent=NO_PLACEHOLDER)
 def placeholder_for_team(d: DeckEdit) -> None:
     """Diagnostic slide carries "Team (TBC)", a placeholder for the team size the client said to leave off."""
     add_diagnostic(d, bullets=BULLETS + ("Team (TBC)",))
@@ -171,6 +174,30 @@ def placeholder_for_team(d: DeckEdit) -> None:
 def hedged_6_to_8_weeks(d: DeckEdit) -> None:
     """Diagnostic slide hedges the duration as "6 to 8 weeks", keeping the 8 weeks the client ruled out."""
     add_diagnostic(d, bullets=("6 to 8 weeks from kick-off on 19 October to readout", *BULLETS[1:]))
+
+
+@variant()
+def step_label_with_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide says "Step 1 run by consultants alongside Nordvik category leads"; the 1 labels the step, it counts nobody."""
+    add_diagnostic(d, bullets=BULLETS + ("Step 1 run by consultants alongside Nordvik category leads",))
+
+
+@variant()
+def phase_label_with_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide says "Phase 1 led by the consultants", a phase label and no team size."""
+    add_diagnostic(d, bullets=BULLETS + ("Phase 1 led by the consultants",))
+
+
+@variant()
+def day_label_with_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide says "Day 1 workshop with the consultants", a day label and no team size."""
+    add_diagnostic(d, bullets=BULLETS + ("Day 1 workshop with the consultants",))
+
+
+@variant()
+def step_title_with_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide is titled "Step 1 Diagnose with your consultants: 6 weeks, all 10 levers", which names the step and no team size."""
+    add_diagnostic(d, title="Step 1 Diagnose with your consultants: 6 weeks, all 10 levers")
 
 
 @variant()
@@ -189,3 +216,27 @@ def levers_covered_label(d: DeckEdit) -> None:
 def extended_option_8_wks(d: DeckEdit) -> None:
     """Diagnostic slide keeps "Extended option: 8 wks", the eight Nadia said to take out completely."""
     add_diagnostic(d, bullets=BULLETS + ("Extended option: 8 wks",))
+
+
+@variant(intent=NO_PLACEHOLDER)
+def number_of_consultants_tbc(d: DeckEdit) -> None:
+    """Diagnostic slide carries "Number of consultants: TBC", a team placeholder with no number for a script to read."""
+    add_diagnostic(d, bullets=BULLETS + ("Number of consultants: TBC",))
+
+
+@variant(intent=NO_PLACEHOLDER)
+def people_tbc(d: DeckEdit) -> None:
+    """Diagnostic slide carries "People: TBC", a team placeholder with no number for a script to read."""
+    add_diagnostic(d, bullets=BULLETS + ("People: TBC",))
+
+
+@variant(intent=NO_PLACEHOLDER)
+def staffing_to_be_agreed_with_lars(d: DeckEdit) -> None:
+    """Diagnostic slide carries "Staffing: to be agreed with Lars", a team placeholder with no number for a script to read."""
+    add_diagnostic(d, bullets=BULLETS + ("Staffing: to be agreed with Lars",))
+
+
+@variant(intent=NO_PLACEHOLDER)
+def team_of_x_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide carries "Team: [x] consultants", a team placeholder with no number for a script to read."""
+    add_diagnostic(d, bullets=BULLETS + ("Team: [x] consultants",))

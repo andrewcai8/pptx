@@ -46,18 +46,8 @@ non_changes:
     why: The client takes team size up separately as a budget conversation and asked for nothing on the slide, not even a placeholder. Saying who works on the diagnostic, with no number, is not a team size. A count of the people it draws on, such as the client staff who run Q4 promo planning, is one.
     slides: []
     absent:
-      - text: ["team size", "size of the team", "headcount", "FTE", "FTEs"]
-      - text: ["# people", "# person", "# consultant", "# consultants", "team of #"]
-      - text:
-          - "team ... tbc"
-          - "team ... tbd"
-          - "team ... to be confirmed"
-          - "team ... to be determined"
-          - "staffing ... tbc"
-          - "staffing ... tbd"
-          - "staffing ... to be confirmed"
-          - "staffing ... to be determined"
-          - "resourcing ... tbc"
-          - "resourcing ... tbd"
-          - "resourcing ... to be confirmed"
-          - "resourcing ... to be determined"
+      - text: ["# people", "# person", "# consultant", "# consultants", "# staff", "# FTE", "# FTEs", "team of #"]
+    intent_checks:
+      - >-
+        The new slide holds no team-size placeholder or mention, such as "Team: TBC", "Team size TBD", "Number of consultants: TBC",
+        "People: TBC", "Team: [x] consultants", "Resourcing: to be confirmed", or "Staffing: to be agreed with Lars".
