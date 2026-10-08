@@ -19,6 +19,7 @@ from typing import Any, Literal
 
 import yaml
 from lxml import etree
+from pptx.chart.chart import Chart
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part, XmlPart
@@ -209,11 +210,19 @@ class Look:
 
 
 @dataclass(frozen=True)
+class Charts:
+    """The values a slide's charts draw, and the plot types of any chart python-pptx cannot read."""
+
+    values: tuple[Decimal, ...] = ()
+    unreadable: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Snapshot:
     deck: Deck
     ids: tuple[int, ...]
     looks: tuple[Look, ...]
-    charts: tuple[tuple[Decimal, ...], ...]
+    charts: tuple[Charts, ...]
     shared: str
 
 
@@ -312,9 +321,9 @@ def texts(slide: Slide, where: Where) -> list[str]:
     return [p.text for shape in slide.shapes for p in shape.paragraphs]
 
 
-def find(value: Value, where: Where, slide: Slide, charts: tuple[Decimal, ...]) -> str | None:
+def find(value: Value, where: Where, slide: Slide, charts: Charts) -> str | None:
     if isinstance(value, ChartValue):
-        return facts.in_chart(value, charts)
+        return facts.in_chart(value, charts.values)
     return next((hit for t in texts(slide, where) if (hit := facts.match(value, t))), None)
 
 
@@ -346,7 +355,7 @@ def snapshot(path: Path) -> Snapshot:
     shared = sorted(
         _content(p) for m in prs.slide_masters for p in (m.part, m.part.part_related_by(RT.THEME), *(layout.part for layout in m.slide_layouts))
     )
-    charts = tuple(tuple(_chart_values(s.shapes)) for s in slides)
+    charts = tuple(_read_charts(s.shapes) for s in slides)
     deck = read_deck(prs, str(path), hashlib.sha256(data).hexdigest())
     return Snapshot(deck, tuple(s.slide_id for s in slides), looks, charts, _digest(shared))
 
@@ -388,14 +397,24 @@ def _blank_notes(rel) -> bool:
     return not "".join(notes._element.itertext(qn("a:t"))).strip() and all(r.reltype in NOT_SLIDE_CONTENT for r in notes.rels.values())
 
 
-def _chart_values(shapes: SlideShapes) -> Iterator[Decimal]:
+def _read_charts(shapes: SlideShapes) -> Charts:
+    values: list[Decimal] = []
+    unreadable: list[str] = []
+    for chart in _charts(shapes):
+        try:
+            values += [Decimal(str(v)) for plot in chart.plots for series in plot.series for v in series.values if v is not None]
+        except ValueError:
+            # python-pptx models no 3D, stock, surface, or of-pie plot, and raises ValueError on reading one.
+            unreadable += [etree.QName(x).localname for x in chart._chartSpace.plotArea.iter_xCharts()]
+    return Charts(tuple(values), tuple(unreadable))
+
+
+def _charts(shapes: SlideShapes) -> Iterator[Chart]:
     for shape in shapes:
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-            yield from _chart_values(shape.shapes)
+            yield from _charts(shape.shapes)
         elif shape.has_chart:
-            for plot in shape.chart.plots:
-                for series in plot.series:
-                    yield from (Decimal(str(v)) for v in series.values if v is not None)
+            yield shape.chart
 
 
 def resolve(arg: str | Path) -> Path:
@@ -756,6 +775,9 @@ def _fact_problems(sc: Scenario, turns: dict[str, Turn]) -> Iterator[str]:
     for change, slot, fs in sc.fact_targets:
         src = slot.slide if isinstance(slot, SourceSlot) and 1 <= slot.slide <= n else None
         label = f"{change.id} slide {slot.slide}" if isinstance(slot, SourceSlot) else f"{change.id}"
+        if src is not None and (types := sc.source.charts[src - 1].unreadable) and any(isinstance(f.value, ChartValue) for f in (*fs.require, *fs.forbid)):
+            yield f"{label}: a chart fact cannot target a slide whose {', '.join(types)} chart cannot be read"
+            continue
         for r in fs.require:
             if src is not None and (found := find_in(sc.source, src, r.value, r.where)):
                 yield f"{label} require {found!r}: already on the source slide ({r.where}), so it cannot show the edit happened"

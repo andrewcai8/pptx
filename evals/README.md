@@ -36,14 +36,16 @@ uv run --project deckcheck python evals/prove.py insurance-workshop-prep
 uv run --project deckcheck python evals/score.py insurance-workshop-prep path/to/output.pptx [--out DIR]
 ```
 
-The scenario argument is a directory, or a name looked up in `evals/` and then in `$GOLDEN_PRIVATE_DIR`. The command prints one line, `SCENARIO PASS <name> (<n> checks, <k> intent checks deferred)` or `SCENARIO FAIL: [<code>] <message>; ...`. It writes `score.json` to `--out`, or else to the output's directory.
+The scenario argument is a directory, or a name looked up in `evals/` and then in `$GOLDEN_PRIVATE_DIR`. The command prints one line, `SCENARIO PASS <name> (<n> checks, <k> intent checks deferred)`, `SCENARIO FAIL: [<code>] <message>; ...`, or `SCENARIO UNREADABLE: [unreadable] <message>; ...`. It writes `score.json` to `--out`, or else to the output's directory.
 
 | exit | meaning |
 |---|---|
 | 0 | pass |
 | 1 | fail |
-| 2 | bad scenario, bad arguments, or an unreadable output |
+| 2 | bad scenario, bad arguments, or an unreadable output, including `SCENARIO UNREADABLE` |
 | 3 | the source deck is unreachable |
+
+`SCENARIO UNREADABLE` means every failure is `unreadable`: a check the script could not decide, so a person checks it by hand. It exits 2, not 1, so an unreadable deck never counts as a maker's failure. When a deck also fails a decided check, it is `SCENARIO FAIL` and exits 1, and the `unreadable` entries are listed with the rest.
 
 ## Write expected.yaml
 
@@ -107,7 +109,7 @@ The script decides these checks, in this order:
 1. `source` checks that the source deck still has its pinned hash and that the output is not the source file.
 2. `structure` maps every output slide to a source slide by slide id, or to an added slide in order of appearance. It reports a kept slide that is missing, a deleted slide that is still there, a new slide that no change asks for, an added slide that is missing, and a slide out of order. When two slides could explain one displacement, it blames the slide a change moved or added.
 3. `scope` runs on every slide the mapping pairs, even when `structure` failed. A slide no change edits must look the same: the same text, the same slide XML, and the same related parts (charts and their embedded workbooks, images and other media, notes), followed recursively. A notes page with no text counts as no notes page. A changed slide gets `guessed` when an ambiguous non-change names it, `non-change` when a not-a-change names it, and `scope` otherwise. On an edited slide, every source paragraph must still be there, unless it holds one of that slide's plain `forbid` values, starts with the house-style source prefix, or sits in a shape the slide's `may_change` names. An edit target that did not change fails `missing`. A change to the deck's slide layouts, masters, or themes is one `scope` failure.
-4. `missing` and `forbidden` check the `require` and `forbid` facts on each changed slide, and the `absent` facts across the deck.
+4. `missing` and `forbidden` check the `require` and `forbid` facts on each changed slide, and the `absent` facts across the deck. A `chart` fact on a slide whose chart python-pptx cannot read (3D bar, line, or pie, stock, surface, or bar-of-pie) gets `unreadable` instead, as in `[unreadable] slide 10 chart: bar3DChart cannot be read; check by hand`. A chart that no `chart` fact reads does not stop scoring. Scope compares its part like any other. The loader rejects a scenario whose `chart` fact targets such a chart on the source slide.
 5. `layout` checks that each added slide uses its declared layout.
 6. `style` reports house-style violations that the source deck did not already have, matched through the slide mapping.
 

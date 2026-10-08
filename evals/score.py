@@ -3,7 +3,7 @@
 Usage, from the repo root:
     uv run --project deckcheck python evals/score.py <scenario> <output.pptx> [--out DIR]
 
-Exit 0 on SCENARIO PASS, 1 on SCENARIO FAIL, 2 on a bad scenario or unreadable input, 3 on an unreachable source deck.
+Exit 0 on SCENARIO PASS, 1 on SCENARIO FAIL, 2 on a bad scenario or unreadable input (including SCENARIO UNREADABLE), 3 on an unreachable source deck.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from scenario import (
     AddSlide,
     Ambiguous,
     BadScenario,
+    Charts,
     DeckUnreachable,
     FromData,
     FromSaid,
@@ -60,6 +61,7 @@ class Code(StrEnum):
     FORBIDDEN = "forbidden"
     LAYOUT = "layout"
     STYLE = "style"
+    UNREADABLE = "unreadable"
 
 
 SlideRef = int | str | None
@@ -118,6 +120,13 @@ class Verdict:
         return not self.failures
 
     @property
+    def status(self) -> Literal["PASS", "FAIL", "UNREADABLE"]:
+        """A deck that fails any decided check fails. Otherwise a check the scorer could not decide leaves it unreadable."""
+        if not self.failures:
+            return "PASS"
+        return "UNREADABLE" if all(f.code == Code.UNREADABLE for f in self.failures) else "FAIL"
+
+    @property
     def pairs(self) -> frozenset[tuple[Code, SlideRef]]:
         return frozenset((f.code, f.slide) for f in self.failures)
 
@@ -146,7 +155,7 @@ def sorted_failures(failures: list[Failure]) -> tuple[Failure, ...]:
 def line(sc_name: str, verdict: Verdict, deferred: int) -> str:
     if verdict.passed:
         return f"SCENARIO PASS {sc_name} ({verdict.checks} checks, {deferred} intent checks deferred)"
-    return "SCENARIO FAIL: " + "; ".join(f"[{f.code}] {f.message}" for f in verdict.failures)
+    return f"SCENARIO {verdict.status}: " + "; ".join(f"[{f.code}] {f.message}" for f in verdict.failures)
 
 
 def place_name(ref: SlideRef, where: Where) -> str:
@@ -295,6 +304,13 @@ def lost_lines(before: Slide, after: Slide, forbids: list[Value], free: set[str]
 def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[int]) -> tuple[list[FactResult], list[Failure]]:
     results: list[FactResult] = []
     failures: list[Failure] = []
+
+    def unreadable(value: Value, charts: Charts, ref: SlideRef, by: str) -> bool:
+        if isinstance(value, ChartValue) and charts.unreadable:
+            failures.append(Failure(Code.UNREADABLE, ref, by, f"{slide_name(ref)} chart: {', '.join(charts.unreadable)} cannot be read; check by hand"))
+            return True
+        return False
+
     for change, slot, facts in sc.fact_targets:
         if slot not in placement.index or isinstance(slot, SourceSlot) and slot.slide not in applied:
             continue
@@ -302,11 +318,15 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
         slide, charts = out.deck.slides[i], out.charts[i]
         ref = slot_ref(slot)
         for r in facts.require:
+            if unreadable(r.value, charts, ref, change.id):
+                continue
             found = find(r.value, r.where, slide, charts)
             results.append(FactResult(change.id, ref, "require", r.value, r.where, found, found is not None, source=r.source))
             if found is None:
                 failures.append(Failure(Code.MISSING, ref, change.id, f"{change.id}: {describe(r.value)} is not on {place_name(ref, r.where)}"))
         for f in facts.forbid:
+            if unreadable(f.value, charts, ref, change.id):
+                continue
             found = find(f.value, f.where, slide, charts)
             results.append(FactResult(change.id, ref, "forbid", f.value, f.where, found, found is None, superseded=f.superseded))
             if found and f.superseded:
@@ -318,7 +338,7 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
             hits = [
                 (slot_ref(slot), found)
                 for slot, s, charts in zip(placement.slots, out.deck.slides, out.charts, strict=True)
-                if (found := find(value, "slide", s, charts))
+                if not unreadable(value, charts, slot_ref(slot), nc.id) and (found := find(value, "slide", s, charts))
             ]
             results.append(FactResult(nc.id, "deck", "absent", value, "slide", hits[0][1] if hits else None, not hits))
             failures += [Failure(non_change_code(nc), ref, nc.id, f"{nc.id}: {found!r} is on {slide_name(ref)}, but {non_change_reason(nc)}") for ref, found in hits]
@@ -368,7 +388,7 @@ def failure_json(f: Failure) -> dict[str, object]:
 def report(sc: Scenario, output: Path, out: Snapshot | None, verdict: Verdict) -> dict[str, object]:
     return {
         "scenario": sc.name,
-        "verdict": "PASS" if verdict.passed else "FAIL",
+        "verdict": verdict.status,
         "line": line(sc.name, verdict, len(sc.deferred)),
         "source": {"ref": sc.ref, "path": str(sc.source_path), "sha256": sc.source.deck.sha256, "untouched": True},
         "output": {"path": str(output), "sha256": out.deck.sha256 if out else None, "slides": len(out.deck.slides) if out else None},
@@ -454,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {e}", file=sys.stderr)
         return UNREACHABLE
     print(line(sc.name, verdict, len(sc.deferred)))
-    return OK if verdict.passed else FAIL
+    return {"PASS": OK, "FAIL": FAIL, "UNREADABLE": BAD}[verdict.status]
 
 
 if __name__ == "__main__":

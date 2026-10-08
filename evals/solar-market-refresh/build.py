@@ -104,6 +104,12 @@ def chart_bar_left_at_380(d: DeckEdit) -> None:
     _chart_2022_bar(d, "410", "380")
 
 
+@variant(base=good, fails={("unreadable", 10)})
+def chart_drawn_in_3d(d: DeckEdit) -> None:
+    """Slide 10 is refreshed and its market chart is redrawn as a 3D bar chart, which the chart fact cannot read."""
+    _draw_in_3d(d, 10)
+
+
 @variant(base=good, fails={("scope", 12)})
 def untouched_chart_drawn_in_3d(d: DeckEdit) -> None:
     """A chart on slide 12, which no change touches and no chart fact reads, is redrawn in 3D; scoring goes on and finds the change."""
