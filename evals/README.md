@@ -103,7 +103,7 @@ The script decides these checks, in this order:
 
 1. `source` checks that the source deck still has its pinned hash and that the output is not the source file.
 2. `structure` maps every output slide to a source slide by slide id, or to an added slide in order of appearance. It reports a kept slide that is missing, a deleted slide that is still there, a new slide that no change asks for, an added slide that is missing, and a slide out of order. When two slides could explain one displacement, it blames the slide a change moved or added.
-3. `scope` runs on every slide the mapping pairs, even when `structure` failed. A slide no change edits must look the same: the same text, the same slide XML, and the same related parts (charts and their embedded workbooks, images and other media, notes), followed recursively. A changed slide gets `guessed` when an ambiguous non-change names it, `non-change` when a not-a-change names it, and `scope` otherwise. On an edited slide, every source paragraph must still be there, unless it holds one of that slide's plain `forbid` values or starts with the house-style source prefix. An edit target that did not change fails `missing`. A change to the deck's slide layouts, masters, or themes is one `scope` failure.
+3. `scope` runs on every slide the mapping pairs, even when `structure` failed. A slide no change edits must look the same: the same text, the same slide XML, and the same related parts (charts and their embedded workbooks, images and other media, notes), followed recursively. A notes page with no text counts as no notes page. A changed slide gets `guessed` when an ambiguous non-change names it, `non-change` when a not-a-change names it, and `scope` otherwise. On an edited slide, every source paragraph must still be there, unless it holds one of that slide's plain `forbid` values or starts with the house-style source prefix. An edit target that did not change fails `missing`. A change to the deck's slide layouts, masters, or themes is one `scope` failure.
 4. `missing` and `forbidden` check the `require` and `forbid` facts on each changed slide, and the `absent` facts across the deck.
 5. `layout` checks that each added slide uses its declared layout.
 6. `style` reports house-style violations that the source deck did not already have, matched through the slide mapping.
@@ -116,6 +116,7 @@ Some python-pptx getters add XML when code only reads a deck. The XML comparison
 | `paragraph.font` | an empty `a:defRPr` in `a:pPr` | ignored |
 | `run.font`, `run.hyperlink` | an empty `a:rPr` in `a:r` | ignored |
 | `shape.line.fill` | an empty `a:ln` in `p:spPr` | ignored |
+| `slide.notes_slide` | a notes page with no text | ignored |
 | `run.font.color` | an empty `a:solidFill` in `a:rPr` | a change |
 | `shape.line.color` | `a:ln` with an empty `a:solidFill` | a change |
 | `chart.chart_title` | a `c:title` | a change |

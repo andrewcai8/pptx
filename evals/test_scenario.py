@@ -45,6 +45,7 @@ READS = {
     "paragraph.font": lambda s: [p.font.size for p in paragraphs(s)],
     "run.font": lambda s: [r.font.size for p in paragraphs(s) for r in p.runs],
     "shape.line.fill": lambda s: box(s).line.fill.type,
+    "slide.notes_slide": lambda s: s.notes_slide.notes_text_frame.text,
 }
 
 EDITS = {
@@ -54,6 +55,7 @@ EDITS = {
     "normAutofit": lambda s: setattr(s.shapes.title.text_frame, "auto_size", MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE),
     "run.font.color": lambda s: [r.font.color for p in paragraphs(s) for r in p.runs],
     "shape.line.color": lambda s: box(s).line.color,
+    "a notes page with text": lambda s: setattr(s.notes_slide.notes_text_frame, "text", "Say the number slowly"),
 }
 
 

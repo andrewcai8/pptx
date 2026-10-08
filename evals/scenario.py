@@ -18,7 +18,6 @@ from typing import Any, Literal
 
 import yaml
 from lxml import etree
-from pptx.opc.constants import CONTENT_TYPE as CT
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part, XmlPart
 from pptx.oxml.ns import qn
@@ -320,7 +319,6 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-SHARED = frozenset({CT.PML_SLIDE_LAYOUT, CT.PML_SLIDE_MASTER, CT.OFC_THEME})
 NOT_SLIDE_CONTENT = frozenset({RT.SLIDE, RT.SLIDE_LAYOUT, RT.SLIDE_MASTER, RT.NOTES_MASTER})
 
 # The empty elements python-pptx adds when code only reads a property, and the getter that adds each, as measured by
@@ -338,7 +336,9 @@ def snapshot(path: Path) -> Snapshot:
     prs = open_presentation(data, path)
     slides = list(prs.slides)
     looks = tuple(Look(_content(s.part), _related(s.part)) for s in slides)
-    shared = sorted(_content(p) for p in prs.part.package.iter_parts() if p.content_type in SHARED)
+    shared = sorted(
+        _content(p) for m in prs.slide_masters for p in (m.part, m.part.part_related_by(RT.THEME), *(layout.part for layout in m.slide_layouts))
+    )
     deck = read_deck(prs, str(path), hashlib.sha256(data).hexdigest())
     return Snapshot(deck, tuple(s.slide_id for s in slides), looks, _digest(shared))
 
@@ -367,9 +367,17 @@ def _related(part: Part) -> str:
         sorted(
             f"{rel.rId} {rel.reltype} " + (rel.target_ref if rel.is_external else _content(rel.target_part) + _related(rel.target_part))
             for rel in part.rels.values()
-            if rel.reltype not in NOT_SLIDE_CONTENT
+            if rel.reltype not in NOT_SLIDE_CONTENT and not _blank_notes(rel)
         )
     )
+
+
+# Reading slide.notes_slide in python-pptx adds a notes page with no text, and a page with no text shows nothing.
+def _blank_notes(rel) -> bool:
+    if rel.reltype != RT.NOTES_SLIDE:
+        return False
+    notes = rel.target_part
+    return not "".join(notes._element.itertext(qn("a:t"))).strip() and all(r.reltype in NOT_SLIDE_CONTENT for r in notes.rels.values())
 
 
 def resolve(arg: str | Path) -> Path:
