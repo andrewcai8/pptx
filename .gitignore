@@ -3,6 +3,32 @@ __pycache__/
 *.pyc
 .pytest_cache/
 artifacts/
-*.pptx
-*.ppt
 private/
+.claude/settings.local.json
+
+# Client material never belongs in this public repo.
+*.pptx
+*.pptm
+*.ppt
+*.potx
+*.ppsx
+*.key
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+*.docx
+*.doc
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.vtt
+*.srt
+fix.md
+fix.json
+report.json
+outline.md
+
+# Synthetic eval data is made up and safe to commit.
+!evals/**/*.csv
