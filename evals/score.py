@@ -104,7 +104,7 @@ class Flag:
     slides: tuple[int, ...]
 
     def raises(self, nc: Ambiguous) -> bool:
-        return bool(set(self.said) & set(nc.said) or set(self.slides) & set(nc.slides))
+        return bool(set(self.said) & set(nc.said) or set(self.slides) & nc.cited_by)
 
 
 @dataclass(frozen=True)

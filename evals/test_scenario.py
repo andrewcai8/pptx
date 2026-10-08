@@ -268,3 +268,11 @@ def test_a_solar_flag_on_the_slide_that_holds_the_tariff_raises_the_tariff_quest
     (tmp_path / "flags.json").write_text(json.dumps([{"question": "Which of Priya's tariffs replaces the $0.08?", "slides": [10]}]))
     assert score.main(["solar-market-refresh", str(output)]) == score.OK
     assert json.loads((tmp_path / "score.json").read_text())["flags"]["raised"] == ["n1"]
+
+
+def test_flag_slides_names_only_a_slide_a_change_edits(private_dir):
+    ask = {**UNCLEAR_CALLOUT, "slides": [], "flag_slides": [1]}
+    with pytest.raises(BadScenario, match="n1.flag_slides: no change edits or deletes slide 1, so list it under slides"):
+        open_scenario(scenario_at(private_dir / "unedited", non_changes=[ask]))
+    sc = open_scenario(scenario_at(private_dir / "edited", edit_slide_1([]), non_changes=[ask]))
+    assert sc.non_changes[0].cited_by == {1}

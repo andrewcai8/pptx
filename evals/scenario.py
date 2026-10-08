@@ -179,6 +179,12 @@ class Ambiguous:
     slides: tuple[int, ...]
     absent: tuple[Value, ...]
     flag: str
+    flag_slides: tuple[int, ...]
+
+    @property
+    def cited_by(self) -> frozenset[int]:
+        """The slides a maker's flag may name to raise this ask: the slides it guards, and the edited slides it is about."""
+        return frozenset((*self.slides, *self.flag_slides))
 
 
 NonChange = NotAChange | Ambiguous
@@ -662,7 +668,7 @@ def _non_change(raw: Any, where: str) -> NonChange:
     where = f"{where} ({nid})"
     if kind not in ("not-a-change", "ambiguous"):
         raise BadScenario(f"{where}.kind: expected not-a-change or ambiguous")
-    raw = _keys(raw, where, ("id", "kind", "said", "why"), ("slides", "absent", "flag") if kind == "ambiguous" else ("slides", "absent"))
+    raw = _keys(raw, where, ("id", "kind", "said", "why"), ("slides", "absent", "flag", "flag_slides") if kind == "ambiguous" else ("slides", "absent"))
     said = _stamps(raw["said"], f"{where}.said")
     why = _str(raw["why"], f"{where}.why")
     slides = tuple(_int(s, f"{where}.slides[{i}]") for i, s in enumerate(_list(raw.get("slides") or [], f"{where}.slides")))
@@ -671,7 +677,8 @@ def _non_change(raw: Any, where: str) -> NonChange:
         return NotAChange(nid, said, why, slides, absent)
     if "flag" not in raw:
         raise BadScenario(f"{where}: an ambiguous non-change needs the flag the maker should raise")
-    return Ambiguous(nid, said, why, slides, absent, _str(raw["flag"], f"{where}.flag"))
+    flag_slides = tuple(_int(s, f"{where}.flag_slides[{i}]") for i, s in enumerate(_list(raw.get("flag_slides") or [], f"{where}.flag_slides")))
+    return Ambiguous(nid, said, why, slides, absent, _str(raw["flag"], f"{where}.flag"), flag_slides)
 
 
 def _source_path(name: str, ref: DeckRef, d: Path) -> Path:
@@ -761,6 +768,10 @@ def _problems(sc: Scenario) -> Iterator[str]:
             yield from in_range(k, f"{nc.id}.slides")
             if k in targets:
                 yield f"{nc.id}.slides: slide {k} is edited or deleted, so a non-change cannot name it"
+        for k in nc.flag_slides if isinstance(nc, Ambiguous) else ():
+            yield from in_range(k, f"{nc.id}.flag_slides")
+            if k not in targets:
+                yield f"{nc.id}.flag_slides: no change edits or deletes slide {k}, so list it under slides"
         for value in nc.absent:
             if found := next((hit for k in range(1, n + 1) if (hit := find_in(sc.source, k, value))), None):
                 yield f"{nc.id}.absent: {found!r} is already in the source deck"

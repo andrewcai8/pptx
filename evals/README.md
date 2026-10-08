@@ -27,7 +27,7 @@ Some asks are ambiguous, and the right output asks a question instead of guessin
 ]
 ```
 
-Each flag has a `question` and at least one of `said`, the transcript turns it is about, and `slides`, the source slide numbers it is about. A flag raises an ambiguous non-change when it cites one of that non-change's `said` turns or names one of its `slides`. A flag that raises none is `unmatched`.
+Each flag has a `question` and at least one of `said`, the transcript turns it is about, and `slides`, the source slide numbers it is about. A flag raises an ambiguous non-change when it cites one of that non-change's `said` turns or names one of its `slides` or `flag_slides`. A flag that raises none is `unmatched`.
 
 `score.py` reads `flags.json` when it is there. `score.json` lists under `flags` which ambiguous non-changes were raised, which are missing, the unmatched questions, and anything it could not read, and the command prints them on a second line. This is reported, not scored. A missing flag does not fail the deck and an unmatched one does not either, until the intent checker exists to judge whether each question is the right one.
 
@@ -104,7 +104,7 @@ The loader lints every field against the real deck and transcript, and a bad sce
 - Every `absent` fact must be absent from the whole source deck.
 - An added slide's `layout` must be a layout that some source slide uses.
 - A non-change cannot name a slide that a change edits or deletes. It can name a moved slide, because a moved slide keeps its content.
-- An `ambiguous` non-change's `flag` is the question the maker should put in `flags.json`. Its `said` and `slides` are what a maker's flag must cite to count as raising it, so list every turn where the ask was made.
+- An `ambiguous` non-change's `flag` is the question the maker should put in `flags.json`. Its `said`, `slides`, and `flag_slides` are what a maker's flag must cite to count as raising it, so list every turn where the ask was made. `flag_slides` names the slides a change edits or deletes that the question is about, such as solar slide 10, which holds the $0.08 tariff in doubt. A change there is judged by that change, not as a guess, so a non-change cannot list it under `slides`. Every `flag_slides` slide must be one a change edits or deletes.
 
 A fact names the thing that must be true, not one phrasing of it. Each fact has exactly one of these keys:
 

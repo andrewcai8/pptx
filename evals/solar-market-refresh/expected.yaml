@@ -41,6 +41,7 @@ non_changes:
     said: ["00:05:06", "00:05:12", "00:05:27", "00:05:35"]
     why: Grace asked to "use the new tariff", but Priya's sheet holds a PPA tariff (0.07) and a grid tariff (0.11); Sofia asked which one should replace the $0.08 in slide 10's table, Grace left it to Priya, and Daniel said they would check with her. Slide 13 shows the grid and solar tariff ranges, so a guess could land there too.
     slides: [13]
+    flag_slides: [10]
     flag: Which of Priya's two 2022 tariffs, the PPA tariff ($0.07) or the grid tariff ($0.11), should replace the $0.08 in slide 10's table?
     absent: [{money: "$0.07"}, {money: "$0.11"}, {text: ["7c", "11c", "7 cents", "11 cents"]}]
   - id: n2
