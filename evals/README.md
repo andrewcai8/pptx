@@ -58,7 +58,7 @@ The scenario argument is a directory, or a name looked up in `evals/` and then i
 |---|---|
 | 0 | pass |
 | 1 | fail |
-| 2 | bad scenario, bad arguments, or an unreadable output, including `SCENARIO UNREADABLE` |
+| 2 | bad scenario, bad arguments, or an unreadable output, such as a file that is not a deck or a chart that points at a part the package lacks, including `SCENARIO UNREADABLE` |
 | 3 | the source deck is unreachable |
 
 `SCENARIO UNREADABLE` means every failure is `unreadable`: a check the script could not decide, so a person checks it by hand. It exits 2, not 1, so an unreadable deck never counts as a maker's failure. When a deck also fails a decided check, it is `SCENARIO FAIL` and exits 1, and the `unreadable` entries are listed with the rest.

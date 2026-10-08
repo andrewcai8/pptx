@@ -24,6 +24,7 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part, XmlPart
 from pptx.oxml.ns import qn
+from pptx.presentation import Presentation
 from pptx.shapes.shapetree import SlideShapes
 
 import facts
@@ -366,6 +367,14 @@ READ_ARTIFACTS: dict[tuple[str, str], str] = {
 def snapshot(path: Path) -> Snapshot:
     data = read_bytes(path)
     prs = open_presentation(data, path)
+    try:
+        return _snapshot(prs, path, data)
+    except KeyError as e:
+        # python-pptx drops a relationship whose part is missing from the package, so a shape that names it raises KeyError.
+        raise DeckError(f"cannot read deck {path}: a shape points at a part the package does not have ({e})") from e
+
+
+def _snapshot(prs: Presentation, path: Path, data: bytes) -> Snapshot:
     slides = list(prs.slides)
     looks = tuple(Look(_content(s.part), _related(s.part)) for s in slides)
     shared = sorted(
