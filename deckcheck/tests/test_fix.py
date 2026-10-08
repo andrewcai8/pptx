@@ -532,13 +532,16 @@ def test_fix_stops_after_three_passes_that_each_cause_a_new_violation(
     assert bullet_texts(fixed) == ["Grew\nGrew\nGrew\nGrew."]
 
 
-def test_doctor_lists_the_fixable_rules(capsys: pytest.CaptureFixture[str]) -> None:
+def test_doctor_lists_the_fixable_rules_and_render_tools(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PATH", "")
     main(["doctor"])
 
-    assert (
-        "fixable rule ids: max-fonts-per-slide, no-bullet-end-punctuation, min-font-size"
-        in capsys.readouterr().out.splitlines()
-    )
+    lines = capsys.readouterr().out.splitlines()
+    assert "fixable rule ids: max-fonts-per-slide, no-bullet-end-punctuation, min-font-size" in lines
+    assert "pdftoppm: missing" in lines
+    assert "fc-match: missing" in lines
 
 
 def test_every_fixer_fixes_a_registered_rule() -> None:

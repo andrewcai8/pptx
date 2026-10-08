@@ -29,7 +29,7 @@ RUN=artifacts/verify-pptx/$(date +%Y%m%d-%H%M%S)-$$
 uv run --project deckcheck deckcheck doctor
 ```
 
-Require exit 0, `rules: <repo>/standards/house-style.yaml`, and a `rule ids:` line. `soffice: missing` means `render` is unavailable. Report a render step as skipped in that case. Do not count it as passed.
+Require exit 0, `rules: <repo>/standards/house-style.yaml`, and a `rule ids:` line. `render` needs `soffice`, `pdftoppm`, and `fc-match`. If `doctor` prints any of them as `missing`, `render` and the audit are unavailable. Report both as skipped in that case. Do not count them as passed.
 
 Then run the self-test. It proves deckcheck still catches every rule on known decks before you trust it on a real one:
 
@@ -55,8 +55,8 @@ To prove a deck that the pipeline produced from a source deck:
 2. Run `uv run --project deckcheck deckcheck check <new.pptx> --out $RUN/check`. Exit 0 prints `PASS`. Exit 1 prints `FAIL` and one `slide N [rule-id] shape: message | evidence` line per violation.
 3. Run `uv run --project deckcheck deckcheck diff <source.pptx> <new.pptx> --out $RUN/diff`. Every slide listed as `changed`, `added`, or `removed` must be one that the request asked for.
 4. Run `shasum -a 256 -c $RUN/source.sha256`. It must print `OK`. The pipeline writes new files and never edits the source.
-5. If `doctor` found soffice, run `uv run --project deckcheck deckcheck render <new.pptx> --out $RUN/render`, then open the changed slides' PNGs and look at them. Each `substituted:` line names a font the render replaced.
-6. Audit the changed slides. A blind reviewer subagent judges their PNGs against `audit/rubric.md` and writes `$RUN/audit/audit.json`. Then `scripts/audit_check.py` must print `AUDIT VALID`. The audit is advisory, so report its needs-work slides without failing the deck. See `features/audit-slides.md`.
+5. If `doctor` found soffice, pdftoppm, and fc-match, run `uv run --project deckcheck deckcheck render <new.pptx> --out $RUN/render`, then open the changed slides' PNGs and look at them. Each `substituted:` line names a font the render replaced.
+6. If the render ran, audit the changed slides. Otherwise report the audit as skipped. A blind reviewer subagent judges their PNGs against `audit/rubric.md` and writes `$RUN/audit/audit.json`. Then `scripts/audit_check.py` must print `AUDIT VALID`. The audit is advisory, so report its needs-work slides without failing the deck. See `features/audit-slides.md`.
 
 To repair house-style violations before proving a deck, run `uv run --project deckcheck deckcheck fix <new.pptx> --out <fixed.pptx> --report $RUN/fix`, then prove `<fixed.pptx>` with the steps above. See `features/fix-deck.md`.
 
