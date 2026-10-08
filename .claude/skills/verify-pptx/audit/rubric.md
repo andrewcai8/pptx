@@ -18,7 +18,7 @@ Each check returns `pass`, `fail`, or `n/a`. Only C1, C5, C6, and C7 may be `n/a
 
 **C6 chart-legible.** Applies when the slide has a chart. Fail when the chart's values cannot be read at this resolution (data labels and axis tick labels both missing or too small to read), or when no unit or measure is stated anywhere for the chart. `n/a` when there is no chart.
 
-**C7 source-on-data.** Applies when the slide shows quantitative data (a chart, a table of figures, or numeric claims). Pass when a source or note line is present, usually small text at the bottom left. Inline "(Link)" references alone do not pass. `n/a` when there is no quantitative data.
+**C7 source-on-data.** Applies when the slide shows quantitative data (a chart, a table of figures, or numeric claims). Pass when a source or note line is present, usually small text at the bottom left. Inline "(Link)" references alone do not pass. `n/a` when there is no quantitative data, and on cover, biography, agenda, contents, and section divider slides, which restate numbers sourced elsewhere.
 
 **C8 title-consistent.** Fail when something in the visual contradicts the title: a direction (title says falling, chart rises) or a number (title says $3.8bn, chart says $380m).
 

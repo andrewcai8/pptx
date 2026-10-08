@@ -13,12 +13,12 @@ from deckcheck.model import Deck, load_deck
 MAC_SOFFICE = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
 # Metric-compatible clones share glyph widths with the requested font, so line breaks match.
 METRIC_CLONES = {
-    "calibri": "carlito",
-    "cambria": "caladea",
-    "arial": "liberation sans",
-    "helvetica": "liberation sans",
-    "times new roman": "liberation serif",
-    "courier new": "liberation mono",
+    "calibri": {"carlito"},
+    "cambria": {"caladea"},
+    "arial": {"liberation sans"},
+    "helvetica": {"liberation sans", "arial"},
+    "times new roman": {"liberation serif"},
+    "courier new": {"liberation mono"},
 }
 
 
@@ -66,7 +66,7 @@ def font_report(deck: Deck) -> dict[str, FontMatch]:
     for typeface in sorted(typefaces):
         result = subprocess.run(["fc-match", "-f", "%{family}", typeface], capture_output=True, text=True, check=False)
         families = [f.strip() for f in result.stdout.split(",")]
-        matched = {f.lower() for f in families} & {typeface.lower(), METRIC_CLONES.get(typeface.lower())}
+        matched = {f.lower() for f in families} & ({typeface.lower()} | METRIC_CLONES.get(typeface.lower(), set()))
         report[typeface] = FontMatch(family=families[0], substituted=not matched)
     return report
 

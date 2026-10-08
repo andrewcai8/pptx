@@ -12,7 +12,7 @@ from pathlib import Path
 from deckcheck.diff import DeckDiff, diff_decks
 from deckcheck.fix import FIXERS, Change, Fixed, FixResult, Reported, fix_deck, plural
 from deckcheck.model import Deck, DeckError, Violation, load_deck, read_bytes
-from deckcheck.render import RenderError, ToolMissing, find_pdftoppm, find_soffice, render
+from deckcheck.render import RenderError, ToolMissing, find_fc_match, find_pdftoppm, find_soffice, render
 from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
 
 OK, VIOLATIONS, USAGE, MISSING_TOOL = 0, 1, 2, 3
@@ -280,4 +280,5 @@ def cmd_doctor() -> int:
     print(f"fixable rule ids: {', '.join(FIXERS)}")
     print(f"soffice: {find_soffice() or 'missing'}")
     print(f"pdftoppm: {find_pdftoppm() or 'missing'}")
+    print(f"fc-match: {find_fc_match() or 'missing'}")
     return status
