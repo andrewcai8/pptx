@@ -1,0 +1,58 @@
+deck:
+  corpus: insurance-regulator-2017
+  sha256: 5dcf6300cfc6c95ab5f9ba184519835380fb60b30b0dea20a47eeb7739543352
+
+changes:
+  - id: c1
+    kind: update-number
+    intent: Replace the millennial share in the generations headline with the 2027 figure from the client's survey file.
+    said: ["00:01:48", "00:04:10", "00:11:52", "00:12:20"]
+    slides:
+      5:
+        require:
+          - text: "48%"
+            where: title
+            from: {data: data/client-survey.csv, row: millennials-2027, column: share_pct}
+        forbid:
+          - {text: "ca. 50%", where: title}
+          - {text: "45%", superseded: "00:04:10"}
+    intent_checks:
+      - The headline still makes one argument about the new generations; only the figure changed.
+      - The new figure is attributed to the client's member survey, not to the US census footnote.
+
+  - id: c2
+    kind: delete-slide
+    slide: 2
+    intent: Drop the BCG credentials page; the association and the supervisor already know the team.
+    said: ["00:05:40", "00:06:35"]
+
+  - id: c3
+    kind: move-slide
+    slide: 14
+    after: 11
+    intent: Lead the three regulator roles with genuine innovation, straight after the roles overview.
+    said: ["00:07:20", "00:08:15"]
+
+non_changes:
+  - id: n1
+    kind: not-a-change
+    said: ["00:13:05", "00:13:40"]
+    why: Inviting the Oversight Office to the workshop is the client's own logistics action, and their name must not appear before they accept.
+    slides: [1]
+    absent: [{text: "Oversight Office"}]
+  - id: n2
+    kind: ambiguous
+    said: ["00:17:30", "00:17:44", "00:18:01"]
+    why: Marko asked to make "the regulator slide" punchier without saying which of the three regulator pages he meant.
+    slides: [10, 16, 18]
+    flag: Which regulator slide should be punchier (10 the obstacles map, 16 the Singapore example, or 18 the closing call to cooperate), and in what direction?
+  - id: n3
+    kind: not-a-change
+    said: ["00:08:42", "00:09:05", "00:09:40"]
+    why: The client chose to keep the role numbers and the overview graphic as they are after the innovation page moves.
+    slides: [11, 12, 13, 14]
+  - id: n4
+    kind: not-a-change
+    said: ["00:15:02"]
+    why: The sandbox definition is the FCA's wording and the client asked to leave it.
+    slides: [17]
