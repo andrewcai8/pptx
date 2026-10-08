@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from deckcheck.model import Deck, Shape, Violation
+from deckcheck.model import Deck, Run, Shape, Slide, Violation
 
 Rule = Callable[[Deck, dict[str, Any]], Iterable[Violation]]
 Param = Callable[[Any], Any]
@@ -99,10 +99,14 @@ def run_rules(deck: Deck, rules: RuleSet) -> list[Violation]:
     return sorted(found, key=lambda v: (v.slide, v.rule, v.shape or ""))
 
 
+def slide_fonts(slide: Slide) -> set[str]:
+    return {r.font for s in slide.shapes for p in s.paragraphs for r in p.runs}
+
+
 @rule("max-fonts-per-slide", max=_int)
 def max_fonts_per_slide(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
-        fonts = sorted({r.font for s in slide.shapes for p in s.paragraphs for r in p.runs})
+        fonts = sorted(slide_fonts(slide))
         if len(fonts) > params["max"]:
             yield Violation(
                 "max-fonts-per-slide",
@@ -110,6 +114,7 @@ def max_fonts_per_slide(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
                 None,
                 f"{len(fonts)} fonts on slide, max {params['max']}",
                 ", ".join(fonts),
+                target=slide,
             )
 
 
@@ -126,6 +131,7 @@ def no_bullet_end_punctuation(deck: Deck, params: dict[str, Any]) -> Iterator[Vi
                         shape.name,
                         f"bullet ends with {text[-1]!r}",
                         text,
+                        target=p,
                     )
 
 
@@ -138,29 +144,34 @@ def slide_has_title(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
         layout = COPY_PREFIX.sub("", slide.layout_name)
         if layout not in params["exempt_layouts"] and not slide.title:
-            yield Violation("slide-has-title", slide.index, None, "slide has no title", f"layout {slide.layout_name}")
+            yield Violation(
+                "slide-has-title", slide.index, None, "slide has no title", f"layout {slide.layout_name}", target=slide
+            )
 
 
 @rule("title-max-chars", max=_int)
 def title_max_chars(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
-        if len(slide.headline) > params["max"] and slide.title_shape:
+        if len(slide.headline) > params["max"] and (shape := slide.title_shape):
             yield Violation(
                 "title-max-chars",
                 slide.index,
-                slide.title_shape.name,
+                shape.name,
                 f"title is {len(slide.headline)} chars, max {params['max']}",
                 slide.headline,
+                target=shape,
             )
+
+
+def small_runs(shape: Shape, min_pt: float) -> list[Run]:
+    return [r for p in shape.paragraphs for r in p.runs if r.size_pt is not None and r.size_pt < min_pt]
 
 
 @rule("min-font-size", min_pt=_number)
 def min_font_size(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
         for shape in slide.shapes:
-            small = [
-                r for p in shape.paragraphs for r in p.runs if r.size_pt is not None and r.size_pt < params["min_pt"]
-            ]
+            small = small_runs(shape, params["min_pt"])
             if small:
                 worst = min(small, key=lambda r: r.size_pt or 0)
                 yield Violation(
@@ -169,6 +180,7 @@ def min_font_size(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
                     shape.name,
                     f"{worst.size_pt:g}pt text, min {params['min_pt']:g}pt",
                     worst.text,
+                    target=shape,
                 )
 
 
@@ -185,6 +197,7 @@ def no_placeholder_text(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
                         shape.name,
                         f"placeholder text {match.group(0)!r}",
                         p.text.strip(),
+                        target=p,
                     )
 
 
@@ -192,7 +205,7 @@ EMU_PER_PT = 12700
 
 
 # The axis-aligned box a shape covers once rotated about its centre.
-def _visual_box(s: Shape) -> tuple[int, int, int, int]:
+def visual_box(s: Shape) -> tuple[int, int, int, int]:
     angle = math.radians(s.rotation)
     cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
     width, height = s.width * cos + s.height * sin, s.width * sin + s.height * cos
@@ -207,7 +220,7 @@ def within_slide_bounds(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
         for s in slide.shapes:
             if not s.paragraphs and s.kind != "chart":
                 continue
-            left, top, right, bottom = _visual_box(s)
+            left, top, right, bottom = visual_box(s)
             if right <= 0 or bottom <= 0 or left >= deck.slide_width or top >= deck.slide_height:
                 continue
             overhang = max(-left, -top, right - deck.slide_width, bottom - deck.slide_height)
@@ -219,6 +232,7 @@ def within_slide_bounds(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
                     f"text shape extends {overhang / EMU_PER_PT:.0f}pt past the slide edge, "
                     f"tolerance {params['tolerance_pt']:g}pt",
                     f"box ({left}, {top}, {right}, {bottom}) vs slide ({deck.slide_width}, {deck.slide_height}) EMU",
+                    target=s,
                 )
 
 
@@ -251,4 +265,5 @@ def source_on_data_slides(deck: Deck, params: dict[str, Any]) -> Iterator[Violat
                 data[0].name,
                 f"{data[0].kind} slide has no line starting with {params['prefix']!r}",
                 ", ".join(s.name for s in data),
+                target=data[0],
             )

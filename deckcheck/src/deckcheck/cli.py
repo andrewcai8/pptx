@@ -80,11 +80,15 @@ def cmd_check(deck_path: Path, rules_path: Path | None, out: Path | None) -> int
             "rules_path": str(rules.path),
             "rules": list(rules.params),
             "passed": not violations,
-            "violations": [asdict(v) for v in violations],
+            "violations": [violation_json(v) for v in violations],
         }
         (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
         (out / "outline.md").write_text(outline_md(deck))
     return VIOLATIONS if violations else OK
+
+
+def violation_json(v: Violation) -> dict[str, object]:
+    return {"rule": v.rule, "slide": v.slide, "shape": v.shape, "message": v.message, "evidence": v.evidence}
 
 
 def format_violation(v: Violation) -> str:

@@ -4,7 +4,7 @@ import hashlib
 import io
 import re
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -15,6 +15,8 @@ from pptx.exc import PackageNotFoundError
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
+from pptx.oxml.shapes.shared import BaseShapeElement
+from pptx.oxml.text import CT_RegularTextRun, CT_TextParagraph
 from pptx.shapes.picture import Picture
 
 TITLE_TYPES = (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE)
@@ -31,11 +33,14 @@ class DeckError(Exception):
     pass
 
 
+# `xml` is the live element a node was read from, so fix can write through it. compare=False and repr=False
+# keep it out of equality and test diffs. asdict() would still copy it, so reports serialise explicitly.
 @dataclass(frozen=True)
 class Run:
     text: str
     font: str
     size_pt: float | None
+    xml: CT_RegularTextRun = field(compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,7 @@ class Paragraph:
     runs: tuple[Run, ...]
     is_bullet: bool
     level: int
+    xml: CT_TextParagraph = field(compare=False, repr=False)
 
     @property
     def lines(self) -> list[str]:
@@ -60,6 +66,8 @@ class Shape:
     height: int
     rotation: float
     paragraphs: tuple[Paragraph, ...]
+    xml: BaseShapeElement = field(compare=False, repr=False)
+    to_slide: Transform = field(compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -67,6 +75,7 @@ class Slide:
     index: int
     layout_name: str
     shapes: tuple[Shape, ...]
+    theme: ThemeFonts
 
     @property
     def title_shape(self) -> Shape | None:
@@ -99,6 +108,7 @@ class Violation:
     shape: str | None
     message: str
     evidence: str
+    target: Slide | Shape | Paragraph = field(compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -137,7 +147,7 @@ def load_deck(path: str | Path) -> Deck:
         layout = slide.slide_layout
         theme = themes.setdefault(id(layout.slide_master.part), _theme_fonts(layout.slide_master))
         shapes = tuple(_shapes(slide.shapes, layout, theme, Transform()))
-        slides.append(Slide(index, layout.name, shapes))
+        slides.append(Slide(index, layout.name, shapes, theme))
     return Deck(
         path=str(path),
         sha256=hashlib.sha256(data).hexdigest(),
@@ -174,6 +184,8 @@ def _shapes(shapes, layout, theme: ThemeFonts, t: Transform):
             height=round(height * t.sy),
             rotation=shape.rotation,
             paragraphs=tuple(_paragraphs(shape, kind, theme, _bullet_styles(shape, layout))),
+            xml=shape._element,
+            to_slide=t,
         )
 
 
@@ -225,7 +237,7 @@ def _paragraphs(shape, kind: Kind, theme: ThemeFonts, styles: tuple):
                 continue
             level = p.pPr.lvl if p.pPr is not None else 0
             runs = tuple(_run(r, theme, kind == "title") for r in p.r_lst)
-            yield Paragraph(text=p.text, runs=runs, is_bullet=_is_bullet(p, level, styles, kind), level=level)
+            yield Paragraph(text=p.text, runs=runs, is_bullet=_is_bullet(p, level, styles, kind), level=level, xml=p)
 
 
 def _run(r, theme: ThemeFonts, is_title: bool) -> Run:
@@ -236,6 +248,7 @@ def _run(r, theme: ThemeFonts, is_title: bool) -> Run:
         text=r.text,
         font=theme.resolve(latin.typeface if latin is not None else None, is_title),
         size_pt=sz / 100 if sz is not None else None,
+        xml=r,
     )
 
 
