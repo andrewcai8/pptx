@@ -21,6 +21,7 @@ from lxml import etree
 from pptx.opc.constants import CONTENT_TYPE as CT
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part, XmlPart
+from pptx.oxml.ns import qn
 
 import facts
 from deckcheck.model import Deck, DeckError, Slide, open_presentation, read_bytes, read_deck
@@ -322,29 +323,43 @@ def sha256(path: Path) -> str:
 SHARED = frozenset({CT.PML_SLIDE_LAYOUT, CT.PML_SLIDE_MASTER, CT.OFC_THEME})
 NOT_SLIDE_CONTENT = frozenset({RT.SLIDE, RT.SLIDE_LAYOUT, RT.SLIDE_MASTER, RT.NOTES_MASTER})
 
+# The empty elements python-pptx adds when code only reads a property, and the getter that adds each, as measured by
+# evals/read_artifacts.py. Each renders the same as no element. Getters that add a visible element are left out.
+READ_ARTIFACTS: dict[tuple[str, str], str] = {
+    (qn("a:p"), qn("a:pPr")): "paragraph.level, paragraph.alignment",
+    (qn("a:pPr"), qn("a:defRPr")): "paragraph.font",
+    (qn("a:r"), qn("a:rPr")): "run.font, run.hyperlink",
+    (qn("p:spPr"), qn("a:ln")): "shape.line.fill",
+}
+
+
 def snapshot(path: Path) -> Snapshot:
     data = read_bytes(path)
     prs = open_presentation(data, path)
-    deck = read_deck(prs, str(path), hashlib.sha256(data).hexdigest())
     slides = list(prs.slides)
+    looks = tuple(Look(_content(s.part), _related(s.part)) for s in slides)
     shared = sorted(_content(p) for p in prs.part.package.iter_parts() if p.content_type in SHARED)
-    return Snapshot(deck, tuple(s.slide_id for s in slides), tuple(Look(_content(s.part), _related(s.part)) for s in slides), _digest(shared))
+    deck = read_deck(prs, str(path), hashlib.sha256(data).hexdigest())
+    return Snapshot(deck, tuple(s.slide_id for s in slides), looks, _digest(shared))
 
 
 def _digest(items: Iterable[str]) -> str:
     return hashlib.sha256("\n".join(items).encode()).hexdigest()
 
 
-# python-pptx adds empty elements (a:rPr, a:pPr) when code merely reads run.font or paragraph.level,
-# so an untouched slide must compare equal with those dropped.
 def _content(part: Part) -> str:
     if not isinstance(part, XmlPart):
         return hashlib.sha256(part.blob).hexdigest()
     root = copy.deepcopy(part._element)
-    for el in reversed(list(root.iter(etree.Element))):
-        if el is not root and not len(el) and not el.attrib and not el.text:
-            el.getparent().remove(el)
+    strip_read_artifacts(root)
     return hashlib.sha256(etree.tostring(root, method="c14n")).hexdigest()
+
+
+def strip_read_artifacts(root: etree._Element) -> None:
+    for el in reversed(list(root.iter(etree.Element))):
+        parent = el.getparent()
+        if parent is not None and (parent.tag, el.tag) in READ_ARTIFACTS and not len(el) and not el.attrib and not el.text:
+            parent.remove(el)
 
 
 def _related(part: Part) -> str:

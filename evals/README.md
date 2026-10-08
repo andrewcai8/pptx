@@ -108,7 +108,19 @@ The script decides these checks, in this order:
 5. `layout` checks that each added slide uses its declared layout.
 6. `style` reports house-style violations that the source deck did not already have, matched through the slide mapping.
 
-The XML comparison drops empty elements first, because python-pptx adds empty `a:rPr` and `a:pPr` elements when code merely reads a font or a paragraph level. A tool that re-serializes the whole slide XML, such as a PowerPoint save or LibreOffice, may change an untouched slide's XML in other ways. Scoring the output of such a tool may need the XML comparison relaxed.
+Some python-pptx getters add XML when code only reads a deck. The XML comparison ignores exactly the ones that render the same as no element. `READ_ARTIFACTS` in `scenario.py` is that table, and `evals/read_artifacts.py` measures it over the corpus:
+
+| getter | adds | scored |
+|---|---|---|
+| `paragraph.level`, `paragraph.alignment` | an empty `a:pPr` in `a:p` | ignored |
+| `paragraph.font` | an empty `a:defRPr` in `a:pPr` | ignored |
+| `run.font`, `run.hyperlink` | an empty `a:rPr` in `a:r` | ignored |
+| `shape.line.fill` | an empty `a:ln` in `p:spPr` | ignored |
+| `run.font.color` | an empty `a:solidFill` in `a:rPr` | a change |
+| `shape.line.color` | `a:ln` with an empty `a:solidFill` | a change |
+| `chart.chart_title` | a `c:title` | a change |
+
+The last three render differently, so a maker must not touch them on a slide nobody asked about. Any other XML difference, even an empty element such as `a:buNone` or `a:noFill`, is a change. A tool that re-serializes the whole slide XML, such as a PowerPoint save or LibreOffice, may change an untouched slide's XML in other ways. Scoring the output of such a tool may need the table extended, from a measurement like `read_artifacts.py`.
 
 The intent checker judges the rest. That covers every `intent_checks` line, such as tone, wording, and chart data, and whether the maker raised each ambiguous `flag`. `score.json` lists them under `deferred`. For an ambiguous ask, the script proves only that the maker did not guess.
 
