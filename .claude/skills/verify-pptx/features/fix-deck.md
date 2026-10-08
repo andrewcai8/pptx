@@ -8,12 +8,12 @@
 - `fix-report-only` never fixes `slide-has-title`, `source-on-data-slides`, `title-max-chars`, or `no-placeholder-text`, because a fix would invent content. It never fixes `within-slide-bounds` either. Each one stays in the report as `report-only`.
 - `fix-declined` reports a fixable violation that the fixer judges unsafe, with the reason. Bullets that end in an abbreviation such as `etc.`, `mgmt.`, or `e.g.`, or in an ellipsis such as `....` or `…`, keep their punctuation. Symbol fonts such as Wingdings are never replaced.
 - `fix-loop` checks the deck again after each pass, because one fix can expose another. It stops after a pass that fixes nothing, or after three passes that each fixed something. A violation that fires again after its fix is reported as `did-not-stick`, and its change still shows as a `fixed` line. A violation that first appears after the last pass is reported as `pass-limit`.
-- `fix-scope` changes only the slides a fixer wrote to. It copies every other entry of the input package byte for byte, in the same order, and replaces only those slides' XML parts. It also checks that reading the deck left every slide unchanged. If not, it prints `error: reading <deck> changed slide N, so fix cannot tell its own edits apart; nothing written` and exits 2.
+- `fix-scope` changes only the slides a fixer wrote to. It copies the content of every other entry of the input package unchanged, in the same order, and replaces only those slides' XML parts. Each entry keeps its name, timestamp, and compression method. Its compressed bytes and other zip header fields, such as file attributes, can differ from the input. It also checks that reading the deck left every slide unchanged. If not, it prints `error: reading <deck> changed slide N, so fix cannot tell its own edits apart; nothing written` and exits 2.
 - `fix-output` prints `PASS` or `FAIL <in> -> <out>: N fixed in P passes, M remain`, without the pass count when nothing was fixed, then one `fixed` line per fix with the value before and after, and one `remains` line per violation left with its reason in brackets, such as `(report-only: fix by hand)` or `(declined: abbreviation etc.)`.
 - `fix-report` writes `fix.json` and `fix.md` with `--report`. They hold both decks' sha256, the rules applied, every fix, and every remaining violation.
 - `fix-exit` exits 0 when nothing remains, 1 when violations remain, and 2 on a bad deck, bad rules, an `--out` that is the input or a directory, a deck that changed when it was read, or an output it cannot write. The deck is written in both the 0 and 1 cases.
 - `doctor` prints `fixable rule ids:` from the same registry `fix` uses.
-- `fix-idempotent` copies the input byte for byte when there is nothing to fix, so running `fix` on its own output changes nothing.
+- `fix-idempotent` writes a file identical to the input when there is nothing to fix, so running `fix` on its own output changes nothing.
 
 ## How to get to it (user POV)
 
