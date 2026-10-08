@@ -4,6 +4,7 @@ import hashlib
 import io
 import math
 import re
+import zipfile
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -112,12 +113,14 @@ def _apply(v: Violation, deck: Deck, rules: RuleSet) -> tuple[Change, ...] | Dec
 def fix_deck(data: bytes, rules: RuleSet, path: str) -> FixResult:
     sha = hashlib.sha256(data).hexdigest()
     prs = open_presentation(data, path)
-    at_open = _fingerprints(prs)
+    at_open = [_canonical(s) for s in prs.slides]
     fixed: dict[tuple, Fixed] = {}
     declined: dict[tuple, str] = {}
     for passes in range(1, MAX_PASSES + 1):
         deck = read_deck(prs, path, sha)
         final = run_rules(deck, rules)
+        if passes == 1:
+            _check_read_is_pure(prs, at_open, path)
         applied = 0
         for v in final:
             if v.rule not in FIXERS or _key(v) in fixed:
@@ -147,23 +150,37 @@ def fix_deck(data: bytes, rules: RuleSet, path: str) -> FixResult:
             outcomes.append(Reported(v, "pass-limit", f"first fired after pass {MAX_PASSES}"))
     outcomes.sort(key=lambda o: (o.violation.slide, o.violation.rule, o.violation.shape or ""))
 
-    _check_scope(at_open, _fingerprints(prs), {f.violation.slide for f in fixed.values()})
-    if not fixed:
-        return FixResult(data, sha, passes, tuple(outcomes))
-    buf = io.BytesIO()
-    prs.save(buf)
-    out = buf.getvalue()
+    written = {
+        s.part.partname.membername: s.part.blob
+        for s, before in zip(prs.slides, at_open, strict=True)
+        if _canonical(s) != before
+    }
+    out = _repack(data, written) if written else data
     return FixResult(out, hashlib.sha256(out).hexdigest(), passes, tuple(outcomes))
 
 
-def _fingerprints(prs) -> list[bytes]:
-    return [hashlib.sha256(etree.tostring(s._element, method="c14n")).digest() for s in prs.slides]
+def _canonical(slide) -> bytes:
+    return etree.tostring(slide._element, method="c14n")
 
 
-def _check_scope(at_open: list[bytes], at_save: list[bytes], written: set[int]) -> None:
-    for index, (a, b) in enumerate(zip(at_open, at_save, strict=True), start=1):
-        if a != b and index not in written:
-            raise DeckError(f"fix changed slide {index}, which no fixer wrote to; refusing to save the deck")
+def _check_read_is_pure(prs, at_open: list[bytes], path: str) -> None:
+    for index, (s, before) in enumerate(zip(prs.slides, at_open, strict=True), start=1):
+        if _canonical(s) != before:
+            raise DeckError(
+                f"reading {path} changed slide {index}, so fix cannot tell its own edits apart; nothing written"
+            )
+
+
+# python-pptx's save re-serialises every part and drops what it does not model, such as a relationship
+# whose target is missing, so the output is the input's zip with only the written slide parts replaced.
+def _repack(data: bytes, parts: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data)) as src, zipfile.ZipFile(buf, "w") as dst:
+        for info in src.infolist():
+            entry = zipfile.ZipInfo(info.filename, info.date_time)
+            entry.compress_type, entry.external_attr = info.compress_type, info.external_attr
+            dst.writestr(entry, parts[info.filename] if info.filename in parts else src.read(info))
+    return buf.getvalue()
 
 
 def plural(n: int, one: str, many: str) -> str:

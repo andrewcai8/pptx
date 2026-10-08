@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from pptx.oxml.ns import qn
 from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Emu, Inches, Pt
 
+from deckcheck import model
 from deckcheck.cli import main
 from make_sample_decks import build_clean, build_dirty
 
@@ -155,6 +157,48 @@ def test_fix_copies_a_clean_deck_byte_for_byte(tmp_path: Path, capsys: pytest.Ca
         "",
     )
     assert fixed.read_bytes() == deck.read_bytes()
+
+
+def zip_entries(path: Path) -> dict[str, bytes]:
+    with zipfile.ZipFile(path) as z:
+        return {name: z.read(name) for name in z.namelist()}
+
+
+def test_fix_copies_every_part_it_did_not_write_byte_for_byte(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    deck, fixed = tmp_path / "dirty.pptx", tmp_path / "fixed.pptx"
+    build_dirty(deck)
+    with zipfile.ZipFile(deck, "a") as z:
+        z.writestr("customXml/unreferenced.xml", "<note>python-pptx drops parts no relationship reaches</note>")
+    before = zip_entries(deck)
+
+    run(["fix", str(deck), "--out", str(fixed), "--rules", str(HOUSE_STYLE)], capsys)
+
+    after = zip_entries(fixed)
+    assert list(after) == list(before)
+    assert [name for name in before if after[name] != before[name]] == ["ppt/slides/slide2.xml", "ppt/slides/slide4.xml"]
+
+
+def test_fix_writes_nothing_when_reading_the_deck_changes_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deck, fixed = tmp_path / "dirty.pptx", tmp_path / "fixed.pptx"
+    build_dirty(deck)
+    read_run = model._run
+
+    def writing_read(r, theme, is_title):
+        r.get_or_add_rPr()
+        return read_run(r, theme, is_title)
+
+    monkeypatch.setattr(model, "_run", writing_read)
+
+    assert run(["fix", str(deck), "--out", str(fixed), "--rules", str(HOUSE_STYLE)], capsys) == (
+        2,
+        "",
+        f"error: reading {deck} changed slide 1, so fix cannot tell its own edits apart; nothing written\n",
+    )
+    assert not fixed.exists()
 
 
 @pytest.mark.parametrize("link", ["same", "dotted", "symlink", "hardlink"])
