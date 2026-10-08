@@ -82,11 +82,11 @@ def test_an_edit_outside_the_read_artifacts_changes_the_slide(tmp_path, edit):
     assert seen(deck(tmp_path / "edited.pptx", edit)) != seen(deck(tmp_path / "source.pptx"))
 
 
-def scenario_at(d: Path, changes: list | None = None, make=deck) -> Path:
+def scenario_at(d: Path, changes: list | None = None, make=deck, non_changes: list | None = None) -> Path:
     d.mkdir(parents=True)
     source = make(d / "input.pptx")
     deck_ref = {"file": "input.pptx", "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
-    (d / "expected.yaml").write_text(yaml.safe_dump({"deck": deck_ref, "changes": changes or []}))
+    (d / "expected.yaml").write_text(yaml.safe_dump({"deck": deck_ref, "changes": changes or [], "non_changes": non_changes or []}))
     (d / "transcript.md").write_text("[00:00:05] Ana Ruiz (Principal, Kestrel Advisory): Nothing to change today.\n")
     return d
 
@@ -164,3 +164,43 @@ def test_a_chart_fact_cannot_target_a_source_chart_that_cannot_be_read(private_d
     assert open_scenario(scenario_at(private_dir / "bar", change, chart_deck)).source.charts[0].values == (Decimal("410.0"), Decimal("2000.0"))
     with pytest.raises(BadScenario, match="c1 slide 1: a chart fact cannot target a slide whose bar3DChart chart cannot be read"):
         open_scenario(scenario_at(private_dir / "bar3d", change, lambda path: chart_deck(path, "bar3DChart")))
+
+
+UNCLEAR_CALLOUT = {"id": "n1", "kind": "ambiguous", "said": ["00:00:05"], "why": "Nobody said which callout.", "slides": [1], "flag": "Which callout should change?"}
+
+
+@pytest.mark.parametrize(
+    ("flags", "raised", "missing", "unmatched", "printed"),
+    [
+        (None, [], ["n1"], [], "flags (reported, not scored): raised none; missing n1; 0 unmatched; no flags.json"),
+        ([{"question": "Which callout?", "said": ["00:00:05"]}], ["n1"], [], [], "flags (reported, not scored): raised n1; missing none; 0 unmatched"),
+        ([{"question": "Which callout?", "slides": [1]}], ["n1"], [], [], "flags (reported, not scored): raised n1; missing none; 0 unmatched"),
+        ([{"question": "Is the title final?", "slides": [2]}], [], ["n1"], ["Is the title final?"], "flags (reported, not scored): raised none; missing n1; 1 unmatched"),
+    ],
+)
+def test_flags_json_next_to_the_deck_is_reported_beside_the_verdict(private_dir, tmp_path, capsys, flags, raised, missing, unmatched, printed):
+    d = scenario_at(private_dir / "flags", non_changes=[UNCLEAR_CALLOUT])
+    shutil.copy(d / "input.pptx", tmp_path / "output.pptx")
+    if flags is not None:
+        (tmp_path / "flags.json").write_text(json.dumps(flags))
+    assert score.main([str(d), str(tmp_path / "output.pptx")]) == score.OK
+    assert capsys.readouterr().out.splitlines()[1] == printed
+    report = json.loads((tmp_path / "score.json").read_text())
+    assert (report["verdict"], report["flags"]["raised"], report["flags"]["missing"], report["flags"]["unmatched"]) == ("PASS", raised, missing, unmatched)
+
+
+@pytest.mark.parametrize(
+    ("flags", "error"),
+    [
+        ("not json", "Expecting value"),
+        ('{"question": "Which callout?"}', "expected a list of flags"),
+        ('[{"question": "Which callout?"}]', "flags.json[0]: name the transcript turns"),
+        ('[{"question": "Which callout?", "said": ["5 minutes in"]}]', "flags.json[0].said: expected a list of hh:mm:ss"),
+    ],
+)
+def test_a_malformed_flags_json_is_a_bad_output(private_dir, tmp_path, capsys, flags, error):
+    d = scenario_at(private_dir / "flags", non_changes=[UNCLEAR_CALLOUT])
+    shutil.copy(d / "input.pptx", tmp_path / "output.pptx")
+    (tmp_path / "flags.json").write_text(flags)
+    assert score.main([str(d), str(tmp_path / "output.pptx")]) == score.BAD
+    assert error in capsys.readouterr().err

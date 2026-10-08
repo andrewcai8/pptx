@@ -17,6 +17,20 @@ Run the scorer's unit tests with `uv run --project deckcheck pytest evals`.
 
 The maker edits a copy of the source deck. The scorer tells the slides apart by their slide ids (`p:sldId/@id`), which python-pptx and PowerPoint keep when a slide is edited, deleted, or moved. A new slide gets a fresh id. An output that shares no slide id with the source fails with one `structure` failure, because the scorer cannot tell which slide is which.
 
+## How a maker raises a flag
+
+Some asks are ambiguous, and the right output asks a question instead of guessing. The maker writes its questions to `flags.json` in the same directory as the output deck, never into the deck. A speaker note, comment, or slide text that asks the question is an edit like any other, so on a slide an ambiguous ask names it fails `guessed` (see `flag_in_speaker_note` in the insurance scenario).
+
+```json
+[
+  {"question": "Which regulator slide should be punchier: 10, 16, or 18?", "said": ["00:08:09", "00:08:42"], "slides": [10, 16, 18]}
+]
+```
+
+Each flag has a `question` and at least one of `said`, the transcript turns it is about, and `slides`, the source slide numbers it is about. A flag raises an ambiguous non-change when it cites one of that non-change's `said` turns or names one of its `slides`. A flag that raises none is `unmatched`.
+
+`score.py` reads `flags.json` when it is there. `score.json` lists under `flags` which ambiguous non-changes were raised, which are missing, and the unmatched questions, and the command prints them on a second line. This is reported, not scored. A missing flag does not fail the deck and an unmatched one does not either, until the intent checker exists to judge whether each question is the right one. A `flags.json` that is not a list of such objects exits 2.
+
 ## Run the proof
 
 Run every command from the repo root.
@@ -87,6 +101,7 @@ The loader lints every field against the real deck and transcript, and a bad sce
 - Every `absent` fact must be absent from the whole source deck.
 - An added slide's `layout` must be a layout that some source slide uses.
 - A non-change cannot name a slide that a change edits or deletes. It can name a moved slide, because a moved slide keeps its content.
+- An `ambiguous` non-change's `flag` is the question the maker should put in `flags.json`. Its `said` and `slides` are what a maker's flag must cite to count as raising it, so list every turn where the ask was made.
 
 A fact names the thing that must be true, not one phrasing of it. Each fact has exactly one of these keys:
 
@@ -130,7 +145,7 @@ Some python-pptx getters add XML when code only reads a deck. The XML comparison
 
 The last three render differently, so a maker must not touch them on a slide nobody asked about. Any other XML difference, even an empty element such as `a:buNone` or `a:noFill`, is a change. A tool that re-serializes the whole slide XML, such as a PowerPoint save or LibreOffice, may change an untouched slide's XML in other ways. Scoring the output of such a tool may need the table extended, from a measurement like `read_artifacts.py`.
 
-The intent checker judges the rest. That covers every `intent_checks` line, such as tone, wording, and placement, and whether the maker raised each ambiguous `flag`. `score.json` lists them under `deferred`. For an ambiguous ask, the script proves only that the maker did not guess.
+The intent checker judges the rest. That covers every `intent_checks` line, such as tone, wording, and placement, and whether each question in `flags.json` is the right one. `score.json` lists them under `deferred`. For an ambiguous ask, the script decides only that the maker did not guess, and reports whether `flags.json` raised it.
 
 ## Private scenarios
 

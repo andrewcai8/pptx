@@ -40,6 +40,7 @@ from scenario import (
     Slot,
     Snapshot,
     SourceSlot,
+    TIMESTAMP,
     SourceTampered,
     Where,
     corpus,
@@ -97,6 +98,31 @@ class FactResult:
 
 
 @dataclass(frozen=True)
+class Flag:
+    question: str
+    said: tuple[str, ...]
+    slides: tuple[int, ...]
+
+    def raises(self, nc: Ambiguous) -> bool:
+        return bool(set(self.said) & set(nc.said) or set(self.slides) & set(nc.slides))
+
+
+@dataclass(frozen=True)
+class Flags:
+    """What the maker's flags.json raised, reported beside the verdict and never part of it."""
+
+    file: Path | None
+    raised: tuple[str, ...]
+    missing: tuple[str, ...]
+    unmatched: tuple[str, ...]
+
+    @property
+    def line(self) -> str:
+        found = f"raised {', '.join(self.raised) or 'none'}; missing {', '.join(self.missing) or 'none'}; {len(self.unmatched)} unmatched"
+        return f"flags (reported, not scored): {found}" + ("" if self.file else "; no flags.json")
+
+
+@dataclass(frozen=True)
 class Placement:
     slots: tuple[Slot | None, ...]
 
@@ -114,6 +140,7 @@ class Verdict:
     facts: tuple[FactResult, ...] = ()
     style_inherited: int = 0
     style_new: tuple[tuple[SlideRef, Violation], ...] = ()
+    flags: Flags | None = None
 
     @property
     def passed(self) -> bool:
@@ -370,6 +397,53 @@ def check_style(sc: Scenario, out: Snapshot, placement: Placement, rules: RuleSe
     return inherited, new
 
 
+FLAGS_FILE = "flags.json"
+
+
+class BadOutput(Exception):
+    pass
+
+
+def read_flags(path: Path) -> tuple[Flag, ...] | None:
+    """The maker's flags.json, if it wrote one. A file that is there but malformed is a bad output, not an empty one."""
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise BadOutput(f"{path}: {e}") from e
+    if not isinstance(raw, list):
+        raise BadOutput(f"{path}: expected a list of flags")
+    return tuple(parse_flag(f, f"{path}[{i}]") for i, f in enumerate(raw))
+
+
+def parse_flag(raw: object, where: str) -> Flag:
+    if not isinstance(raw, dict) or set(raw) - {"question", "said", "slides"}:
+        raise BadOutput(f"{where}: expected an object with a question, and said or slides")
+    question, said, slides = raw.get("question"), raw.get("said", []), raw.get("slides", [])
+    if not isinstance(question, str) or not question.strip():
+        raise BadOutput(f"{where}.question: expected the question as a non-empty string")
+    if not isinstance(said, list) or not all(isinstance(at, str) and TIMESTAMP.match(at) for at in said):
+        raise BadOutput(f"{where}.said: expected a list of hh:mm:ss transcript timestamps")
+    if not isinstance(slides, list) or not all(type(k) is int for k in slides):
+        raise BadOutput(f"{where}.slides: expected a list of source slide numbers")
+    if not said and not slides:
+        raise BadOutput(f"{where}: name the transcript turns it is about in said, or the source slides in slides")
+    return Flag(question, tuple(said), tuple(slides))
+
+
+def check_flags(sc: Scenario, path: Path) -> Flags:
+    flags = read_flags(path)
+    asks = [nc for nc in sc.non_changes if isinstance(nc, Ambiguous)]
+    raised = tuple(nc.id for nc in asks if any(f.raises(nc) for f in flags or ()))
+    return Flags(
+        path if flags is not None else None,
+        raised,
+        tuple(nc.id for nc in asks if nc.id not in raised),
+        tuple(f.question for f in flags or () if not any(f.raises(nc) for nc in asks)),
+    )
+
+
 def provenance_json(p: Provenance | None) -> dict[str, object] | None:
     match p:
         case FromSaid(at):
@@ -416,8 +490,15 @@ def report(sc: Scenario, output: Path, out: Snapshot | None, verdict: Verdict) -
         },
         "failures": [failure_json(f) for f in verdict.failures],
         "deferred": [{"id": i, "check": text} for i, text in sc.deferred],
+        "flags": flags_json(verdict.flags),
         "checks": verdict.checks,
     }
+
+
+def flags_json(flags: Flags | None) -> dict[str, object] | None:
+    if flags is None:
+        return None
+    return {"file": str(flags.file) if flags.file else None, "raised": list(flags.raised), "missing": list(flags.missing), "unmatched": list(flags.unmatched)}
 
 
 def tampered_report(e: SourceTampered, output: Path, verdict: Verdict) -> dict[str, object]:
@@ -441,8 +522,9 @@ def run(sc: Scenario, output: Path, rules: RuleSet, out_dir: Path) -> Verdict:
         verdict = Verdict((Failure(Code.SOURCE, None, None, f"the output {output} is the source deck itself"),), checks=1)
         write_json(out_dir / "score.json", report(sc, output, None, verdict))
         return verdict
+    flags = check_flags(sc, output.parent / FLAGS_FILE)
     out = snapshot(output)
-    verdict = score(sc, out, rules)
+    verdict = replace(score(sc, out, rules), flags=flags)
     write_json(out_dir / "score.json", report(sc, output, out, verdict))
     return verdict
 
@@ -467,13 +549,15 @@ def main(argv: list[str] | None = None) -> int:
         write_json(out_dir / "score.json", tampered_report(e, args.output, verdict))
         print(line(e.name, verdict, 0))
         return FAIL
-    except (BadScenario, ConfigError, DeckError) as e:
+    except (BadScenario, BadOutput, ConfigError, DeckError) as e:
         print(f"error: {e}", file=sys.stderr)
         return BAD
     except DeckUnreachable as e:
         print(f"error: {e}", file=sys.stderr)
         return UNREACHABLE
     print(line(sc.name, verdict, len(sc.deferred)))
+    if verdict.flags and (verdict.flags.file or verdict.flags.missing):
+        print(verdict.flags.line)
     return {"PASS": OK, "FAIL": FAIL, "UNREADABLE": BAD}[verdict.status]
 
 
