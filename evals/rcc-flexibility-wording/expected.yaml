@@ -11,7 +11,7 @@ changes:
       4:
         require:
           - {text: "days"}
-          - {text: ["cap", "caps", "limit", "limits", "capacity"]}
+          - {text: ["cap", "caps", "limit", "limits", "capacity", "maximum", "maximums", "ceiling", "ceilings"]}
         forbid:
           - {text: "Flexibility to teams"}
           - {text: ["schedule", "schedules"], superseded: "00:03:14"}
