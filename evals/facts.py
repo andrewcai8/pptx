@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from functools import cache
@@ -24,16 +24,23 @@ NUMBER_WORDS = {
 START = r"(?<!\w)(?<!\d[.,])"
 CURRENCY = r"us\$|usd|eur|gbp|[$€£]"
 SCALE = r"thousand|million|billion|mm|mn|bn|k|m|b"
+# A dash or "to" between two numbers is a range, and a range states both ends: 45-48%, 45 to 48%, $380-410m, 6 to 8 weeks.
+RANGE = r"\s?[-–—]\s?|\sto\s"
 # A currency either leads the number ($100m, US$ 100 million) or follows it (100m$, 100 million dollars). A trailing
 # symbol must not lead a number of its own, so "top 5 $100M deals" is $100M and not $5.
 MONEY = re.compile(
-    rf"(?<![\w$€£])(?P<currency>{CURRENCY})\s?(?P<number>{NUMBER})(?:\s?(?P<scale>{SCALE})(?![a-z]))?(?![.,]?\d)"
-    rf"|{START}(?<![$€£])(?P<number_after>{NUMBER})\s?(?:(?P<scale_after>{SCALE})\s?)?(?P<currency_after>{CURRENCY}|dollars?|euros?)(?![a-z]|\s?\d)"
+    rf"(?<![\w$€£])(?P<currency>{CURRENCY})\s?(?P<number>{NUMBER})(?:[\s-]?(?P<scale>{SCALE})(?![a-z]))?(?![.,]?\d)"
+    rf"|{START}(?<![$€£])(?P<number_after>{NUMBER})[\s-]?(?:(?P<scale_after>{SCALE})\s?)?(?P<currency_after>{CURRENCY}|dollars?|euros?)(?![a-z]|\s?\d)"
+)
+# The low end of a money range takes the high end's scale when it has none, so $380-410m is $380m to $410m.
+MONEY_RANGE = re.compile(
+    rf"(?<![\w$€£])(?P<currency>{CURRENCY})\s?(?P<low>{NUMBER})(?:[\s-]?(?P<low_scale>{SCALE})(?![a-z]))?(?:{RANGE})"
+    rf"(?:(?P=currency)\s?)?(?P<high>{NUMBER})(?:[\s-]?(?P<high_scale>{SCALE})(?![a-z]))?(?![.,]?\d)"
 )
 PERCENT_UNIT = r"\s?(?:%|per ?cent(?![a-z]))"
-# A minus sign makes a different value: -48% is not 48%. A dash between two numbers is a range, and a range states both.
+# A minus sign makes a different value: -48% is not 48%.
 PERCENT = re.compile(rf"{START}(?P<sign>[-−+](?=\d))?(?P<number>{NUMBER}){PERCENT_UNIT}")
-PERCENT_RANGE = re.compile(rf"{START}(?P<low>{NUMBER})(?:{PERCENT_UNIT})?\s?[-–—]\s?(?P<high>{NUMBER}){PERCENT_UNIT}")
+PERCENT_RANGE = re.compile(rf"{START}(?P<low>{NUMBER})(?:{PERCENT_UNIT})?(?:{RANGE})(?P<high>{NUMBER}){PERCENT_UNIT}")
 NUMBER_WORD = rf"(?:{'|'.join(NUMBER_WORDS)})(?![a-z])"
 COUNT_WORD = rf"\d+|{'|'.join(NUMBER_WORDS)}"
 COUNT_SPEC = re.compile(rf"(?P<number>{COUNT_WORD})[\s-](?P<unit>[a-z]+?)s?")
@@ -115,8 +122,7 @@ def match(value: Money | Percent | Count | Words, text: str) -> str | None:
         case Words(alternatives):
             return next((m[0] for alt in alternatives if (m := _phrase(normalize(alt)).search(text))), None)
         case Count(n, unit):
-            pattern = re.compile(rf"{START}(?P<number>{COUNT_WORD})[\s-]{COUNT_GAP}{re.escape(unit)}s?(?![a-z])")
-            return next((m[0] for m in pattern.finditer(text) if _count(m["number"]) == n), None)
+            return next((hit for value, hit in _counts(unit, text) if value == n), None)
         case Money() | Percent():
             kind = "money" if isinstance(value, Money) else "percent"
             return next((text[a:b] for found, (a, b) in _quantities(kind, text) if found == value), None)
@@ -152,25 +158,34 @@ def to_json(value: Value) -> dict[str, object]:
 
 def _quantities(kind: str, text: str) -> list[tuple[Money | Percent, tuple[int, int]]]:
     if kind == "money":
-        return [
-            (
-                Money(
-                    _number(m["number"] or m["number_after"]).scaleb(SCALES.get(m["scale"] or m["scale_after"] or "", 0)),
-                    CURRENCIES[m["currency"] or m["currency_after"]],
-                    m[0],
-                ),
-                m.span(),
-            )
+        ranges = list(MONEY_RANGE.finditer(text))
+        found = [
+            (Money(_scaled(m[end], m[f"{end}_scale"] or m["high_scale"]), CURRENCIES[m["currency"]], m[0]), m.span())
+            for m in ranges
+            for end in ("low", "high")
+        ]
+        singles = [
+            (Money(_scaled(m["number"] or m["number_after"], m["scale"] or m["scale_after"]), CURRENCIES[m["currency"] or m["currency_after"]], m[0]), m.span())
             for m in MONEY.finditer(text)
         ]
-    ranges = list(PERCENT_RANGE.finditer(text))
-    found = [(Percent(_number(m[end]), m[0]), m.span()) for m in ranges for end in ("low", "high")]
-    found += [
-        (Percent(-_number(m["number"]) if m["sign"] in ("-", "−") else _number(m["number"]), m[0]), m.span())
-        for m in PERCENT.finditer(text)
-        if not any(r.start() <= m.start() < r.end() for r in ranges)
-    ]
+    else:
+        ranges = list(PERCENT_RANGE.finditer(text))
+        found = [(Percent(_number(m[end]), m[0]), m.span()) for m in ranges for end in ("low", "high")]
+        singles = [(Percent(-_number(m["number"]) if m["sign"] in ("-", "−") else _number(m["number"]), m[0]), m.span()) for m in PERCENT.finditer(text)]
+    found += [q for q in singles if not any(r.start() <= q[1][0] < r.end() for r in ranges)]
     return sorted(found, key=lambda q: q[1])
+
+
+def _counts(unit: str, text: str) -> Iterator[tuple[int, str]]:
+    noun = rf"{re.escape(unit)}s?(?![a-z])"
+    for m in re.finditer(rf"{START}(?P<low>{COUNT_WORD})(?:{RANGE})(?P<high>{COUNT_WORD})[\s-]{COUNT_GAP}{noun}", text):
+        yield from ((_count(m[end]), m[0]) for end in ("low", "high"))
+    for m in re.finditer(rf"{START}(?P<number>{COUNT_WORD})[\s-]{COUNT_GAP}{noun}", text):
+        yield _count(m["number"]), m[0]
+
+
+def _scaled(digits: str, scale: str | None) -> Decimal:
+    return _number(digits).scaleb(SCALES.get(scale or "", 0))
 
 
 def _number(digits: str) -> Decimal:
