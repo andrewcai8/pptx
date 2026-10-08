@@ -8,8 +8,8 @@
 - `check-fail` prints `FAIL <deck>: K violations`, one line per violation, and exits 1.
 - `check-report` writes `report.json` and `outline.md` with `--out`.
 - `check-rules` enforces `max-fonts-per-slide`, `no-bullet-end-punctuation`, `slide-has-title`, `title-max-chars`, `min-font-size`, `no-placeholder-text`, `within-slide-bounds`, and `source-on-data-slides`.
-- `slide-has-title` skips slides whose layout has no title placeholder, such as Blank or End layouts, and layouts listed in `exempt_layouts`. A copied layout such as `1_Title Slide` matches the name without its `1_` prefix.
-- `within-slide-bounds` checks only shapes that carry text. It measures the box after the shape's rotation about its centre and allows an overhang up to `tolerance_pt`. A text shape wholly off the slide is never visible, so it is skipped.
+- `slide-has-title` skips only layouts listed in `exempt_layouts`, such as End, Disclaimer, and Quote. A Blank slide needs a title. A copied layout such as `1_Title Slide` matches the name without its `1_` prefix.
+- `within-slide-bounds` checks charts and shapes that carry text. Textless decoration and pictures may bleed off the slide. It measures the box after the shape's rotation about its centre and allows an overhang up to `tolerance_pt`. A text shape wholly off the slide is never visible, so it is skipped.
 - `no-bullet-end-punctuation` resolves each paragraph's bullet the way PowerPoint does. It reads the paragraph, the shape's list style, the matching layout placeholder, the matching master placeholder, and then the master text style. A bullet character that is blank or zero-width counts as no bullet.
 - `title-max-chars` counts only the headline, the title text before the first line or paragraph break. A subheadline below it does not count.
 - `source-on-data-slides` reads every line of every paragraph. A line passes when it starts with `Source`, or holds a `Source:` label after a note on the same line. A chart always needs a source. A table needs one only when a cell holds a number-like value, such as a percent, a currency symbol, or a number like 3.5 or 1,200.

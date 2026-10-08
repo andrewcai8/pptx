@@ -47,8 +47,8 @@ decks:
     sha256: 6c8efeb26ca73fcda506f6f2b3f2abdd9992cb760494c3b4c2778706e15f8d14
     waivers:
       - rule: slide-has-title
-        slides: [3, 4, 7, 21, 27, 32]
-        reason: Section dividers, the agenda hub, the closing slide, and slide 21 put their headings in text boxes, and the pipeline needs the title placeholder to find slides.
+        slides: [3, 4, 7, 21, 27, 30, 31, 32]
+        reason: Section dividers, the agenda hub, the closing slide, and content slides on the Blank layout put their headings in text boxes, and the pipeline needs the title placeholder to find slides.
       - rule: within-slide-bounds
         slides: [6, 8, 12]
         reason: The footnote, column header, and Millennials label boxes are wider than their text and run past the edge while the text stays visible.
@@ -92,6 +92,9 @@ decks:
       - rule: within-slide-bounds
         slides: [3, 4, 8, 19, 24]
         reason: The footnote, label, and column header boxes are wider than their text and run past the edge while the text stays visible.
+      - rule: slide-has-title
+        slides: [10]
+        reason: The content slide sits on the Blank layout with its heading in a text box, and the pipeline needs the title placeholder to find slides.
   - id: nursing-taskforce-2019
     title: "Nursing Facility Task Force: Massachusetts Healthcare Collaborative (2019)"
     url: https://www.mass.gov/doc/october-18-2019-presentation-eolwd/download

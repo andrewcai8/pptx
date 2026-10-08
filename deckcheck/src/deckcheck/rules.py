@@ -137,8 +137,7 @@ COPY_PREFIX = re.compile(r"^\d+_")
 def slide_has_title(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
         layout = COPY_PREFIX.sub("", slide.layout_name)
-        exempt = not slide.layout_has_title or layout in params["exempt_layouts"]
-        if not exempt and not slide.title:
+        if layout not in params["exempt_layouts"] and not slide.title:
             yield Violation("slide-has-title", slide.index, None, "slide has no title", f"layout {slide.layout_name}")
 
 
@@ -206,7 +205,7 @@ def within_slide_bounds(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
     tolerance = params["tolerance_pt"] * EMU_PER_PT
     for slide in deck.slides:
         for s in slide.shapes:
-            if not s.paragraphs:
+            if not s.paragraphs and s.kind != "chart":
                 continue
             left, top, right, bottom = _visual_box(s)
             if right <= 0 or bottom <= 0 or left >= deck.slide_width or top >= deck.slide_height:

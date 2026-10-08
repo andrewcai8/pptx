@@ -6,7 +6,7 @@ rules:
   no-bullet-end-punctuation:
     chars: ".;,"
   slide-has-title:
-    exempt_layouts: ["Title Slide", "Section Header"]
+    exempt_layouts: ["Title Slide", "Section Header", "End", "D. End", "Disclaimer", "D. Disclaimer", "Quote", "D. Quote"]
   title-max-chars:
     max: 150
   min-font-size:

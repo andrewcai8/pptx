@@ -13,7 +13,7 @@
 
 ## How to get to it (user POV)
 
-- Run `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py` from the repo root after changing `standards/house-style.yaml` or `deckcheck/src/deckcheck/rules.py`.
+- Run `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py` from the repo root after changing `standards/house-style.yaml` or any file in `deckcheck/src/deckcheck/`.
 - Pass a directory as the only argument to choose the evidence path.
 
 ## Driving it with deckcheck

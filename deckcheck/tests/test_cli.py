@@ -94,17 +94,34 @@ def test_within_slide_bounds_requires_tolerance(tmp_path: Path, capsys: pytest.C
     )
 
 
-def test_slide_has_title_exempts_layouts_without_a_title_placeholder(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_slide_has_title_exempts_only_named_layouts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     prs = Presentation()
     prs.slides.add_slide(prs.slide_layouts[BLANK])
     prs.slides.add_slide(prs.slide_layouts[TITLE_ONLY])
     deck = tmp_path / "titles.pptx"
     prs.save(str(deck))
-    rules = write_rules(tmp_path, "rules:\n  slide-has-title:\n    exempt_layouts: []\n")
+    named = write_rules(tmp_path, 'rules:\n  slide-has-title:\n    exempt_layouts: ["Blank"]\n')
+    assert violations(deck, named, tmp_path, capsys) == (1, [(2, "slide-has-title")])
 
-    assert violations(deck, rules, tmp_path, capsys) == (1, [(2, "slide-has-title")])
+    unnamed = write_rules(tmp_path, "rules:\n  slide-has-title:\n    exempt_layouts: []\n")
+    assert violations(deck, unnamed, tmp_path, capsys) == (1, [(1, "slide-has-title"), (2, "slide-has-title")])
+
+
+def test_within_slide_bounds_checks_charts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prs = Presentation()
+    for left in (Inches(0.5), Inches(2)):
+        data = CategoryChartData()
+        data.categories = ["2024", "2025"]
+        data.add_series("Share", (12, 16))
+        slide = prs.slides.add_slide(prs.slide_layouts[BLANK])
+        slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, left, Inches(1.5), Inches(9), Inches(4.5), data)
+    deck = tmp_path / "charts.pptx"
+    prs.save(str(deck))
+
+    assert violations(deck, write_rules(tmp_path, BOUNDS_RULES), tmp_path, capsys) == (
+        1,
+        [(2, "within-slide-bounds")],
+    )
 
 
 def test_clean_deck_passes_house_style(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

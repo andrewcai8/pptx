@@ -66,7 +66,6 @@ class Shape:
 class Slide:
     index: int
     layout_name: str
-    layout_has_title: bool
     shapes: tuple[Shape, ...]
 
     @property
@@ -138,8 +137,7 @@ def load_deck(path: str | Path) -> Deck:
         layout = slide.slide_layout
         theme = themes.setdefault(id(layout.slide_master.part), _theme_fonts(layout.slide_master))
         shapes = tuple(_shapes(slide.shapes, layout, theme, Transform()))
-        layout_has_title = any(ph.placeholder_format.type in TITLE_TYPES for ph in layout.placeholders)
-        slides.append(Slide(index, layout.name, layout_has_title, shapes))
+        slides.append(Slide(index, layout.name, shapes))
     return Deck(
         path=str(path),
         sha256=hashlib.sha256(data).hexdigest(),

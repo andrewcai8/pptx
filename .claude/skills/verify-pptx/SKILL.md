@@ -39,7 +39,7 @@ Then run the self-test. It proves deckcheck still catches every rule on known de
 
 It prints `SELFTEST PASS` and the evidence path, or `SELFTEST FAIL: <reason>` and exits 1. Set `RUN_ID=<name>` to choose the directory name.
 
-A change to `standards/house-style.yaml` or `deckcheck/src/deckcheck/rules.py` also needs the known-good corpus. It proves real BCG decks still pass:
+A change to `standards/house-style.yaml` or any file in `deckcheck/src/deckcheck/` also needs the known-good corpus. It proves real BCG decks still pass:
 
 ```bash
 uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py
