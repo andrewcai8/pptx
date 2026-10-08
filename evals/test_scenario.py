@@ -1,13 +1,17 @@
+import hashlib
+import shutil
+import uuid
 from pathlib import Path
 
 import pytest
+import yaml
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Inches
 
-from scenario import snapshot
+from scenario import ROOT, BadScenario, open_scenario, snapshot
 
 
 def deck(path: Path, change=None) -> Path:
@@ -70,3 +74,25 @@ def test_a_python_pptx_read_leaves_the_slide_unchanged(tmp_path, read):
 def test_an_edit_outside_the_read_artifacts_changes_the_slide(tmp_path, edit):
     assert seen(deck(tmp_path / "edited.pptx", edit)) != seen(deck(tmp_path / "source.pptx"))
 
+
+def scenario_at(d: Path) -> Path:
+    d.mkdir(parents=True)
+    source = deck(d / "input.pptx")
+    deck_ref = {"file": "input.pptx", "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
+    (d / "expected.yaml").write_text(yaml.safe_dump({"deck": deck_ref, "changes": []}))
+    (d / "transcript.md").write_text("[00:00:05] Ana Ruiz (Principal, Kestrel Advisory): Nothing to change today.\n")
+    return d
+
+
+@pytest.mark.parametrize(("folder", "opens"), [("private", True), ("artifacts", False), ("evals", False)])
+def test_a_private_deck_scenario_opens_only_under_the_repos_private_folder(folder, opens):
+    top = ROOT / folder / f"pytest-{uuid.uuid4().hex[:8]}"
+    try:
+        d = scenario_at(top / "client-scenario")
+        if opens:
+            assert open_scenario(d).ref == "file:input.pptx"
+        else:
+            with pytest.raises(BadScenario, match="never enters git"):
+                open_scenario(d)
+    finally:
+        shutil.rmtree(top, ignore_errors=True)

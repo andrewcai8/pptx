@@ -134,4 +134,4 @@ A scenario built on a client deck lives in `$GOLDEN_PRIVATE_DIR/<name>/` and nev
 deck: {file: input.pptx, sha256: <sha256 of input.pptx>}
 ```
 
-The loader rejects a `file:` deck in a scenario inside the repo. Only `score.py` looks in `$GOLDEN_PRIVATE_DIR`. A name found in both `evals/` and `$GOLDEN_PRIVATE_DIR` is an error.
+The loader rejects a `file:` deck in a scenario inside the repo, except under the repo's `private/` folder, which git ignores. Only `score.py` looks in `$GOLDEN_PRIVATE_DIR`. A name found in both `evals/` and `$GOLDEN_PRIVATE_DIR` is an error.

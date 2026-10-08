@@ -426,7 +426,7 @@ def public(names: Sequence[str] = ()) -> list[Path]:
 
 def open_scenario(arg: str | Path) -> Scenario:
     d = resolve(arg)
-    private = ROOT not in d.parents
+    private = ROOT not in d.parents or ROOT / "private" in d.parents
     try:
         doc = yaml.safe_load((d / "expected.yaml").read_text())
     except (OSError, yaml.YAMLError) as e:
@@ -540,7 +540,7 @@ def _deck_ref(raw: Any, private: bool) -> DeckRef:
     if isinstance(raw, dict) and "file" in raw:
         raw = _keys(raw, "deck", required=("file", "sha256"))
         if not private:
-            raise BadScenario("deck: a deck file never enters the repo; put the scenario in $GOLDEN_PRIVATE_DIR")
+            raise BadScenario("deck: a deck file never enters git; put the scenario in $GOLDEN_PRIVATE_DIR, outside the repo or under its private/")
         return PrivateDeck(_str(raw["file"], "deck.file"), _str(raw["sha256"], "deck.sha256"))
     raw = _keys(raw, "deck", required=("corpus", "sha256"))
     return CorpusDeck(_str(raw["corpus"], "deck.corpus"), _str(raw["sha256"], "deck.sha256"))
