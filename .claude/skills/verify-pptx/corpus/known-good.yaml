@@ -1,0 +1,59 @@
+# Real BCG decks that deckcheck must pass, from https://slideworks.io/resources/54-real-bcg-presentations
+# The decks remain BCG's property. corpus.py fetches them by URL and checks the hash. Never commit them.
+# A waiver records a deliberate difference between BCG practice and what our pipeline needs.
+decks:
+  - id: constant-change-2019
+    title: Leading in an Era of Constant Change (2019)
+    url: https://www.zdruzenje-manager.si/assets/Uploads/PPT-Jim-Hemerling.pptx
+    sha256: 155e8c2451750595115bf0893aa9692ec0986f4b414899aac6a5de7136b09d25
+    waivers:
+      - rule: slide-has-title
+        slides: [8, 12, 16, 23, 33, 36]
+        reason: The Green one third slides put the title in a plain text box, and the pipeline needs the title placeholder to find slides.
+      - rule: source-on-data-slides
+        slides: [3, 9, 10]
+        reason: Live audience poll results carry no source line, and the provenance gate still requires one.
+      - rule: within-slide-bounds
+        slides: [3, 15, 34]
+        reason: Slide 3 parks its poll table below the slide, and slides 15 and 34 use text boxes that run past the edge while their text stays visible.
+  - id: future-of-fmcg-2020
+    title: "Fast-moving consumer goods: Driving value creation in an era of disruption (2020)"
+    url: https://connect.bcg.com/data/uploads/sites/1371/2020/10/Future-of-FMCG-Web-20201029-1.pptx
+    sha256: c312ec6c4c653912b3b19e8f16fc1877710e4ddccd7caa832ac4dd72ef07f9ab
+    waivers:
+      - rule: no-bullet-end-punctuation
+        slides: [2]
+        reason: The summary uses full-sentence bullets, and the brief's rule is kept as written.
+      - rule: source-on-data-slides
+        slides: [4, 7]
+        reason: The charts cite through Note lines and numbered footnotes instead of a Source line, and the provenance gate needs the Source line.
+  - id: insurance-regulator-2017
+    title: The Role of the Regulator in Enabling Digitization of the Insurance Industry (2017)
+    url: https://www.a-zn.si/wp-content/uploads/7.-Role-of-regulator-in-enabling-the-digitization.pptx
+    sha256: 5dcf6300cfc6c95ab5f9ba184519835380fb60b30b0dea20a47eeb7739543352
+    waivers:
+      - rule: slide-has-title
+        slides: [11, 15]
+        reason: The title is a plain text box named Title 1, and the pipeline needs the title placeholder to find slides.
+  - id: sdg7-energy-2019
+    title: "The Role of New, Renewable and Clean Energy in Achieving SDG7 (2019)"
+    url: https://main.pyc-conferences.org/attachments/PYC-Conference-Plenary-Policy-Joel-Kwong-v2.pptx
+    sha256: 53cac17c5d42ca05a6a9986dc2539d38a114ecc407e3b80b3a7b7a9a630c764e
+    waivers:
+      - rule: source-on-data-slides
+        slides: [9, 10]
+        reason: Slide 9 has no source line and slide 10 puts its source after a numbered footnote, and the provenance gate needs a Source line.
+  - id: true-luxury-2018
+    title: 2018 True-Luxury Global Consumer Insight (2018)
+    url: https://www.luxurydaily.com/wp-content/uploads/2018/05/State-of-Luxury-2018-Boston-Consulting-Group-presentation-by-Sarah-Willersdorf.pptx
+    sha256: 6c8efeb26ca73fcda506f6f2b3f2abdd9992cb760494c3b4c2778706e15f8d14
+    waivers:
+      - rule: slide-has-title
+        slides: [3, 4, 7, 21, 27, 32]
+        reason: Section dividers, the agenda hub, the closing slide, and slide 21 put their headings in text boxes, and the pipeline needs the title placeholder to find slides.
+      - rule: within-slide-bounds
+        slides: [6, 8, 12]
+        reason: The footnote, column header, and Millennials label boxes are wider than their text and run past the edge while the text stays visible.
+      - rule: no-placeholder-text
+        slides: [41]
+        reason: The xx is a legend symbol for brand ranking, not placeholder text.

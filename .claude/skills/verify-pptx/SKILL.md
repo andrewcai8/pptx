@@ -39,6 +39,14 @@ Then run the self-test. It proves deckcheck still catches every rule on known de
 
 It prints `SELFTEST PASS` and the evidence path, or `SELFTEST FAIL: <reason>` and exits 1. Set `RUN_ID=<name>` to choose the directory name.
 
+A change to `standards/house-style.yaml` or `deckcheck/src/deckcheck/rules.py` also needs the known-good corpus. It proves real BCG decks still pass:
+
+```bash
+uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py
+```
+
+Require `SELFTEST PASS` and `CORPUS PASS` both. `CORPUS INCOMPLETE` means a deck was unreachable. Report the corpus as not run, never as passed.
+
 ## Drive
 
 To prove a deck that the pipeline produced from a source deck:
@@ -78,3 +86,4 @@ deckcheck starts no processes. `selftest.sh` deletes its own scratch directory o
 - `scripts/selftest.sh` builds sample decks with `deckcheck/scripts/make_sample_decks.py`. It asserts that `clean.pptx` passes, that `dirty.pptx` fails with exactly the expected `(slide, rule)` pairs, and that the diff touches only slides 2 and 5.
 - `uv run --project deckcheck python deckcheck/scripts/make_sample_decks.py <dir>` writes `clean.pptx`, `dirty.pptx`, and `clean-v2.pptx`, and prints the expected violations for `dirty.pptx`.
 - `cd deckcheck && uv run pytest -q` runs the unit tests.
+- `scripts/corpus.py [RUN_DIR]` fetches the decks in `corpus/known-good.yaml` into `artifacts/verify-pptx/corpus-cache/`, checks each one, and fails on any violation without a waiver or any waiver that no longer fires. See `features/known-good-corpus.md`.
