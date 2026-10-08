@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
-from dataclasses import asdict
+import tempfile
+from dataclasses import asdict, fields, replace
 from importlib.metadata import version
 from pathlib import Path
 
 from deckcheck.diff import DeckDiff, diff_decks
-from deckcheck.model import Deck, DeckError, Violation, load_deck
+from deckcheck.fix import FIXERS, Change, Fixed, FixResult, Reported, fix_deck, plural
+from deckcheck.model import Deck, DeckError, Violation, load_deck, read_bytes
 from deckcheck.render import RenderError, ToolMissing, find_pdftoppm, find_soffice, render
-from deckcheck.rules import ConfigError, load_rules, run_rules
+from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
 
 OK, VIOLATIONS, USAGE, MISSING_TOOL = 0, 1, 2, 3
 DEFAULT_RULES = Path("standards/house-style.yaml")
@@ -30,6 +33,12 @@ def main(argv: list[str] | None = None) -> int:
     diff.add_argument("new", type=Path)
     diff.add_argument("--out", type=Path, help="write diff.json and diff.md here")
 
+    fix = sub.add_parser("fix", help="write a copy of a deck with the fixable violations fixed")
+    fix.add_argument("deck", type=Path)
+    fix.add_argument("--out", type=Path, required=True, help="the fixed deck, a new .pptx path")
+    fix.add_argument("--rules", type=Path, help=f"rules yaml (default: nearest {DEFAULT_RULES})")
+    fix.add_argument("--report", type=Path, help="write fix.json and fix.md here")
+
     rend = sub.add_parser("render", help="render slides to PNG via LibreOffice")
     rend.add_argument("deck", type=Path)
     rend.add_argument("--out", type=Path, required=True)
@@ -43,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
                 return cmd_check(args.deck, args.rules, args.out)
             case "diff":
                 return cmd_diff(args.old, args.new, args.out)
+            case "fix":
+                return cmd_fix(args.deck, args.out, args.rules, args.report)
             case "render":
                 return cmd_render(args.deck, args.out)
             case _:
@@ -80,11 +91,15 @@ def cmd_check(deck_path: Path, rules_path: Path | None, out: Path | None) -> int
             "rules_path": str(rules.path),
             "rules": list(rules.params),
             "passed": not violations,
-            "violations": [asdict(v) for v in violations],
+            "violations": [violation_json(v) for v in violations],
         }
         (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
         (out / "outline.md").write_text(outline_md(deck))
     return VIOLATIONS if violations else OK
+
+
+def violation_json(v: Violation) -> dict[str, object]:
+    return {f.name: getattr(v, f.name) for f in fields(v) if f.compare}
 
 
 def format_violation(v: Violation) -> str:
@@ -142,6 +157,105 @@ def diff_md(result: DeckDiff) -> str:
     return "\n".join(lines)
 
 
+def cmd_fix(deck_path: Path, out: Path, rules_path: Path | None, report: Path | None) -> int:
+    rules = load_rules(rules_path or find_rules(Path.cwd()))
+    data = read_bytes(deck_path)
+    if out.is_dir():
+        print(f"error: --out {out} is a directory; pass the path of the new deck", file=sys.stderr)
+        return USAGE
+    if out.exists() and os.path.samefile(out, deck_path):
+        print(f"error: --out {out} is the input deck; fix never overwrites its input", file=sys.stderr)
+        return USAGE
+    try:
+        if report:
+            report.mkdir(parents=True, exist_ok=True)
+        result = fix_deck(data, rules, str(deck_path))
+        write_atomic(out, result.data)
+        remaining = result.remaining
+        print(f"{'FAIL' if remaining else 'PASS'} {deck_path} -> {out}: {fix_summary(result)}")
+        for o in (*result.fixed, *remaining):
+            print(format_outcome(o))
+        if report:
+            (report / "fix.json").write_text(json.dumps(fix_json(deck_path, out, rules, result), indent=2) + "\n")
+            (report / "fix.md").write_text(fix_md(deck_path, out, rules, result))
+    except OSError as e:
+        print(f"error: cannot write the fix output: {e}", file=sys.stderr)
+        return USAGE
+    return VIOLATIONS if remaining else OK
+
+
+def write_atomic(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".part")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        umask = os.umask(0)
+        os.umask(umask)
+        os.chmod(tmp, 0o666 & ~umask)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def fix_summary(result: FixResult) -> str:
+    passes = f" in {plural(result.passes, 'pass', 'passes')}" if result.passes else ""
+    return f"{len(result.fixed)} fixed{passes}, {plural(len(result.remaining), 'remains', 'remain')}"
+
+
+def format_change(c: Change) -> str:
+    if c.what == "text":
+        return f"{c.what} {c.before!r} -> {c.after!r}"
+    return f"{c.what} {c.before} -> {c.after}"
+
+
+def format_outcome(o: Fixed | Reported) -> str:
+    if isinstance(o, Fixed):
+        changes = "; ".join(format_change(c) for c in o.changes)
+        return f"fixed {format_violation(replace(o.violation, evidence=changes))}"
+    return f"remains {format_violation(o.violation)} ({o.why}: {o.detail})"
+
+
+def fix_json(deck_path: Path, out: Path, rules: RuleSet, result: FixResult) -> dict[str, object]:
+    return {
+        "input": str(deck_path),
+        "input_sha256": result.input_sha256,
+        "output": str(out),
+        "output_sha256": result.output_sha256,
+        "rules_path": str(rules.path),
+        "rules": list(rules.params),
+        "passes": result.passes,
+        "passed": not result.remaining,
+        "fixed": [
+            violation_json(o.violation) | {"pass": o.pass_no, "changes": [asdict(c) for c in o.changes]}
+            for o in result.fixed
+        ],
+        "remaining": [violation_json(o.violation) | {"why": o.why, "detail": o.detail} for o in result.remaining],
+    }
+
+
+def fix_md(deck_path: Path, out: Path, rules: RuleSet, result: FixResult) -> str:
+    lines = [
+        "# Deck fix",
+        "",
+        f"- input: `{deck_path}` sha256 `{result.input_sha256}`",
+        f"- output: `{out}` sha256 `{result.output_sha256}`",
+        f"- rules: `{rules.path}` ({', '.join(rules.params)})",
+        f"- result: {'PASS' if not result.remaining else 'FAIL'}, {fix_summary(result)}",
+        "",
+        "## Fixed",
+        "",
+        *(f"- {format_outcome(o)} (pass {o.pass_no})" for o in result.fixed),
+        "",
+        "## Remaining",
+        "",
+        *(f"- {format_outcome(o)}" for o in result.remaining),
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def cmd_render(deck: Path, out: Path) -> int:
     for png in render(deck, out):
         print(png)
@@ -159,6 +273,7 @@ def cmd_doctor() -> int:
     except ConfigError as e:
         print(f"rules: error: {e}")
         status = USAGE
+    print(f"fixable rule ids: {', '.join(FIXERS)}")
     print(f"soffice: {find_soffice() or 'missing'}")
     print(f"pdftoppm: {find_pdftoppm() or 'missing'}")
     return status

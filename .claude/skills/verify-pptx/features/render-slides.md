@@ -26,4 +26,3 @@ Preconditions:
 
 - LibreOffice is not PowerPoint. Font substitution and think-cell charts render differently. Treat a render as evidence of layout problems, not as pixel truth.
 - `render` runs soffice with a private profile, so an open LibreOffice window does not block it.
-- The soffice-to-PNG path has not run on this machine yet, because soffice is not installed. Only the missing-tool path is proven.

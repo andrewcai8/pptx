@@ -1,9 +1,10 @@
-"""Prove deckcheck passes real BCG decks, except for the waivers in corpus/known-good.yaml.
+"""Prove deckcheck passes real BCG decks, except for the waivers in corpus/known-good.yaml, and that
+deckcheck fix changes only the slides with waived fixable violations.
 
 Usage, from the repo root:
     uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py [RUN_DIR]
 
-Exit 0 on CORPUS PASS, 1 on a waiver mismatch, 2 on a hash mismatch or unreadable deck, 3 on an unreachable deck.
+Exit 0 on CORPUS PASS, 1 on a waiver mismatch, a fix outside its scope, or a failed fix, 2 on a hash mismatch or unreadable deck, 3 on an unreachable deck.
 """
 
 from __future__ import annotations
@@ -16,11 +17,14 @@ import os
 import sys
 import time
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import yaml
+from pptx import Presentation
 
 from deckcheck.cli import main as deckcheck
+from deckcheck.fix import FIXERS
 
 ROOT = Path(__file__).resolve().parents[4]
 MANIFEST = ROOT / ".claude/skills/verify-pptx/corpus/known-good.yaml"
@@ -73,14 +77,46 @@ def fetch(deck: dict) -> Path:
     return path
 
 
+def quiet(argv: list[str], log: Path) -> int:
+    with open(log, "w") as f, contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
+        return deckcheck(argv)
+
+
 def fired_pairs(deck_path: Path, out: Path) -> set[tuple[int, str]]:
     out.mkdir(parents=True, exist_ok=True)
-    with open(out / "stdout.txt", "w") as log, contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
-        code = deckcheck(["check", str(deck_path), "--rules", str(RULES), "--out", str(out)])
+    code = quiet(["check", str(deck_path), "--rules", str(RULES), "--out", str(out)], out / "stdout.txt")
     if code not in (0, 1):
         raise BadDeck(f"deckcheck check exited {code} (see {out / 'stdout.txt'})")
     report = json.loads((out / "report.json").read_text())
     return {(v["slide"], v["rule"]) for v in report["violations"]}
+
+
+def zip_entries(path: Path) -> dict[str, bytes]:
+    with zipfile.ZipFile(path) as z:
+        return {info.filename: z.read(info) for info in z.infolist()}
+
+
+def fix_scope(deck: dict, deck_path: Path, out: Path) -> tuple[int, list[str]]:
+    fixed = out / "fixed.pptx"
+    code = quiet(
+        ["fix", str(deck_path), "--out", str(fixed), "--rules", str(RULES), "--report", str(out / "fix")],
+        out / "fix.txt",
+    )
+    if code not in (0, 1):
+        return 0, [f"CORPUS FAIL: {deck['id']} deckcheck fix exited {code} (see {out / 'fix.txt'})"]
+    if sha256(deck_path) != deck["sha256"]:
+        return 0, [f"CORPUS FAIL: {deck['id']} fix changed its input {deck_path}"]
+    old, new = zip_entries(deck_path), zip_entries(fixed)
+    if old.keys() != new.keys():
+        return 0, [f"CORPUS FAIL: {deck['id']} fix changed the package entries {sorted(old.keys() ^ new.keys())}"]
+    slides = {s.part.partname.membername: i for i, s in enumerate(Presentation(str(deck_path)).slides, start=1)}
+    allowed = {slide for w in deck.get("waivers", []) if w["rule"] in FIXERS for slide in w["slides"]}
+    lines = [
+        f"CORPUS FAIL: {deck['id']} fix changed {name} outside its waived fixable slides"
+        for name in sorted(old)
+        if old[name] != new[name] and slides.get(name) not in allowed
+    ]
+    return len(json.loads((out / "fix" / "fix.json").read_text())["fixed"]), lines
 
 
 def waived_pairs(deck: dict) -> set[tuple[int, str]]:
@@ -97,11 +133,12 @@ def main(argv: list[str]) -> int:
     run = Path(argv[0]) if argv else ROOT / f"artifacts/verify-pptx/corpus-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
     decks = yaml.safe_load(MANIFEST.read_text())["decks"]
     failures: list[str] = []
-    waived = 0
+    waived = fixed = 0
     for deck in decks:
         try:
             path = fetch(deck)
             fired = fired_pairs(path, run / deck["id"])
+            fix_count, stray = fix_scope(deck, path, run / deck["id"])
         except BadDeck as e:
             print(f"CORPUS FAIL: {deck['id']} {e}")
             print(f"evidence: {run}")
@@ -111,12 +148,13 @@ def main(argv: list[str]) -> int:
             print(f"evidence: {run}")
             return 3
         pairs = waived_pairs(deck)
-        failures += mismatches(deck, fired, pairs)
+        failures += mismatches(deck, fired, pairs) + stray
         waived += len(pairs)
+        fixed += fix_count
     for line in failures:
         print(line)
     if not failures:
-        print(f"CORPUS PASS ({len(decks)} decks, {waived} waived slide-rule pairs)")
+        print(f"CORPUS PASS ({len(decks)} decks, {waived} waived slide-rule pairs, {fixed} fixed in scope)")
     print(f"evidence: {run}")
     return 1 if failures else 0
 
