@@ -19,6 +19,7 @@ changes:
         forbid:
           - {text: "Significant impact was achieved", where: title}
           - {text: ["tripled", "triple", "triples", "tripling", "trebled", "threefold", "3x", "3×"], superseded: "00:02:07"}
+          - {text: ["tripled", "triple", "triples", "tripling", "trebled", "threefold"], superseded: "00:06:54", where: deck}
     intent_checks:
       - The title reads as one sentence stating what personalization delivered, a result the board could repeat, not a claim that impact was significant.
       - The 150% is attached to marketing engagement and the $100M to net incremental revenue in year 1; neither figure is described as a tripling.

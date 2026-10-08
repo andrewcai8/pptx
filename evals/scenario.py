@@ -45,7 +45,7 @@ def _load_corpus():
 
 corpus = _load_corpus()
 
-Where = Literal["title", "slide", "chart"]
+Where = Literal["title", "slide", "chart", "deck"]
 EditKind = Literal["edit-text", "update-number", "restyle"]
 EDIT_KINDS: tuple[EditKind, ...] = ("edit-text", "update-number", "restyle")
 
@@ -609,13 +609,13 @@ def _strs(raw: Any, where: str) -> tuple[str, ...]:
     return tuple(_str(s, f"{where}[{i}]") for i, s in enumerate(_list(raw or [], where)))
 
 
-def _where(raw: Any, where: str) -> Where:
-    if raw not in ("title", "slide"):
-        raise BadScenario(f"{where}: where must be title or slide")
+def _where(raw: Any, where: str, places: Sequence[str]) -> Where:
+    if raw not in places:
+        raise BadScenario(f"{where}: where must be {' or '.join(places)}")
     return raw
 
 
-def _fact(raw: Any, where: str, optional: Sequence[str] = ()) -> tuple[Value, Where, dict[str, Any]]:
+def _fact(raw: Any, where: str, optional: Sequence[str] = (), places: Sequence[str] = ("title", "slide")) -> tuple[Value, Where, dict[str, Any]]:
     raw = _keys(raw, where, (), (*facts.KINDS, "where", *optional))
     kinds = [k for k in facts.KINDS if k in raw]
     if len(kinds) != 1:
@@ -628,7 +628,7 @@ def _fact(raw: Any, where: str, optional: Sequence[str] = ()) -> tuple[Value, Wh
         if "where" in raw:
             raise BadScenario(f"{where}: a chart value is read from the slide's chart data, so it takes no where")
         return value, "chart", raw
-    return value, _where(raw.get("where", "slide"), where), raw
+    return value, _where(raw.get("where", "slide"), where, places), raw
 
 
 def _deck_ref(raw: Any, private: bool) -> DeckRef:
@@ -661,7 +661,7 @@ def _facts(raw: dict[str, Any], where: str) -> Facts:
     forbid = []
     for i, f in enumerate(_list(raw.get("forbid") or [], f"{where}.forbid")):
         w = f"{where}.forbid[{i}]"
-        value, at, f = _fact(f, w, ("superseded",))
+        value, at, f = _fact(f, w, ("superseded",), places=("title", "slide", "deck"))
         forbid.append(Forbid(value, at, _stamp(f["superseded"], f"{w}.superseded") if "superseded" in f else None))
     return Facts(tuple(require), tuple(forbid))
 
@@ -866,6 +866,8 @@ def _fact_problems(sc: Scenario, turns: dict[str, Turn]) -> Iterator[str]:
                 else:
                     yield from (f"{label} require {facts.describe(piece)}: {p}" for p in _provenance_problems(sc, piece, r.source, turns))
         for f in fs.forbid:
+            if f.where == "deck" and (kept := next(((k, hit) for k in sc.frozen if (hit := find_in(sc.source, k, f.value))), None)):
+                yield f"{label} forbid {kept[1]!r}: a deck-wide forbid must be absent from every slide no change edits, but source slide {kept[0]} has it"
             if f.superseded is not None:
                 if f.superseded not in turns:
                     yield f"{label} forbid {facts.describe(f.value)}: no transcript turn at {f.superseded}"

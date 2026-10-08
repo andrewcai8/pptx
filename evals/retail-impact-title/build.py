@@ -73,3 +73,8 @@ def title_split_into_two_paragraphs(d: DeckEdit) -> None:
     """The action title is split into two paragraphs, as pressing Enter in PowerPoint gives; Pieter allows two lines."""
     d.slide(15).shapes.title.text_frame.text = "Starbucks personalisation lifted marketing engagement by 150%\nand added $100M net revenue in year one"
 
+
+@variant(base=good, fails={("scope", 5), ("forbidden", 5)})
+def tripled_on_another_slide(d: DeckEdit) -> None:
+    """The title is right, but slide 5's 3x revenue callout now says "Tripled", a word Ines asked to see nowhere."""
+    d.replace(5, "3x", "Tripled")

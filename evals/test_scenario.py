@@ -275,3 +275,29 @@ def test_flag_slides_names_only_a_slide_a_change_edits(private_dir):
         open_scenario(scenario_at(private_dir / "unedited", non_changes=[ask]))
     sc = open_scenario(scenario_at(private_dir / "edited", EDIT_SLIDE_1, non_changes=[ask]))
     assert sc.non_changes[0].cited_by == {1}
+
+
+def two_slides(path: Path) -> Path:
+    prs = Presentation()
+    for text in ("Demand grows 4% a year", "Supply grows 4% a year"):
+        prs.slides.add_slide(prs.slide_layouts[1]).placeholders[1].text_frame.text = text
+    prs.save(path)
+    return path
+
+
+def test_a_deck_wide_forbid_must_be_absent_from_every_slide_no_change_edits(private_dir):
+    def change(forbid: dict) -> list[dict]:
+        return [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [forbid]}}}]
+
+    assert open_scenario(scenario_at(private_dir / "slide", change({"percent": "4%"}), two_slides)).changes[0].slides[1].forbid[0].where == "slide"
+    with pytest.raises(BadScenario, match="c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits, but source slide 2 has it"):
+        open_scenario(scenario_at(private_dir / "deck", change({"percent": "4%", "where": "deck"}), two_slides))
+
+
+def test_a_deck_wide_forbid_fails_every_slide_that_states_it(tmp_path):
+    output = built(tmp_path, "retail-impact-title", "tripled_on_another_slide")
+    assert score.main(["retail-impact-title", str(output)]) == score.FAIL
+    report = json.loads((tmp_path / "score.json").read_text())
+    assert [(f["code"], f["slide"], f["message"]) for f in report["failures"] if f["code"] == "forbidden"] == [
+        ("forbidden", 5, "c1: 'tripled' is on slide 5; it was abandoned after 00:06:54")
+    ]

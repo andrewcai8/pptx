@@ -15,7 +15,7 @@ changes:
       - count: "10 levers"
         from: {said: "00:02:23"}
     forbid:
-      - {count: "8 weeks", superseded: "00:01:50"}
+      - {count: "8 weeks", superseded: "00:01:50", where: deck}
     intent_checks:
       - The title names the Diagnose step or the diagnostic, so the slide reads as the unpacking of STEP 1 on slide 13.
       - The steering-committee readout on 2 December appears as the end point of the diagnostic.

@@ -421,14 +421,17 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
             if found is None:
                 failures.append(Failure(Code.MISSING, ref, change.id, f"{change.id}: {describe(r.value)} is not on {place_name(ref, r.where)}"))
         for f in facts.forbid:
-            if unreadable(f.value, charts, ref, change.id):
+            if f.where == "deck" or unreadable(f.value, charts, ref, change.id):
                 continue
             found = find(f.value, f.where, slide, charts)
             results.append(FactResult(change.id, ref, "forbid", f.value, f.where, found, found is None, superseded=f.superseded))
-            if found and f.superseded:
-                failures.append(Failure(Code.FORBIDDEN, ref, change.id, f"{change.id}: {found!r} is on {place_name(ref, f.where)}; it was abandoned after {f.superseded}"))
-            elif found:
-                failures.append(Failure(Code.FORBIDDEN, ref, change.id, f"{change.id}: {found!r} is still on {place_name(ref, f.where)}"))
+            if found:
+                failures.append(forbidden(change.id, ref, f, found))
+    for change, _, facts in sc.fact_targets:
+        for f in (f for f in facts.forbid if f.where == "deck"):
+            hits = [(slot_ref(slot), found) for slot, s, charts in zip(placement.slots, out.deck.slides, out.charts, strict=True) if (found := find(f.value, "deck", s, charts))]
+            results.append(FactResult(change.id, "deck", "forbid", f.value, "deck", hits[0][1] if hits else None, not hits, superseded=f.superseded))
+            failures += [forbidden(change.id, ref, f, found) for ref, found in hits]
     for nc in sc.non_changes:
         for value in nc.absent:
             hits = [
@@ -439,6 +442,12 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
             results.append(FactResult(nc.id, "deck", "absent", value, "slide", hits[0][1] if hits else None, not hits))
             failures += [Failure(non_change_code(nc), ref, nc.id, f"{nc.id}: {found!r} is on {slide_name(ref)}, but {non_change_reason(nc)}") for ref, found in hits]
     return results, failures
+
+
+def forbidden(by: str, ref: SlideRef, f, found: str) -> Failure:
+    if f.superseded:
+        return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is on {place_name(ref, f.where)}; it was abandoned after {f.superseded}")
+    return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is still on {place_name(ref, f.where)}")
 
 
 def check_layout(sc: Scenario, out: Snapshot, placement: Placement) -> list[Failure]:
