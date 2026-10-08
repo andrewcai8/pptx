@@ -40,7 +40,8 @@ from scenario import (
 from score import BAD, FAIL, OK, UNREACHABLE, Code, SlideRef, line, load_house_rules, run
 
 WORDS = (600, 1500)
-NEGATIVE_CODES = frozenset({Code.SCOPE, Code.NON_CHANGE, Code.GUESSED, Code.MISSING, Code.FORBIDDEN, Code.STRUCTURE, Code.LAYOUT, Code.STYLE})
+# A built output is never the source file and never tampers with it, so no variant can earn a source failure.
+NEGATIVE_CODES = frozenset(Code) - {Code.SOURCE}
 
 
 @dataclass(frozen=True)

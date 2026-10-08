@@ -26,7 +26,7 @@ uv run --project deckcheck python evals/prove.py
 uv run --project deckcheck python evals/prove.py insurance-workshop-prep
 ```
 
-`prove.py` proves only the public scenarios in `evals/`. With no names, it proves all of them and then checks the composition of the set. The set needs at least 5 scenarios on at least 4 decks, and its negatives must cover every failure code. With names, it proves only those scenarios and skips the set checks. It prints one `ok` or `BAD` line per variant, then `PROOF PASS` or `PROOF FAIL`, then the evidence directory. A build script that raises is a `BAD` line and exit 2.
+`prove.py` proves only the public scenarios in `evals/`. With no names, it proves all of them and then checks the composition of the set. The set needs at least 5 scenarios on at least 4 decks, and its negatives must cover every failure code except `source`, which no built output can earn. With names, it proves only those scenarios and skips the set checks. It prints one `ok` or `BAD` line per variant, then `PROOF PASS` or `PROOF FAIL`, then the evidence directory. A build script that raises is a `BAD` line and exit 2.
 
 `prove.py` rebuilds every variant from a fresh copy of the source deck on each run, so the build scripts need no separate command. The outputs and their `score.json` files land under the evidence directory as `<scenario>/<variant>/`.
 
