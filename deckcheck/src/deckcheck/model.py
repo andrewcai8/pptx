@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,11 @@ from pptx.oxml.ns import qn
 from pptx.shapes.picture import Picture
 
 TITLE_TYPES = (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE)
+OWN_MASTER_TYPES = (PP_PLACEHOLDER.DATE, PP_PLACEHOLDER.FOOTER, PP_PLACEHOLDER.SLIDE_NUMBER, PP_PLACEHOLDER.HEADER)
+MASTER_STYLES = {PP_PLACEHOLDER.TITLE: "p:titleStyle", PP_PLACEHOLDER.BODY: "p:bodyStyle"}
+BULLET_TAGS = (qn("a:buNone"), qn("a:buChar"), qn("a:buAutoNum"))
+INVISIBLE = "\u200b\u200c\u200d\ufeff"
+LINE_BREAK = re.compile(r"[\v\n]")
 
 Kind = Literal["title", "body", "text", "table", "chart", "picture", "other"]
 
@@ -38,6 +44,10 @@ class Paragraph:
     runs: tuple[Run, ...]
     is_bullet: bool
     level: int
+
+    @property
+    def lines(self) -> list[str]:
+        return [line.strip() for line in LINE_BREAK.split(self.text) if line.strip()]
 
 
 @dataclass(frozen=True)
@@ -66,6 +76,11 @@ class Slide:
     def title(self) -> str:
         shape = self.title_shape
         return " ".join(p.text.strip() for p in shape.paragraphs) if shape else ""
+
+    @property
+    def headline(self) -> str:
+        shape = self.title_shape
+        return next((line for p in shape.paragraphs for line in p.lines), "") if shape else ""
 
 
 @dataclass(frozen=True)
@@ -121,7 +136,7 @@ def load_deck(path: str | Path) -> Deck:
     for index, slide in enumerate(prs.slides, start=1):
         layout = slide.slide_layout
         theme = themes.setdefault(id(layout.slide_master.part), _theme_fonts(layout.slide_master))
-        shapes = tuple(_shapes(slide.shapes, theme, Transform()))
+        shapes = tuple(_shapes(slide.shapes, layout, theme, Transform()))
         layout_has_title = any(ph.placeholder_format.type in TITLE_TYPES for ph in layout.placeholders)
         slides.append(Slide(index, layout.name, layout_has_title, shapes))
     return Deck(
@@ -143,10 +158,10 @@ def _theme_fonts(master) -> ThemeFonts:
     return ThemeFonts(major=latin("majorFont"), minor=latin("minorFont"))
 
 
-def _shapes(shapes, theme: ThemeFonts, t: Transform):
+def _shapes(shapes, layout, theme: ThemeFonts, t: Transform):
     for shape in shapes:
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-            yield from _shapes(shape.shapes, theme, _compose(t, shape))
+            yield from _shapes(shape.shapes, layout, theme, _compose(t, shape))
             continue
         kind = _kind(shape)
         left, top = shape.left or 0, shape.top or 0
@@ -158,7 +173,7 @@ def _shapes(shapes, theme: ThemeFonts, t: Transform):
             top=round(top * t.sy + t.dy),
             width=round(width * t.sx),
             height=round(height * t.sy),
-            paragraphs=tuple(_paragraphs(shape, kind, theme)),
+            paragraphs=tuple(_paragraphs(shape, kind, theme, _bullet_styles(shape, layout))),
         )
 
 
@@ -195,7 +210,7 @@ def _kind(shape) -> Kind:
     return "other"
 
 
-def _paragraphs(shape, kind: Kind, theme: ThemeFonts):
+def _paragraphs(shape, kind: Kind, theme: ThemeFonts, styles: tuple):
     if kind == "table":
         frames = [cell.text_frame for cell in shape.table.iter_cells()]
     elif shape.has_text_frame:
@@ -214,14 +229,45 @@ def _paragraphs(shape, kind: Kind, theme: ThemeFonts):
                 )
                 for r in p.runs
             )
-            yield Paragraph(text=p.text, runs=runs, is_bullet=_is_bullet(p, kind), level=p.level)
+            yield Paragraph(text=p.text, runs=runs, is_bullet=_is_bullet(p, styles, kind), level=p.level)
 
 
-def _is_bullet(p, kind: Kind) -> bool:
-    pPr = p._p.pPr
-    if pPr is not None:
-        if pPr.find(qn("a:buChar")) is not None or pPr.find(qn("a:buAutoNum")) is not None:
-            return True
-        if pPr.find(qn("a:buNone")) is not None:
-            return False
+# The list styles a paragraph inherits bullets from, nearest first: the shape's own, the matching
+# layout placeholder's, the matching master placeholder's, then the master text style for that type.
+def _bullet_styles(shape, layout) -> tuple:
+    master = layout.slide_master
+    styles = [_list_style(shape._element)]
+    master_type = None
+    if shape.is_placeholder:
+        ph = shape._element
+        base = next((p for p in layout.placeholders if p._element.ph_idx == ph.ph_idx), None) or next(
+            (p for p in layout.placeholders if p._element.ph_type == ph.ph_type), None
+        )
+        master_type = _master_type(base._element.ph_type if base is not None else ph.ph_type)
+        master_ph = next((p for p in master.placeholders if p._element.ph_type == master_type), None)
+        styles += [_list_style(p._element) for p in (base, master_ph) if p is not None]
+    tx_styles = master._element.find(qn("p:txStyles"))
+    if tx_styles is not None:
+        styles.append(tx_styles.find(qn(MASTER_STYLES.get(master_type, "p:otherStyle"))))
+    return tuple(s for s in styles if s is not None)
+
+
+def _master_type(ph_type) -> PP_PLACEHOLDER:
+    if ph_type in TITLE_TYPES:
+        return PP_PLACEHOLDER.TITLE
+    return ph_type if ph_type in OWN_MASTER_TYPES else PP_PLACEHOLDER.BODY
+
+
+def _list_style(element):
+    body = element.find(qn("p:txBody"))
+    return body.find(qn("a:lstStyle")) if body is not None else None
+
+
+def _is_bullet(p, styles: tuple, kind: Kind) -> bool:
+    level = qn(f"a:lvl{p.level + 1}pPr")
+    for pPr in (p._p.pPr, *(s.find(level) for s in styles)):
+        bullet = next(pPr.iterchildren(*BULLET_TAGS), None) if pPr is not None else None
+        if bullet is not None:
+            char = bullet.get("char", "")
+            return bullet.tag == qn("a:buAutoNum") or any(not c.isspace() and c not in INVISIBLE for c in char)
     return kind == "body"

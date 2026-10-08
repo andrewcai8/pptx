@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from deckcheck.model import Deck, Violation
+from deckcheck.model import Deck, Shape, Violation
 
 Rule = Callable[[Deck, dict[str, Any]], Iterable[Violation]]
 Param = Callable[[Any], Any]
@@ -139,13 +139,13 @@ def slide_has_title(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
 @rule("title-max-chars", max=_int)
 def title_max_chars(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
-        if len(slide.title) > params["max"] and slide.title_shape:
+        if len(slide.headline) > params["max"] and slide.title_shape:
             yield Violation(
                 "title-max-chars",
                 slide.index,
                 slide.title_shape.name,
-                f"title is {len(slide.title)} chars, max {params['max']}",
-                slide.title,
+                f"title is {len(slide.headline)} chars, max {params['max']}",
+                slide.headline,
             )
 
 
@@ -206,15 +206,26 @@ def within_slide_bounds(deck: Deck, params: dict[str, Any]) -> Iterator[Violatio
                 )
 
 
+# A table holds data when a cell has a percent, a currency symbol, or a number like 3.5 or 1,200.
+NUMBER_LIKE = re.compile(r"[%$€£¥]|\d[.,]\d")
+
+
+def _is_data(shape: Shape) -> bool:
+    return shape.kind == "chart" or (
+        shape.kind == "table" and any(NUMBER_LIKE.search(p.text) for p in shape.paragraphs)
+    )
+
+
 @rule("source-on-data-slides", prefix=_str)
 def source_on_data_slides(deck: Deck, params: dict[str, Any]) -> Iterator[Violation]:
     for slide in deck.slides:
-        data = [s for s in slide.shapes if s.kind in ("chart", "table")]
+        data = [s for s in slide.shapes if _is_data(s)]
         has_source = any(
-            p.text.strip().startswith(params["prefix"])
+            line.startswith(params["prefix"])
             for s in slide.shapes
             if s.kind != "table"
             for p in s.paragraphs
+            for line in p.lines
         )
         if data and not has_source:
             yield Violation(

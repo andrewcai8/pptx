@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.enum.shapes import MSO_SHAPE
+from pptx.oxml.ns import qn
 from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Emu, Inches, Pt
 
@@ -213,3 +216,79 @@ def test_bu_none_paragraph_in_body_placeholder_is_not_a_bullet(
         "slide 1 [no-bullet-end-punctuation] Content Placeholder 2: bullet ends with '.' | An inherited bullet.\n",
         "",
     )
+
+
+@pytest.mark.parametrize(("char", "expected"), [("\u200b", (0, [])), ("\u2022", (1, [(1, "no-bullet-end-punctuation")]))])
+def test_body_paragraph_inherits_its_bullet_from_the_master(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], char: str, expected: tuple[int, list]
+) -> None:
+    prs = Presentation()
+    body_style = prs.slide_master.element.find(qn("p:txStyles")).find(qn("p:bodyStyle"))
+    body_style.find(qn("a:lvl1pPr")).find(qn("a:buChar")).set("char", char)
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "Bullets"
+    slide.placeholders[1].text_frame.text = "A prose sentence."
+    deck = tmp_path / "bullets.pptx"
+    prs.save(str(deck))
+    rules = write_rules(tmp_path, 'rules:\n  no-bullet-end-punctuation:\n    chars: "."\n')
+
+    assert violations(deck, rules, tmp_path, capsys) == expected
+
+
+SOURCE_RULES = "rules:\n  source-on-data-slides:\n    prefix: Source\n"
+
+
+def add_chart(slide) -> None:
+    data = CategoryChartData()
+    data.categories = ["2024", "2025"]
+    data.add_series("Share", (12, 16))
+    slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.5), Inches(1.5), Inches(9), Inches(4.5), data)
+
+
+def add_table(slide, cells: list[str]) -> None:
+    table = slide.shapes.add_table(1, len(cells), Inches(0.5), Inches(1.5), Inches(9), Inches(1)).table
+    for c, value in enumerate(cells):
+        table.cell(0, c).text = value
+
+
+def add_footnote(slide, text: str) -> None:
+    slide.shapes.add_textbox(Inches(0.5), Inches(6.6), Inches(9), Inches(0.4)).text_frame.text = text
+
+
+def test_source_may_follow_a_note_on_a_later_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prs = Presentation()
+    for footnote in ["Note: Shares are rounded\vSource: Company filings", "Note: Shares are rounded"]:
+        slide = prs.slides.add_slide(prs.slide_layouts[BLANK])
+        add_chart(slide)
+        add_footnote(slide, footnote)
+    deck = tmp_path / "footnotes.pptx"
+    prs.save(str(deck))
+
+    assert violations(deck, write_rules(tmp_path, SOURCE_RULES), tmp_path, capsys) == (
+        1,
+        [(2, "source-on-data-slides")],
+    )
+
+
+def test_only_tables_with_numbers_need_a_source(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prs = Presentation()
+    for cells in [["Stores", "Offices", "Warehouses"], ["Stores", "Offices", "42%"]]:
+        add_table(prs.slides.add_slide(prs.slide_layouts[BLANK]), cells)
+    deck = tmp_path / "tables.pptx"
+    prs.save(str(deck))
+
+    assert violations(deck, write_rules(tmp_path, SOURCE_RULES), tmp_path, capsys) == (
+        1,
+        [(2, "source-on-data-slides")],
+    )
+
+
+def test_title_length_counts_only_the_headline(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prs = Presentation()
+    for title in ["Short headline\v" + "s" * 160, "h" * 151]:
+        prs.slides.add_slide(prs.slide_layouts[TITLE_ONLY]).shapes.title.text = title
+    deck = tmp_path / "titles.pptx"
+    prs.save(str(deck))
+    rules = write_rules(tmp_path, "rules:\n  title-max-chars:\n    max: 150\n")
+
+    assert violations(deck, rules, tmp_path, capsys) == (1, [(2, "title-max-chars")])
