@@ -25,7 +25,7 @@ from typing import Literal
 
 from deckcheck.cli import write_atomic
 from deckcheck.diff import diff_decks
-from deckcheck.model import Deck, DeckError, Slide, Violation
+from deckcheck.model import DeckError, Slide, Violation
 from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
 from facts import ChartValue, Value, describe, match, normalize, to_json
 from scenario import (
@@ -50,9 +50,9 @@ from scenario import (
     corpus,
     find,
     in_notes,
-    on_slide,
     open_scenario,
     snapshot,
+    visible,
 )
 
 OK, FAIL, BAD, UNREACHABLE = 0, 1, 2, 3
@@ -366,12 +366,6 @@ def clauses(slide: Slide) -> list[str]:
     return found
 
 
-def visible(deck: Deck, i: int) -> Slide:
-    """Slide i with only the shapes that overlap the slide, so text parked off the slide is neither required nor kept."""
-    slide = deck.slides[i]
-    return replace(slide, shapes=tuple(s for s in slide.shapes if on_slide(s, deck.slide_width, deck.slide_height)))
-
-
 def lost_text(before: Slide, after: Slide, replaced: list[Value]) -> list[str]:
     """Source clauses no output shape still says, in order, with at most GAP new words between two of their words. A
     clause that states a value the edit replaces is the edit's own to rewrite."""
@@ -427,7 +421,7 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
         if slot not in placement.index or isinstance(slot, SourceSlot) and slot.slide not in applied:
             continue
         i = placement.index[slot]
-        slide, charts = out.deck.slides[i], out.charts[i]
+        slide, charts = visible(out.deck, i), out.charts[i]
         ref = slot_ref(slot)
         for r in facts.require:
             if unreadable(r.value, charts, ref, change.id):
@@ -447,8 +441,8 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
         for f in (f for f in facts.forbid if f.where == "deck"):
             hits = [
                 (slot_ref(slot), found, where)
-                for slot, s, charts, notes in zip(placement.slots, out.deck.slides, out.charts, out.notes, strict=True)
-                for found, where in ((find(f.value, "deck", s, charts), "deck"), (in_notes(f.value, notes), "notes"))
+                for i, (slot, charts, notes) in enumerate(zip(placement.slots, out.charts, out.notes, strict=True))
+                for found, where in ((find(f.value, "deck", visible(out.deck, i), charts), "deck"), (in_notes(f.value, notes), "notes"))
                 if found
             ]
             results.append(FactResult(change.id, "deck", "forbid", f.value, "deck", hits[0][1] if hits else None, not hits, superseded=f.superseded))
@@ -457,8 +451,8 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
         for value in nc.absent:
             hits = [
                 (slot_ref(slot), found)
-                for slot, s, charts in zip(placement.slots, out.deck.slides, out.charts, strict=True)
-                if not unreadable(value, charts, slot_ref(slot), nc.id) and (found := find(value, "slide", s, charts))
+                for i, (slot, charts) in enumerate(zip(placement.slots, out.charts, strict=True))
+                if not unreadable(value, charts, slot_ref(slot), nc.id) and (found := find(value, "slide", visible(out.deck, i), charts))
             ]
             results.append(FactResult(nc.id, "deck", "absent", value, "slide", hits[0][1] if hits else None, not hits))
             failures += [Failure(non_change_code(nc), ref, nc.id, f"{nc.id}: {found!r} is on {slide_name(ref)}, but {non_change_reason(nc)}") for ref, found in hits]

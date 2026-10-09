@@ -1,7 +1,9 @@
 import copy
 
 from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.oxml.ns import qn
+from pptx.util import Inches
 
 from deckedit import DeckEdit, variant
 
@@ -129,6 +131,13 @@ def chart_rebuilt_with_replace_data(d: DeckEdit) -> None:
 def chart_rebuilt_with_named_series(d: DeckEdit) -> None:
     """Slide 10's chart is rebuilt with replace_data under a named series, the way add_series asks for one, with every bar kept."""
     _rebuild_chart(d, (410, 2000, 11000), ("2022", "2027", "Potential"), name="Market size ($m)")
+
+
+@variant(base=good, fails={("lost", 10)})
+def chart_2027_bar_overwritten_with_copy_off_slide(d: DeckEdit) -> None:
+    """The 2027 bar is overwritten with 410, and a correct copy of the chart is parked past the slide's right edge."""
+    _chart_2022_bar(d, "2000", "410")
+    d.slide(10).shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(30), Inches(1), Inches(4), Inches(3), _chart_data((410, 2000, 11000), ("2022", "2027", "Potential")))
 
 
 @variant(base=good, fails={("lost", 10)})

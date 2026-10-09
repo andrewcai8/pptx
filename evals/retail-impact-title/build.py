@@ -1,3 +1,5 @@
+from pptx.util import Inches
+
 from deckedit import DeckEdit, variant
 
 OLD_TITLE = "Significant impact was achieved"
@@ -90,3 +92,9 @@ def tripled_in_speaker_notes(d: DeckEdit) -> None:
 def talk_track_in_speaker_notes(d: DeckEdit) -> None:
     """Slide 15 gains speaker notes that walk through the 150% and the $100M without the word Ines ruled out."""
     d.slide(15).notes_slide.notes_text_frame.text = "Talk track: lead with the 150% engagement lift, then the $100M net incremental revenue in year 1."
+
+
+@variant(base=good, fails={("missing", 15)})
+def title_moved_off_slide(d: DeckEdit) -> None:
+    """Slide 15 gets the action title, but its title box is dragged far below the slide, so no reader sees it."""
+    d.slide(15).shapes.title.top = Inches(30)

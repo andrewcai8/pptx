@@ -11,7 +11,7 @@ import os
 import re
 import sys
 from collections.abc import Iterable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from functools import cached_property
 from pathlib import Path
@@ -362,7 +362,12 @@ def in_notes(value: Value, notes: tuple[str, ...]) -> str | None:
 
 
 def find_in(snap: Snapshot, k: int, value: Value, where: Where = "slide") -> str | None:
-    return find(value, where, snap.deck.slides[k - 1], snap.charts[k - 1])
+    return find(value, where, visible(snap.deck, k - 1), snap.charts[k - 1])
+
+
+def visible(deck: Deck, i: int) -> Slide:
+    slide = deck.slides[i]
+    return replace(slide, shapes=tuple(s for s in slide.shapes if on_slide(s, deck.slide_width, deck.slide_height) and not hidden(s.xml)))
 
 
 def sha256(path: Path) -> str:
@@ -397,7 +402,7 @@ def _snapshot(prs: Presentation, path: Path, data: bytes) -> Snapshot:
     shared = sorted(
         _content(p) for m in prs.slide_masters for p in (m.part, m.part.part_related_by(RT.THEME), *(layout.part for layout in m.slide_layouts))
     )
-    charts = tuple(_read_charts(s.shapes) for s in slides)
+    charts = tuple(_read_charts(s.shapes, prs.slide_width, prs.slide_height) for s in slides)
     pieces = tuple(tuple(_pieces(s.shapes, prs.slide_width, prs.slide_height)) for s in slides)
     notes = tuple(_notes(s) for s in slides)
     deck = read_deck(prs, str(path), hashlib.sha256(data).hexdigest())
@@ -447,10 +452,10 @@ def _blank_notes(rel) -> bool:
     return not "".join(notes._element.itertext(qn("a:t"))).strip() and all(r.reltype in NOT_SLIDE_CONTENT for r in notes.rels.values())
 
 
-def _read_charts(shapes: SlideShapes) -> Charts:
+def _read_charts(shapes: SlideShapes, width: int, height: int) -> Charts:
     values: list[Decimal] = []
     unreadable: list[str] = []
-    for chart in _charts(shapes):
+    for chart in (s.chart for s in _shown(shapes, width, height) if s.has_chart):
         try:
             values += [Decimal(str(v)) for plot in chart.plots for series in plot.series for v in series.values if v is not None]
         except ValueError:
@@ -463,17 +468,13 @@ def _plots(chart: Chart) -> tuple[str, ...]:
     return tuple(etree.QName(x).localname for x in chart._chartSpace.plotArea.iter_xCharts())
 
 
-# Pieces are read from the XML, never through python-pptx getters that add elements, and a piece counts only while its
-# top-level shape overlaps the slide, so moving it off the slide loses it.
-def _pieces(shapes: SlideShapes, width: int, height: int, top_level: bool = True) -> Iterator[Piece]:
-    for shape in shapes:
-        if top_level and not on_slide(shape, width, height):
-            continue
+# Pieces are read from the XML, never through python-pptx getters that add elements.
+def _pieces(shapes: SlideShapes, width: int, height: int) -> Iterator[Piece]:
+    for shape in _shown(shapes, width, height):
         el = shape._element
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
             members = sorted(etree.QName(child).localname for child in shape.shapes._spTree.iter_shape_elms())
             yield Piece("group", " ".join(members), shape.name)
-            yield from _pieces(shape.shapes, width, height, top_level=False)
         elif shape.has_chart:
             chart = shape.chart
             yield Piece("chart", f"{len(chart._chartSpace.findall('.//' + qn('c:ser')))} series", shape.name, _plots(chart))
@@ -490,18 +491,26 @@ def _pieces(shapes: SlideShapes, width: int, height: int, top_level: bool = True
             yield Piece("object", " ".join(filter(None, (data.get("uri") if data is not None else None, ole.get("progId") if ole is not None else None))), shape.name)
 
 
+def _shown(shapes: SlideShapes, width: int, height: int, top_level: bool = True) -> Iterator:
+    for shape in shapes:
+        if hidden(shape._element) or top_level and not on_slide(shape, width, height):
+            continue
+        yield shape
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _shown(shape.shapes, width, height, top_level=False)
+
+
 def on_slide(shape, width: int, height: int) -> bool:
     if None in (shape.left, shape.top, shape.width, shape.height):
         return True
     return shape.left < width and shape.top < height and shape.left + shape.width > 0 and shape.top + shape.height > 0
 
 
-def _charts(shapes: SlideShapes) -> Iterator[Chart]:
-    for shape in shapes:
-        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-            yield from _charts(shape.shapes)
-        elif shape.has_chart:
-            yield shape.chart
+HIDDEN = etree.XPath("./*/p:cNvPr[@hidden='1' or @hidden='true']", namespaces={"p": "http://schemas.openxmlformats.org/presentationml/2006/main"})
+
+
+def hidden(el: etree._Element) -> bool:
+    return any(HIDDEN(e) for e in (el, *el.iterancestors(qn("p:grpSp"))))
 
 
 def resolve(arg: str | Path) -> Path:

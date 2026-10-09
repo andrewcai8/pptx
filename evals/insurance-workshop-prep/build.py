@@ -320,3 +320,16 @@ def footnote_2_kept_in_white_behind_curve(d: DeckEdit) -> None:
     """Footnote 2 is overwritten with the member survey, and its old text sits at 8pt white behind the curve, where no reader sees it."""
     curve = shape(d, "Object 12")
     survey_over_footnote_2(d, left=curve.left, top=curve.top, white=True)
+
+
+@variant(fails={("lost", 5)})
+def footnote_2_kept_in_hidden_box(d: DeckEdit) -> None:
+    """Footnote 2 is overwritten with the member survey, and its old text sits in a box the selection pane hides."""
+    survey_over_footnote_2(d)
+    d.slide(5).shapes[-1]._element.nvSpPr.cNvPr.set("hidden", "1")
+
+
+@variant(base=good, fails={("lost", 5)})
+def curve_graphic_hidden(d: DeckEdit) -> None:
+    """The census curve graphic stays in place but is hidden, so the slide shows no curve."""
+    shape(d, "Object 12")._element[0][0].set("hidden", "1")
