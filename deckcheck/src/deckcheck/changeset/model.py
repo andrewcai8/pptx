@@ -7,11 +7,11 @@ which the other pieces derive their types from.
 from __future__ import annotations
 
 import json
-import math
+import re
 from pathlib import Path
 from typing import Annotated, ClassVar, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 DecisionKind = Literal["keep_new", "keep_old", "edited"]
 SLIDE_DECISIONS: tuple[DecisionKind, ...] = ("keep_new", "keep_old")
@@ -28,6 +28,7 @@ ChangeId = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")]
 Index = Annotated[int, Field(ge=0)]
 NonEmpty = Annotated[str, Field(min_length=1)]
 Number = Annotated[float, Field(allow_inf_nan=False)]
+NUMBER_TEXT = re.compile(r"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$")
 
 
 class Ref(Wire):
@@ -83,6 +84,13 @@ class Op(Wire):
     def edit(self, text: str) -> Op:
         raise ValueError(f"{self.kind} admits keep_new or keep_old only")
 
+    def _edited(self, text: str, /, **update: object) -> Op:
+        """The op with the reviewer's text, validated like the maker's: model_copy would skip validation."""
+        try:
+            return self.model_validate({**dict(self), **update})
+        except ValidationError as e:
+            raise ValueError(f"edited text {text!r}: {e.errors()[0]['msg']}") from None
+
 
 class ReplaceText(Op):
     """Replace the quote `old`, which occurs exactly once in the shape (or in paragraph `paragraph`), with `new`.
@@ -99,8 +107,8 @@ class ReplaceText(Op):
         default=None, description="index among all a:p of the shape, blank ones included; only to tell apart a quote that repeats"
     )
 
-    def edit(self, text: str) -> ReplaceText:
-        return self.model_copy(update={"new": text})
+    def edit(self, text: str) -> Op:
+        return self._edited(text, new=text)
 
 
 class InsertParagraph(Op):
@@ -114,8 +122,8 @@ class InsertParagraph(Op):
     after: Index
     text: NonEmpty
 
-    def edit(self, text: str) -> InsertParagraph:
-        return self.model_copy(update={"text": text})
+    def edit(self, text: str) -> Op:
+        return self._edited(text, text=text)
 
 
 class SetCell(Op):
@@ -130,8 +138,8 @@ class SetCell(Op):
     old: str
     new: str
 
-    def edit(self, text: str) -> SetCell:
-        return self.model_copy(update={"new": text})
+    def edit(self, text: str) -> Op:
+        return self._edited(text, new=text)
 
 
 class SetChartValue(Op):
@@ -146,14 +154,10 @@ class SetChartValue(Op):
     old: Number
     new: Number
 
-    def edit(self, text: str) -> SetChartValue:
-        try:
-            value = float(text.strip().replace(",", ""))
-        except ValueError:
-            raise ValueError(f"edited value {text!r} is not a number") from None
-        if not math.isfinite(value):
-            raise ValueError(f"edited value {text!r} is not a number")
-        return self.model_copy(update={"new": value})
+    def edit(self, text: str) -> Op:
+        if not NUMBER_TEXT.match(text.strip()):
+            raise ValueError(f"edited value {text!r} is not a number like 1234.5 or 1,234.5")
+        return self._edited(text, new=float(text.strip().replace(",", "")))
 
 
 class AddSlide(Op):
@@ -178,12 +182,10 @@ class FillPlaceholder(Op):
     shape: ShapeId
     paragraphs: Annotated[tuple[Paragraph, ...], Field(min_length=1)]
 
-    def edit(self, text: str) -> FillPlaceholder:
+    def edit(self, text: str) -> Op:
         levels = [p.level for p in self.paragraphs]
         lines = text.split("\n")
-        return self.model_copy(
-            update={"paragraphs": tuple(Paragraph(text=t, level=levels[min(i, len(levels) - 1)]) for i, t in enumerate(lines))}
-        )
+        return self._edited(text, paragraphs=tuple(Paragraph(text=t, level=levels[min(i, len(levels) - 1)]) for i, t in enumerate(lines)))
 
 
 class DeleteSlide(Op):

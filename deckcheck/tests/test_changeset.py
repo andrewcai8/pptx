@@ -73,6 +73,7 @@ ADD = {"kind": "add_slide", "layout": "Title and Content", "after": 257}
 FILL = {"kind": "fill_placeholder", "slide": "add", "shape": 3, "paragraphs": [{"text": "Raise list prices"}, {"text": "Hold discounts", "level": 1}]}
 MOVE = {"kind": "move_slide", "slide": 256, "after": 257}
 DELETE = {"kind": "delete_slide", "slide": 257}
+INSERT = {"kind": "insert_paragraph", "slide": 256, "shape": 4, "after": 0, "text": "Up from 9%"}
 LABEL_OP = {"kind": "replace_text", "slide": 258, "shape": 3, "old": "+9%", "new": "+10%"}
 
 
@@ -174,7 +175,7 @@ def test_edited_decisions_write_the_reviewers_text(deck: Path, tmp_path: Path, c
         [
             change("c1", REVENUE, {"edited": "18%"}),
             change("c2", CELL, {"edited": "$125m"}),
-            change("c3", POINT, {"edited": "125"}),
+            change("c3", POINT, {"edited": "1,234.5"}),
             change("add", ADD, "keep_new"),
             change("fill", FILL, {"edited": "Raise prices\nHold discounts\nReview in May"}),
         ],
@@ -186,7 +187,7 @@ def test_edited_decisions_write_the_reviewers_text(deck: Path, tmp_path: Path, c
     assert (code, printed) == (0, f"APPLIED {cs} -> {out}: 1 kept new, 4 edited, 0 kept old, 0 dropped, sha256 {sha(out)}\n")
     assert paragraphs(out, 256, 4) == ["Revenue grew 18% in 2025"]
     assert cell(out) == "$125m"
-    assert chart_values(out) == ((100.0, 125.0), 125)
+    assert chart_values(out) == ((100.0, 1234.5), 1234.5)
     slide = next(s for s in Presentation(str(out)).slides if s.slide_id == 259)
     body = next(s for s in slide.shapes if s.shape_id == 3)
     assert [(p.text, p.level) for p in body.text_frame.paragraphs] == [("Raise prices", 0), ("Hold discounts", 1), ("Review in May", 1)]
@@ -387,7 +388,10 @@ def bad_json(deck: Path) -> Path:
         ),
         (lambda d: changeset(d, [change("c1", REVENUE, before="12%")]), "c1 before: the engine reads this from the source deck; remove it"),
         (lambda d: changeset(d, [change("c1", DELETE, {"edited": "Costs"})]), "c1 decision: delete_slide admits keep_new or keep_old only"),
-        (lambda d: changeset(d, [change("c1", POINT, {"edited": "lots"})]), "c1 decision: edited value 'lots' is not a number"),
+        (lambda d: changeset(d, [change("c1", POINT, {"edited": "lots"})]), "c1 decision: edited value 'lots' is not a number like 1234.5 or 1,234.5"),
+        (lambda d: changeset(d, [change("c1", POINT, {"edited": "1,5"})]), "c1 decision: edited value '1,5' is not a number like 1234.5 or 1,234.5"),
+        (lambda d: changeset(d, [change("c1", POINT, {"edited": "1_000"})]), "c1 decision: edited value '1_000' is not a number like 1234.5 or 1,234.5"),
+        (lambda d: changeset(d, [change("c1", INSERT, {"edited": ""})]), "c1 decision: edited text '': String should have at least 1 character"),
         (
             lambda d: changeset(d, [change("c1", {**LABEL_OP, "new": "+9'%"})]),
             "c1 op.new: a field's text cannot take an apostrophe, which its format uses for quoting",
@@ -414,6 +418,9 @@ def bad_json(deck: Path) -> Path:
         "maker-written-before",
         "edited-delete",
         "non-numeric-chart-edit",
+        "decimal-comma-chart-edit",
+        "underscore-chart-edit",
+        "empty-edited-paragraph",
         "apostrophe-inserted-into-a-field",
         "malformed-json",
         "unknown-op-kind",

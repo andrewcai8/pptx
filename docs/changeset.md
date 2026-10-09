@@ -55,7 +55,7 @@ The engine reads each change's old text from the source deck and decides from th
 
 ### Decisions
 
-The review app writes each change's decision into the ChangeSet: `"keep_new"`, `"keep_old"`, or `{"edited": "<text>"}`. A missing decision is `"pending"`. `edited` replaces what the change writes: `new` for `replace_text` and `set_cell`, `text` for `insert_paragraph`, a number for `set_chart_value`, and one paragraph per line for `fill_placeholder`. `add_slide`, `delete_slide`, and `move_slide` take `keep_new` or `keep_old` only. A `fill_placeholder` whose `add_slide` is kept old is dropped, and `apply` says so.
+The review app writes each change's decision into the ChangeSet: `"keep_new"`, `"keep_old"`, or `{"edited": "<text>"}`. A missing decision is `"pending"`. `edited` replaces what the change writes: `new` for `replace_text` and `set_cell`, `text` for `insert_paragraph`, a number for `set_chart_value`, written with `.` for decimals and optionally commas between groups of three digits (`1234.5` or `1,234.5`), and one paragraph per line for `fill_placeholder`. The edited text must meet the same rules as the maker's, so an empty `insert_paragraph` is refused. `add_slide`, `delete_slide`, and `move_slide` take `keep_new` or `keep_old` only. A `fill_placeholder` whose `add_slide` is kept old is dropped, and `apply` says so.
 
 The engine checks every change against every other whatever the decisions, so any set of decisions gives a valid deck. All `keep_old` gives the source deck byte for byte. All `keep_new` gives the executed deck byte for byte. The same decisions always give the same bytes.
 
