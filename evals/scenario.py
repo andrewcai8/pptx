@@ -11,9 +11,10 @@ import os
 import re
 import sys
 from collections.abc import Iterable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from functools import cached_property
+from itertools import chain
 from pathlib import Path
 from typing import Any, Literal
 
@@ -231,7 +232,7 @@ PieceKind = Literal["picture", "chart", "table", "object", "group"]
 @dataclass(frozen=True)
 class Piece:
     """A non-text thing on a slide, matched across decks by kind and a signature an edit does not change: a picture's
-    image hash, a chart's series, a table's shape, an embedded object's type, a group's member kinds. A chart
+    image hash, a chart's number of series, a table's shape, an embedded object's type, a group's member kinds. A chart
     also carries its plot types, so a redraw in another type is told apart from a lost chart."""
 
     kind: PieceKind
@@ -251,6 +252,7 @@ class Snapshot:
     looks: tuple[Look, ...]
     charts: tuple[Charts, ...]
     pieces: tuple[tuple[Piece, ...], ...]
+    notes: tuple[tuple[str, ...], ...]
     shared: str
 
 
@@ -355,8 +357,18 @@ def find(value: Value, where: Where, slide: Slide, charts: Charts) -> str | None
     return next((hit for t in texts(slide, where) if (hit := facts.match(value, t))), None)
 
 
+def in_notes(value: Value, notes: tuple[str, ...]) -> str | None:
+    """Where a slide's speaker notes state the value. Only a `where: deck` forbid reads notes."""
+    return next((hit for t in notes if (hit := facts.match(value, t))), None)
+
+
 def find_in(snap: Snapshot, k: int, value: Value, where: Where = "slide") -> str | None:
-    return find(value, where, snap.deck.slides[k - 1], snap.charts[k - 1])
+    return find(value, where, visible(snap.deck, k - 1), snap.charts[k - 1])
+
+
+def visible(deck: Deck, i: int) -> Slide:
+    slide = deck.slides[i]
+    return replace(slide, shapes=tuple(s for s in slide.shapes if on_slide(s, deck.slide_width, deck.slide_height) and not hidden(s.xml)))
 
 
 def sha256(path: Path) -> str:
@@ -391,10 +403,17 @@ def _snapshot(prs: Presentation, path: Path, data: bytes) -> Snapshot:
     shared = sorted(
         _content(p) for m in prs.slide_masters for p in (m.part, m.part.part_related_by(RT.THEME), *(layout.part for layout in m.slide_layouts))
     )
-    charts = tuple(_read_charts(s.shapes) for s in slides)
+    charts = tuple(_read_charts(s.shapes, prs.slide_width, prs.slide_height) for s in slides)
     pieces = tuple(tuple(_pieces(s.shapes, prs.slide_width, prs.slide_height)) for s in slides)
+    notes = tuple(_notes(s) for s in slides)
     deck = read_deck(prs, str(path), hashlib.sha256(data).hexdigest())
-    return Snapshot(deck, tuple(s.slide_id for s in slides), looks, charts, pieces, _digest(shared))
+    return Snapshot(deck, tuple(s.slide_id for s in slides), looks, charts, pieces, notes, _digest(shared))
+
+
+# Guarded by has_notes_slide, because reading slide.notes_slide on a slide without notes adds a notes page.
+def _notes(slide) -> tuple[str, ...]:
+    frame = slide.notes_slide.notes_text_frame if slide.has_notes_slide else None
+    return tuple(p.text for p in frame.paragraphs) if frame else ()
 
 
 def _digest(items: Iterable[str]) -> str:
@@ -434,10 +453,10 @@ def _blank_notes(rel) -> bool:
     return not "".join(notes._element.itertext(qn("a:t"))).strip() and all(r.reltype in NOT_SLIDE_CONTENT for r in notes.rels.values())
 
 
-def _read_charts(shapes: SlideShapes) -> Charts:
+def _read_charts(shapes: SlideShapes, width: int, height: int) -> Charts:
     values: list[Decimal] = []
     unreadable: list[str] = []
-    for chart in _charts(shapes):
+    for chart in (s.chart for s in _shown(shapes, width, height) if s.has_chart):
         try:
             values += [Decimal(str(v)) for plot in chart.plots for series in plot.series for v in series.values if v is not None]
         except ValueError:
@@ -450,21 +469,16 @@ def _plots(chart: Chart) -> tuple[str, ...]:
     return tuple(etree.QName(x).localname for x in chart._chartSpace.plotArea.iter_xCharts())
 
 
-# Pieces are read from the XML, never through python-pptx getters that add elements, and a piece counts only while its
-# top-level shape overlaps the slide, so moving it off the slide loses it.
-def _pieces(shapes: SlideShapes, width: int, height: int, top_level: bool = True) -> Iterator[Piece]:
-    for shape in shapes:
-        if top_level and not _on_slide(shape, width, height):
-            continue
+# Pieces are read from the XML, never through python-pptx getters that add elements.
+def _pieces(shapes: SlideShapes, width: int, height: int) -> Iterator[Piece]:
+    for shape in _shown(shapes, width, height):
         el = shape._element
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
             members = sorted(etree.QName(child).localname for child in shape.shapes._spTree.iter_shape_elms())
             yield Piece("group", " ".join(members), shape.name)
-            yield from _pieces(shape.shapes, width, height, top_level=False)
         elif shape.has_chart:
             chart = shape.chart
-            series = [" ".join(v.text or "" for tx in ser.iterchildren(qn("c:tx")) for v in tx.iter(qn("c:v"))) for ser in chart._chartSpace.iter(qn("c:ser"))]
-            yield Piece("chart", f"{len(series)} series: " + ", ".join(series), shape.name, _plots(chart))
+            yield Piece("chart", f"{len(chart._chartSpace.findall('.//' + qn('c:ser')))} series", shape.name, _plots(chart))
         elif shape.has_table:
             yield Piece("table", f"{len(el.findall('.//' + qn('a:tr')))} rows x {len(el.findall('.//' + qn('a:gridCol')))} columns", shape.name)
         elif el.tag == qn("p:pic"):
@@ -478,18 +492,26 @@ def _pieces(shapes: SlideShapes, width: int, height: int, top_level: bool = True
             yield Piece("object", " ".join(filter(None, (data.get("uri") if data is not None else None, ole.get("progId") if ole is not None else None))), shape.name)
 
 
-def _on_slide(shape, width: int, height: int) -> bool:
+def _shown(shapes: SlideShapes, width: int, height: int, top_level: bool = True) -> Iterator:
+    for shape in shapes:
+        if hidden(shape._element) or top_level and not on_slide(shape, width, height):
+            continue
+        yield shape
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _shown(shape.shapes, width, height, top_level=False)
+
+
+def on_slide(shape, width: int, height: int) -> bool:
     if None in (shape.left, shape.top, shape.width, shape.height):
         return True
     return shape.left < width and shape.top < height and shape.left + shape.width > 0 and shape.top + shape.height > 0
 
 
-def _charts(shapes: SlideShapes) -> Iterator[Chart]:
-    for shape in shapes:
-        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-            yield from _charts(shape.shapes)
-        elif shape.has_chart:
-            yield shape.chart
+HIDDEN = etree.XPath("./*/p:cNvPr[@hidden='1' or @hidden='true']", namespaces={"p": "http://schemas.openxmlformats.org/presentationml/2006/main"})
+
+
+def hidden(el: etree._Element) -> bool:
+    return any(HIDDEN(e) for e in (el, *el.iterancestors(qn("p:grpSp"))))
 
 
 def resolve(arg: str | Path) -> Path:
@@ -775,6 +797,9 @@ def _problems(sc: Scenario) -> Iterator[str]:
         for at in item.said:
             if at not in turns:
                 yield f"{item.id}.said: no transcript turn at {at}"
+    for c in sc.changes:
+        if isinstance(c, Edit | AddSlide) and not c.intent_checks:
+            yield f"{c.id}.intent_checks: an edited or added slide needs one that says what the slide may gain and what it must not"
 
     def in_range(k: int, where: str, low: int = 1) -> Iterator[str]:
         if not low <= k <= n:
@@ -851,6 +876,7 @@ def _numbered(value: Value) -> list[Value]:
 
 def _fact_problems(sc: Scenario, turns: dict[str, Turn]) -> Iterator[str]:
     n = len(sc.source.deck.slides)
+    kept = [s.slide for s in sc.skeleton if isinstance(s, SourceSlot)]
     for change, slot, fs in sc.fact_targets:
         src = slot.slide if isinstance(slot, SourceSlot) and 1 <= slot.slide <= n else None
         label = f"{change.id} slide {slot.slide}" if isinstance(slot, SourceSlot) else f"{change.id}"
@@ -866,8 +892,11 @@ def _fact_problems(sc: Scenario, turns: dict[str, Turn]) -> Iterator[str]:
                 else:
                     yield from (f"{label} require {facts.describe(piece)}: {p}" for p in _provenance_problems(sc, piece, r.source, turns))
         for f in fs.forbid:
-            if f.where == "deck" and (kept := next(((k, hit) for k in sc.frozen if (hit := find_in(sc.source, k, f.value))), None)):
-                yield f"{label} forbid {kept[1]!r}: a deck-wide forbid must be absent from every slide no change edits, but source slide {kept[0]} has it"
+            if f.where == "deck":
+                on_slides = ((hit, f"on source slide {k}") for k in sc.frozen if (hit := find_in(sc.source, k, f.value)))
+                in_notes_of = ((hit, f"in the speaker notes of source slide {k}") for k in kept if (hit := in_notes(f.value, sc.source.notes[k - 1])))
+                if found := next(chain(on_slides, in_notes_of), None):
+                    yield f"{label} forbid {found[0]!r}: a deck-wide forbid must be absent from every slide no change edits and from the speaker notes of every slide the output keeps, but it is {found[1]}"
             if f.superseded is not None:
                 if f.superseded not in turns:
                     yield f"{label} forbid {facts.describe(f.value)}: no transcript turn at {f.superseded}"
@@ -896,8 +925,12 @@ def _provenance_problems(sc: Scenario, value: Value, source: Provenance, turns: 
             if sc.dir not in path.parents or not path.is_file():
                 yield f"from.data: no file {data} in the scenario directory"
                 return
-            with path.open(newline="") as f:
-                rows = list(csv.reader(f))
+            try:
+                with path.open(newline="") as f:
+                    rows = list(csv.reader(f))
+            except UnicodeDecodeError:
+                yield f"{data}: only CSV is read; export the sheet to CSV"
+                return
             header = rows[0] if rows else []
             hits = [r for r in rows[1:] if r and r[0] == row]
             spec = value.alternatives[0] if isinstance(value, Words) else value.text

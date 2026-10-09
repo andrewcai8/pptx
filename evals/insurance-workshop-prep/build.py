@@ -1,5 +1,6 @@
 import copy
 
+from pptx.dml.color import RGBColor
 from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.util import Inches, Pt
 
@@ -284,3 +285,58 @@ def headline_reworded_whole(d: DeckEdit) -> None:
     refresh(d)
     cite_survey(d)
     d.slide(5).shapes.title.text_frame.text = "New generations speed up digitalization: by 2027 millennials will be ca. 48% of Slovenian insurers' clients"
+
+
+def survey_over_footnote_2(d: DeckEdit, *, left=None, top=None, white: bool = False) -> None:
+    """Footnote 2 is overwritten with the member survey, and its old text goes into a new 8pt box at left, top."""
+    old = footnote_paragraphs(d)[1].xpath("string(.)")
+    refresh(d)
+    rewrite_footnote(d, 1, "2. Insurers' Association member survey 2026, 2027 projection")
+    footnote = shape(d, "Footnote")
+    box = d.slide(5).shapes.add_textbox(footnote.left if left is None else left, footnote.top if top is None else top, footnote.width, Pt(12))
+    box.text_frame.text = old
+    font = box.text_frame.paragraphs[0].runs[0].font
+    font.size = Pt(8)
+    if white:
+        font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        tree = d.slide(5).shapes._spTree
+        tree.insert(2, box._element)
+
+
+@variant(fails={("lost", 5)})
+def footnote_2_kept_off_slide(d: DeckEdit) -> None:
+    """Footnote 2 is overwritten with the member survey, and its old text is parked in a text box past the slide's right edge."""
+    survey_over_footnote_2(d, left=Inches(30))
+
+
+@variant(base=good, fails={("lost", 5)})
+def footnote_box_pushed_off_slide(d: DeckEdit) -> None:
+    """The whole Footnote box, survey line included, is dragged below the slide, so no footnote shows."""
+    shape(d, "Footnote").top = Inches(30)
+
+
+@variant(intent=("c1", "hidden in white"))
+def footnote_2_kept_in_white_behind_curve(d: DeckEdit) -> None:
+    """Footnote 2 is overwritten with the member survey, and its old text sits at 8pt white behind the curve, where no reader sees it."""
+    curve = shape(d, "Object 12")
+    survey_over_footnote_2(d, left=curve.left, top=curve.top, white=True)
+
+
+@variant(fails={("lost", 5)})
+def footnote_2_kept_in_hidden_box(d: DeckEdit) -> None:
+    """Footnote 2 is overwritten with the member survey, and its old text sits in a box the selection pane hides."""
+    survey_over_footnote_2(d)
+    d.slide(5).shapes[-1]._element.nvSpPr.cNvPr.set("hidden", "1")
+
+
+@variant(base=good, fails={("lost", 5)})
+def curve_graphic_hidden(d: DeckEdit) -> None:
+    """The census curve graphic stays in place but is hidden, so the slide shows no curve."""
+    shape(d, "Object 12")._element[0][0].set("hidden", "1")
+
+
+@variant(intent=("c1", "parked at or past the slide's edge"))
+def footnote_2_kept_just_below_slide(d: DeckEdit) -> None:
+    """Footnote 2 is overwritten with the member survey, and its old text sits in a top-anchored box whose top is 0.01in above the slide's bottom edge."""
+    height = d.slide(5).part.package.presentation_part.presentation.slide_height
+    survey_over_footnote_2(d, top=height - Inches(0.01))

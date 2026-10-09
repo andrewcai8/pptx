@@ -1,6 +1,9 @@
 import copy
 
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.oxml.ns import qn
+from pptx.util import Inches
 
 from deckedit import DeckEdit, variant
 
@@ -104,6 +107,55 @@ def frozen_chart_value(d: DeckEdit) -> None:
 def chart_bar_left_at_380(d: DeckEdit) -> None:
     """Every slide 10 label moves to $410m but the 2022 bar's chart data stays at 380, though Daniel asked for the chart data too."""
     _chart_2022_bar(d, "410", "380")
+
+
+def _chart_data(values: tuple[float, ...], categories: tuple[str, ...], name: str = "") -> CategoryChartData:
+    data = CategoryChartData()
+    data.categories = categories
+    data.add_series(name, values)
+    return data
+
+
+def _rebuild_chart(d: DeckEdit, values: tuple[float, ...], categories: tuple[str, ...], name: str = "") -> None:
+    """Rewrite slide 10's chart through replace_data. The source chart has no categories, so a maker has to invent them."""
+    next(s.chart for s in d.slide(10).shapes if s.has_chart).replace_data(_chart_data(values, categories, name))
+
+
+@variant(base=good)
+def chart_rebuilt_with_replace_data(d: DeckEdit) -> None:
+    """Slide 10's chart is rebuilt with replace_data under invented categories, with the 2022 bar at 410 and the other bars kept."""
+    _rebuild_chart(d, (410, 2000, 11000), ("2022", "2027", "Potential"))
+
+
+@variant(base=good)
+def chart_rebuilt_with_named_series(d: DeckEdit) -> None:
+    """Slide 10's chart is rebuilt with replace_data under a named series, the way add_series asks for one, with every bar kept."""
+    _rebuild_chart(d, (410, 2000, 11000), ("2022", "2027", "Potential"), name="Market size ($m)")
+
+
+@variant(base=good, intent=("c1", "keeps its bars in their source order"))
+def chart_bars_swapped(d: DeckEdit) -> None:
+    """Slide 10's chart is rebuilt with the 2027 and full-potential bars swapped, so the bar under 2027 draws 11000."""
+    _rebuild_chart(d, (410, 11000, 2000), ("2022", "2027", "Potential"))
+
+
+@variant(base=good, fails={("lost", 10)})
+def chart_2027_bar_overwritten_with_copy_off_slide(d: DeckEdit) -> None:
+    """The 2027 bar is overwritten with 410, and a correct copy of the chart is parked past the slide's right edge."""
+    _chart_2022_bar(d, "2000", "410")
+    d.slide(10).shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(30), Inches(1), Inches(4), Inches(3), _chart_data((410, 2000, 11000), ("2022", "2027", "Potential")))
+
+
+@variant(base=good, fails={("lost", 10)})
+def chart_2027_bar_overwritten(d: DeckEdit) -> None:
+    """The 2027 bar is overwritten with 410 as well, so the chart draws 410, 410 and 11000 and loses the $2bn bar."""
+    _chart_2022_bar(d, "2000", "410")
+
+
+@variant(base=good, fails={("lost", 10)})
+def chart_rebuilt_without_potential(d: DeckEdit) -> None:
+    """Slide 10's chart is rebuilt with replace_data for 2022 and 2027 only, dropping the full-potential bar."""
+    _rebuild_chart(d, (410, 2000), ("2022", "2027"))
 
 
 @variant(base=good, fails={("scope", 10)})

@@ -16,6 +16,7 @@ import reprlib
 import string
 import sys
 from collections import Counter
+from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from functools import cached_property
@@ -48,8 +49,10 @@ from scenario import (
     Where,
     corpus,
     find,
+    in_notes,
     open_scenario,
     snapshot,
+    visible,
 )
 
 OK, FAIL, BAD, UNREACHABLE = 0, 1, 2, 3
@@ -70,6 +73,7 @@ class Code(StrEnum):
 
 
 SlideRef = int | str | None
+Place = Where | Literal["notes"]
 
 
 @dataclass(frozen=True)
@@ -95,7 +99,7 @@ class FactResult:
     slide: SlideRef
     kind: Literal["require", "forbid", "absent"]
     value: Value
-    where: Where
+    where: Place
     found: str | None
     ok: bool
     source: Provenance | None = None
@@ -193,8 +197,10 @@ def line(sc_name: str, verdict: Verdict, deferred: int) -> str:
     return f"SCENARIO {verdict.status}: " + "; ".join(f"[{f.code}] {f.message}" for f in verdict.failures)
 
 
-def place_name(ref: SlideRef, where: Where) -> str:
-    return f"the title of {slide_name(ref)}" if where == "title" else slide_name(ref)
+def place_name(ref: SlideRef, where: Place) -> str:
+    if where == "notes":
+        return f"in the speaker notes of {slide_name(ref)}"
+    return f"on the title of {slide_name(ref)}" if where == "title" else f"on {slide_name(ref)}"
 
 
 def non_change_code(nc: NonChange) -> Code:
@@ -307,12 +313,16 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement) -> tuple[list
                     failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k} (no restyle)"))
                 elif e.kind != "restyle" and not text_changed:
                     failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k}"))
-            # An edited slide must keep everything its edits do not replace. What it gains is the intent checker's to judge.
+            # An edited slide must keep the on-slide text, pieces, and chart values its edits do not target. What it gains is the intent checker's to judge.
             replaced = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None and not isinstance(f.value, ChartValue)]
-            if text := lost_text(sc.source.deck.slides[k - 1], out.deck.slides[i], replaced):
+            if text := lost_text(visible(sc.source.deck, k - 1), visible(out.deck, i), replaced):
                 failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to change this text on slide {k}, but it is gone or reworded: {shown(text)}"))
-            if pieces := lost_pieces(sc.source.pieces[k - 1], out.pieces[i]):
+            if pieces := unmatched(sc.source.pieces[k - 1], out.pieces[i], key=lambda p: p.key):
                 failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to remove these from slide {k}, but they are gone: {', '.join(f'{p.kind} {p.name!r}' for p in pieces)}"))
+            targeted = {f.value.value for e in edits for f in e.slides[k].forbid if isinstance(f.value, ChartValue)}
+            kept = [v for v in sc.source.charts[k - 1].values if v not in targeted]
+            if not redraws and (values := unmatched(kept, out.charts[i].values)):
+                failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to change these chart values on slide {k}, but they are gone: {', '.join(f'{v.normalize():f}' for v in values)}"))
             continue
         if not look_changed:
             continue
@@ -371,14 +381,15 @@ def says(clause: tuple[str, ...], text: tuple[str, ...]) -> bool:
     return bool(ends)
 
 
-def lost_pieces(had: tuple[Piece, ...], has: tuple[Piece, ...]) -> list[Piece]:
-    left = Counter(p.key for p in has)
+def unmatched[T](had: Iterable[T], has: Iterable[T], key: Callable[[T], Hashable] = lambda x: x) -> list[T]:
+    """What `had` holds that `has` does not, counting repeats: each item in `has` matches one item in `had`."""
+    left = Counter(map(key, has))
     lost = []
-    for p in had:
-        if left[p.key]:
-            left[p.key] -= 1
+    for x in had:
+        if left[key(x)]:
+            left[key(x)] -= 1
         else:
-            lost.append(p)
+            lost.append(x)
     return lost
 
 
@@ -411,7 +422,7 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
         if slot not in placement.index or isinstance(slot, SourceSlot) and slot.slide not in applied:
             continue
         i = placement.index[slot]
-        slide, charts = out.deck.slides[i], out.charts[i]
+        slide, charts = visible(out.deck, i), out.charts[i]
         ref = slot_ref(slot)
         for r in facts.require:
             if unreadable(r.value, charts, ref, change.id):
@@ -419,7 +430,7 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
             found = find(r.value, r.where, slide, charts)
             results.append(FactResult(change.id, ref, "require", r.value, r.where, found, found is not None, source=r.source))
             if found is None:
-                failures.append(Failure(Code.MISSING, ref, change.id, f"{change.id}: {describe(r.value)} is not on {place_name(ref, r.where)}"))
+                failures.append(Failure(Code.MISSING, ref, change.id, f"{change.id}: {describe(r.value)} is not {place_name(ref, r.where)}"))
         for f in facts.forbid:
             if f.where == "deck" or unreadable(f.value, charts, ref, change.id):
                 continue
@@ -429,25 +440,31 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
                 failures.append(forbidden(change.id, ref, f, found))
     for change, _, facts in sc.fact_targets:
         for f in (f for f in facts.forbid if f.where == "deck"):
-            hits = [(slot_ref(slot), found) for slot, s, charts in zip(placement.slots, out.deck.slides, out.charts, strict=True) if (found := find(f.value, "deck", s, charts))]
-            results.append(FactResult(change.id, "deck", "forbid", f.value, "deck", hits[0][1] if hits else None, not hits, superseded=f.superseded))
-            failures += [forbidden(change.id, ref, f, found) for ref, found in hits]
+            hits = [
+                (slot_ref(slot), found, where)
+                for i, (slot, charts, notes) in enumerate(zip(placement.slots, out.charts, out.notes, strict=True))
+                for found, where in ((find(f.value, "deck", visible(out.deck, i), charts), "deck"), (in_notes(f.value, notes), "notes"))
+                if found
+            ]
+            results.append(FactResult(change.id, "deck", "forbid", f.value, hits[0][2] if hits else "deck", hits[0][1] if hits else None, not hits, superseded=f.superseded))
+            failures += [forbidden(change.id, ref, f, found, where) for ref, found, where in hits]
     for nc in sc.non_changes:
         for value in nc.absent:
             hits = [
                 (slot_ref(slot), found)
-                for slot, s, charts in zip(placement.slots, out.deck.slides, out.charts, strict=True)
-                if not unreadable(value, charts, slot_ref(slot), nc.id) and (found := find(value, "slide", s, charts))
+                for i, (slot, charts) in enumerate(zip(placement.slots, out.charts, strict=True))
+                if not unreadable(value, charts, slot_ref(slot), nc.id) and (found := find(value, "slide", visible(out.deck, i), charts))
             ]
             results.append(FactResult(nc.id, "deck", "absent", value, "slide", hits[0][1] if hits else None, not hits))
             failures += [Failure(non_change_code(nc), ref, nc.id, f"{nc.id}: {found!r} is on {slide_name(ref)}, but {non_change_reason(nc)}") for ref, found in hits]
     return results, failures
 
 
-def forbidden(by: str, ref: SlideRef, f, found: str) -> Failure:
+def forbidden(by: str, ref: SlideRef, f, found: str, where: Place | None = None) -> Failure:
+    place = place_name(ref, where or f.where)
     if f.superseded:
-        return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is on {place_name(ref, f.where)}; it was abandoned after {f.superseded}")
-    return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is still on {place_name(ref, f.where)}")
+        return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is {place}; it was abandoned after {f.superseded}")
+    return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is still {place}")
 
 
 def check_layout(sc: Scenario, out: Snapshot, placement: Placement) -> list[Failure]:

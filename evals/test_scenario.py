@@ -114,7 +114,7 @@ def test_a_private_deck_scenario_opens_only_under_the_repos_private_folder(folde
         shutil.rmtree(top, ignore_errors=True)
 
 
-EDIT_SLIDE_1 = [{"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {}}}]
+EDIT_SLIDE_1 = [{"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {}}, "intent_checks": ["Slide 1 gains only the reworded callout."]}]
 
 
 def chart_deck(path: Path, plot: str = "barChart") -> Path:
@@ -157,6 +157,19 @@ def test_a_3d_chart_on_a_copy_of_the_solar_deck_fails_scope(tmp_path, variant, f
     assert [(f["code"], f["slide"], f["message"]) for f in report["failures"]] == failures
 
 
+@pytest.mark.parametrize(
+    ("variant", "message"),
+    [
+        ("chart_2027_bar_overwritten", "c1 does not ask to change these chart values on slide 10, but they are gone: 2000"),
+        ("chart_rebuilt_without_potential", "c1 does not ask to change these chart values on slide 10, but they are gone: 11000"),
+    ],
+)
+def test_a_solar_chart_value_the_edit_does_not_target_must_survive(tmp_path, variant, message):
+    assert score.main(["solar-market-refresh", str(built(tmp_path, "solar-market-refresh", variant))]) == score.FAIL
+    report = json.loads((tmp_path / "score.json").read_text())
+    assert [(f["code"], f["slide"], f["message"]) for f in report["failures"]] == [("lost", 10, message)]
+
+
 def test_a_chart_the_scorer_cannot_read_leaves_the_deck_unreadable(private_dir, tmp_path, capsys):
     gone = [{"id": "n1", "kind": "not-a-change", "said": ["00:00:05"], "why": "The 2022 bar stays.", "absent": [{"chart": 380}]}]
     d = scenario_at(private_dir / "bar3d", make=lambda path: chart_deck(path, "bar3DChart"), non_changes=gone)
@@ -180,10 +193,24 @@ def test_a_chart_relationship_to_a_missing_part_is_a_bad_output(tmp_path, capsys
 
 
 def test_a_chart_fact_cannot_target_a_source_chart_that_cannot_be_read(private_dir):
-    change = [{"id": "c1", "kind": "update-number", "intent": "Redraw the bar.", "said": ["00:00:05"], "slides": {1: {"forbid": [{"chart": 410}]}}}]
+    change = [{"id": "c1", "kind": "update-number", "intent": "Redraw the bar.", "said": ["00:00:05"], "slides": {1: {"forbid": [{"chart": 410}]}}, "intent_checks": ["Only the bar moves."]}]
     assert open_scenario(scenario_at(private_dir / "bar", change, chart_deck)).source.charts[0].values == (Decimal("410.0"), Decimal("2000.0"))
     with pytest.raises(BadScenario, match="c1 slide 1: a chart fact cannot target a slide whose bar3DChart chart cannot be read"):
         open_scenario(scenario_at(private_dir / "bar3d", change, lambda path: chart_deck(path, "bar3DChart")))
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {}}},
+        {"id": "c1", "kind": "add-slide", "after": 1, "layout": "Title and Content", "intent": "Add a summary.", "said": ["00:00:05"]},
+    ],
+    ids=["edit", "add-slide"],
+)
+def test_an_edited_or_added_slide_needs_an_intent_check(private_dir, change):
+    with pytest.raises(BadScenario, match="c1.intent_checks: an edited or added slide needs one that says what the slide may gain and what it must not"):
+        open_scenario(scenario_at(private_dir / "unchecked", [change]))
+    assert open_scenario(scenario_at(private_dir / "checked", [{**change, "intent_checks": ["Nothing else changes."]}])).deferred == (("c1", "Nothing else changes."),)
 
 
 UNCLEAR_CALLOUT = {"id": "n1", "kind": "ambiguous", "said": ["00:00:05"], "why": "Nobody said which callout.", "slides": [1], "flag": "Which callout should change?"}
@@ -287,10 +314,10 @@ def two_slides(path: Path) -> Path:
 
 def test_a_deck_wide_forbid_must_be_absent_from_every_slide_no_change_edits(private_dir):
     def change(forbid: dict) -> list[dict]:
-        return [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [forbid]}}}]
+        return [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [forbid]}}, "intent_checks": ["Only the rate moves."]}]
 
     assert open_scenario(scenario_at(private_dir / "slide", change({"percent": "4%"}), two_slides)).changes[0].slides[1].forbid[0].where == "slide"
-    with pytest.raises(BadScenario, match="c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits, but source slide 2 has it"):
+    with pytest.raises(BadScenario, match="c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits and from the speaker notes of every slide the output keeps, but it is on source slide 2"):
         open_scenario(scenario_at(private_dir / "deck", change({"percent": "4%", "where": "deck"}), two_slides))
 
 
@@ -301,3 +328,56 @@ def test_a_deck_wide_forbid_fails_every_slide_that_states_it(tmp_path):
     assert [(f["code"], f["slide"], f["message"]) for f in report["failures"] if f["code"] == "forbidden"] == [
         ("forbidden", 5, "c1: 'tripled' is on slide 5; it was abandoned after 00:06:54")
     ]
+
+
+def notes_on(slide: int, notes: str):
+    def make(path: Path) -> Path:
+        prs = Presentation()
+        for text in ("Demand grows 4% a year", "Supply grows 5% a year"):
+            prs.slides.add_slide(prs.slide_layouts[1]).placeholders[1].text_frame.text = text
+        prs.slides[slide - 1].notes_slide.notes_text_frame.text = notes
+        prs.save(path)
+        return path
+
+    return make
+
+
+@pytest.mark.parametrize("slide", [1, 2], ids=["edited", "untouched"])
+def test_a_deck_wide_forbid_must_be_absent_from_the_notes_of_every_slide_the_output_keeps(private_dir, slide):
+    change = [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [{"percent": "4%", "where": "deck"}]}}, "intent_checks": ["Only the rate moves."]}]
+    assert open_scenario(scenario_at(private_dir / "clean", change, notes_on(slide, "Supply grew 5% last year"))).source.notes[slide - 1] == ("Supply grew 5% last year",)
+    with pytest.raises(BadScenario, match=f"c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits and from the speaker notes of every slide the output keeps, but it is in the speaker notes of source slide {slide}"):
+        open_scenario(scenario_at(private_dir / "noted", change, notes_on(slide, "Demand grew 4% last year")))
+
+
+@pytest.mark.parametrize(
+    ("scenario", "variant", "failure"),
+    [
+        ("retail-impact-title", "tripled_in_speaker_notes", ("forbidden", 15, "c1: 'tripled' is in the speaker notes of slide 15; it was abandoned after 00:06:54")),
+        ("fmcg-diagnostic-timeline", "eight_weeks_in_speaker_notes", ("forbidden", "c1", "c1: '8 weeks' is in the speaker notes of the slide c1 adds; it was abandoned after 00:01:50")),
+    ],
+)
+def test_a_deck_wide_forbid_reads_speaker_notes(tmp_path, scenario, variant, failure):
+    assert score.main([scenario, str(built(tmp_path, scenario, variant))]) == score.FAIL
+    report = json.loads((tmp_path / "score.json").read_text())
+    assert [(f["code"], f["slide"], f["message"]) for f in report["failures"]] == [failure]
+    assert [(f["where"], f["ok"]) for f in report["facts"] if f["slide"] == "deck" and f["kind"] == "forbid"] == [("notes", False)]
+
+
+def test_a_data_file_that_is_not_csv_is_a_bad_scenario(private_dir, tmp_path, capsys):
+    change = [
+        {
+            "id": "c1",
+            "kind": "update-number",
+            "intent": "Move the growth rate.",
+            "said": ["00:00:05"],
+            "slides": {1: {"require": [{"percent": "5%", "from": {"data": "data/model.xlsx", "row": "growth", "column": "value"}}], "forbid": [{"percent": "4%"}]}},
+            "intent_checks": ["Only the rate moves."],
+        }
+    ]
+    d = scenario_at(private_dir / "xlsx", change)
+    (d / "data").mkdir()
+    with zipfile.ZipFile(d / "data/model.xlsx", "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("xl/workbook.xml", bytes(range(256)) * 64)
+    assert score.main([str(d), str(d / "input.pptx"), "--out", str(tmp_path)]) == score.BAD
+    assert capsys.readouterr().err.strip() == "error: c1 slide 1 require '5%': data/model.xlsx: only CSV is read; export the sheet to CSV"
