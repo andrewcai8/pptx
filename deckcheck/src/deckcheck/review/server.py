@@ -24,6 +24,8 @@ STATIC = {
     "app.js": "text/javascript" + TEXT,
     "dom.js": "text/javascript" + TEXT,
     "model.js": "text/javascript" + TEXT,
+    "slide.js": "text/javascript" + TEXT,
+    "store.js": "text/javascript" + TEXT,
 }
 PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 MAX_BODY = 1 << 20

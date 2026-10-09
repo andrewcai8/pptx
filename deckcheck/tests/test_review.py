@@ -27,6 +27,7 @@ from deckcheck.review.maker import maker_for
 from deckcheck.review.meetings import Reviews, cascade
 from deckcheck.review.server import serve
 
+WEB = Path(__file__).parents[1] / "src/deckcheck/review/web"
 INSERT = {"kind": "insert_paragraph", "slide": 256, "shape": 3, "after": 0, "text": "Costs fall"}
 DEMO = [("c1", REVENUE), ("c2", INSERT), ("c3", CELL), ("add", ADD), ("fill", {**FILL, "slide": "add"})]
 SIMULATED = {"label": "Simulated maker: replays the committed changeset.json", "simulated": True}
@@ -389,11 +390,34 @@ def test_requests_from_another_site_are_refused(repo: Path, app: Client) -> None
         conn.close()
 
 
+def test_the_app_and_its_files_are_served(app: Client) -> None:
+    status, page = app.get("/")
+    assert status == 200
+    assert b'<script type="module" src="/web/app.js"></script>' in page
+    for name in ("app.js", "dom.js", "model.js", "slide.js", "store.js", "style.css"):
+        assert app.get(f"/web/{name}") == (200, (WEB / name).read_bytes())
+
+
 def test_serve_refuses_to_start_outside_the_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.chdir(tmp_path)
 
     assert review_main(["serve", "--port", "0"]) == 2
     assert capsys.readouterr().err == "review: run this from the repo root, the folder that holds deckcheck/ and evals/\n"
+
+
+def test_no_script_builds_markup_from_a_string() -> None:
+    offenders = [p.name for p in sorted(WEB.glob("*.js")) if "innerHTML" in p.read_text() or "insertAdjacentHTML" in p.read_text()]
+
+    assert sorted(p.name for p in WEB.glob("*.js")) == ["app.js", "dom.js", "model.js", "slide.js", "store.js"]
+    assert offenders == []
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_web_model() -> None:
+    files = sorted(str(p) for p in (Path(__file__).parent / "web").glob("*.test.mjs"))
+    result = subprocess.run(["node", "--test", *files], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.skipif(not (find_soffice() and find_pdftoppm() and find_fc_match()), reason="needs soffice, pdftoppm and fc-match")
