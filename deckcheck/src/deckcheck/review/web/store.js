@@ -1,4 +1,5 @@
 import { h } from "./dom.js";
+import { serial } from "./model.js";
 
 export const state = {
   meetings: [],
@@ -30,6 +31,8 @@ export async function call(method, url, body) {
   const response = await fetch(url, init);
   return { status: response.status, body: await response.json() };
 }
+
+export const post = serial();
 
 export const meetingUrl = (id) => `/api/meetings/${id}`;
 

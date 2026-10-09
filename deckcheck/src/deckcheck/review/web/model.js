@@ -195,4 +195,13 @@ export function tally(review, decisions) {
   return { total, decided: total - pending, pending };
 }
 
+export function serial() {
+  let tail = Promise.resolve();
+  return (task) => {
+    const run = tail.then(task);
+    tail = run.catch(() => {});
+    return run;
+  };
+}
+
 export const ref = (r) => `${r.t} ${r.speaker} “${r.quote}”`;

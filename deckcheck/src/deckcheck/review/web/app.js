@@ -1,7 +1,7 @@
 import { h } from "./dom.js";
 import * as M from "./model.js";
 import { cancelEdit, hideBubble, placeBubble, plainView, refs, showBubble, structuralView, textView, unpin } from "./slide.js";
-import { call, img, meetingUrl, mount, render, state, ui } from "./store.js";
+import { call, img, meetingUrl, mount, post, render, state, ui } from "./store.js";
 
 const STEPS = { making: "Making changes", executing: "Writing the deck", rendering: "Rendering slides, about 40 s" };
 
@@ -341,7 +341,7 @@ function bar(v) {
 }
 
 async function applyDecisions() {
-  const { status, body } = await call("POST", `${meetingUrl(state.view.id)}/apply`, {});
+  const { status, body } = await post(() => call("POST", `${meetingUrl(state.view.id)}/apply`, {}));
   if (status === 200) {
     state.final = body;
     state.stale = false;

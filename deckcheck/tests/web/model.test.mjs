@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { chipLabel, choices, deck, editable, edited, marks, segments, slideLabel, viewOf } from "../../src/deckcheck/review/web/model.js";
+import { chipLabel, choices, deck, editable, edited, marks, segments, serial, slideLabel, viewOf } from "../../src/deckcheck/review/web/model.js";
 
 const SLIDE = { w: 12192000, h: 6858000 };
 const TITLE = { id: 2, name: "Title 2", box: { x: 630000, y: 622800, w: 10933350, h: 664797 } };
@@ -192,4 +192,21 @@ test("each kind of change names its own choices", () => {
       ["edit", "Edit myself"],
     ],
   );
+});
+
+test("a serial queue runs one task at a time in the order they were sent", async () => {
+  const send = serial();
+  const log = [];
+  const task = (name, ms, fail = false) => async () => {
+    log.push(`start ${name}`);
+    await new Promise((r) => setTimeout(r, ms));
+    log.push(`end ${name}`);
+    if (fail) throw new Error(name);
+    return name;
+  };
+
+  const results = await Promise.allSettled([send(task("a", 30)), send(task("b", 1, true)), send(task("c", 1))]);
+
+  assert.deepEqual(log, ["start a", "end a", "start b", "end b", "start c", "end c"]);
+  assert.deepEqual(results.map((r) => r.value ?? r.reason.message), ["a", "b", "c"]);
 });

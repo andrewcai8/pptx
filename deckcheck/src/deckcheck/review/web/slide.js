@@ -1,6 +1,6 @@
 import { h } from "./dom.js";
 import * as M from "./model.js";
-import { call, img, meetingUrl, mount, render, state, ui } from "./store.js";
+import { call, img, meetingUrl, mount, post, render, state, ui } from "./store.js";
 
 const DECIDED = { pending: "Needs a decision", keep_new: "Kept new", keep_old: "Kept old", edited: "Edited" };
 
@@ -297,13 +297,25 @@ export function cancelEdit(c) {
   ui.rerender();
 }
 
+let asked = 0;
+let unshown = null;
+
 async function decide(cid, decision) {
-  const { status, body } = await call("POST", `${meetingUrl(state.view.id)}/decisions`, { decisions: { [cid]: decision } });
+  const n = ++asked;
+  const { status, body } = await post(() => call("POST", `${meetingUrl(state.view.id)}/decisions`, { decisions: { [cid]: decision } }));
+  if (status === 200) delete state.errors[cid];
+  if (status === 200 && n !== asked) {
+    unshown = body;
+    return true;
+  }
+  const latest = status === 200 ? body : unshown;
+  unshown = null;
+  if (latest) {
+    if (state.final && !latest.final) state.stale = true;
+    state.decisions = latest.decisions;
+    state.final = latest.final;
+  }
   if (status === 200) {
-    if (state.final && !body.final) state.stale = true;
-    state.decisions = body.decisions;
-    state.final = body.final;
-    delete state.errors[cid];
     state.notice = null;
   } else if (status === 422) {
     state.errors[cid] = body.problems.map((p) => p.message).join(" ");
