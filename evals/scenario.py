@@ -251,6 +251,7 @@ class Snapshot:
     looks: tuple[Look, ...]
     charts: tuple[Charts, ...]
     pieces: tuple[tuple[Piece, ...], ...]
+    notes: tuple[tuple[str, ...], ...]
     shared: str
 
 
@@ -355,6 +356,11 @@ def find(value: Value, where: Where, slide: Slide, charts: Charts) -> str | None
     return next((hit for t in texts(slide, where) if (hit := facts.match(value, t))), None)
 
 
+def in_notes(value: Value, notes: tuple[str, ...]) -> str | None:
+    """Where a slide's speaker notes state the value. Only a `where: deck` forbid reads notes."""
+    return None if isinstance(value, ChartValue) else next((hit for t in notes if (hit := facts.match(value, t))), None)
+
+
 def find_in(snap: Snapshot, k: int, value: Value, where: Where = "slide") -> str | None:
     return find(value, where, snap.deck.slides[k - 1], snap.charts[k - 1])
 
@@ -393,8 +399,15 @@ def _snapshot(prs: Presentation, path: Path, data: bytes) -> Snapshot:
     )
     charts = tuple(_read_charts(s.shapes) for s in slides)
     pieces = tuple(tuple(_pieces(s.shapes, prs.slide_width, prs.slide_height)) for s in slides)
+    notes = tuple(_notes(s) for s in slides)
     deck = read_deck(prs, str(path), hashlib.sha256(data).hexdigest())
-    return Snapshot(deck, tuple(s.slide_id for s in slides), looks, charts, pieces, _digest(shared))
+    return Snapshot(deck, tuple(s.slide_id for s in slides), looks, charts, pieces, notes, _digest(shared))
+
+
+# Guarded by has_notes_slide, because reading slide.notes_slide on a slide without notes adds a notes page.
+def _notes(slide) -> tuple[str, ...]:
+    frame = slide.notes_slide.notes_text_frame if slide.has_notes_slide else None
+    return tuple(p.text for p in frame.paragraphs) if frame else ()
 
 
 def _digest(items: Iterable[str]) -> str:
@@ -866,8 +879,8 @@ def _fact_problems(sc: Scenario, turns: dict[str, Turn]) -> Iterator[str]:
                 else:
                     yield from (f"{label} require {facts.describe(piece)}: {p}" for p in _provenance_problems(sc, piece, r.source, turns))
         for f in fs.forbid:
-            if f.where == "deck" and (kept := next(((k, hit) for k in sc.frozen if (hit := find_in(sc.source, k, f.value))), None)):
-                yield f"{label} forbid {kept[1]!r}: a deck-wide forbid must be absent from every slide no change edits, but source slide {kept[0]} has it"
+            if f.where == "deck" and (kept := next(((k, hit) for k in sc.frozen if (hit := find_in(sc.source, k, f.value) or in_notes(f.value, sc.source.notes[k - 1]))), None)):
+                yield f"{label} forbid {kept[1]!r}: a deck-wide forbid must be absent from every slide no change edits and its notes, but source slide {kept[0]} has it"
             if f.superseded is not None:
                 if f.superseded not in turns:
                     yield f"{label} forbid {facts.describe(f.value)}: no transcript turn at {f.superseded}"

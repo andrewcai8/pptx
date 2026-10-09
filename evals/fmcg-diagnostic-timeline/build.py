@@ -246,3 +246,9 @@ def staffing_to_be_agreed_with_lars(d: DeckEdit) -> None:
 def team_of_x_consultants(d: DeckEdit) -> None:
     """Diagnostic slide carries "Team: [x] consultants", a team placeholder with no number for a script to read."""
     add_diagnostic(d, bullets=BULLETS + ("Team: [x] consultants",))
+
+
+@variant(base=good, fails={("forbidden", "c1")})
+def eight_weeks_in_speaker_notes(d: DeckEdit) -> None:
+    """The new slide says 6 weeks, but its speaker notes recall the 8 weeks Nadia asked to take out completely."""
+    d.slide("c1").notes_slide.notes_text_frame.text = "Lars first asked for 8 weeks; we settled on 6."

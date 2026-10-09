@@ -49,6 +49,7 @@ from scenario import (
     Where,
     corpus,
     find,
+    in_notes,
     on_slide,
     open_scenario,
     snapshot,
@@ -195,8 +196,10 @@ def line(sc_name: str, verdict: Verdict, deferred: int) -> str:
     return f"SCENARIO {verdict.status}: " + "; ".join(f"[{f.code}] {f.message}" for f in verdict.failures)
 
 
-def place_name(ref: SlideRef, where: Where) -> str:
-    return f"the title of {slide_name(ref)}" if where == "title" else slide_name(ref)
+def place_name(ref: SlideRef, where: Where | Literal["notes"]) -> str:
+    if where == "notes":
+        return f"in the speaker notes of {slide_name(ref)}"
+    return f"on the title of {slide_name(ref)}" if where == "title" else f"on {slide_name(ref)}"
 
 
 def non_change_code(nc: NonChange) -> Code:
@@ -432,7 +435,7 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
             found = find(r.value, r.where, slide, charts)
             results.append(FactResult(change.id, ref, "require", r.value, r.where, found, found is not None, source=r.source))
             if found is None:
-                failures.append(Failure(Code.MISSING, ref, change.id, f"{change.id}: {describe(r.value)} is not on {place_name(ref, r.where)}"))
+                failures.append(Failure(Code.MISSING, ref, change.id, f"{change.id}: {describe(r.value)} is not {place_name(ref, r.where)}"))
         for f in facts.forbid:
             if f.where == "deck" or unreadable(f.value, charts, ref, change.id):
                 continue
@@ -442,9 +445,14 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
                 failures.append(forbidden(change.id, ref, f, found))
     for change, _, facts in sc.fact_targets:
         for f in (f for f in facts.forbid if f.where == "deck"):
-            hits = [(slot_ref(slot), found) for slot, s, charts in zip(placement.slots, out.deck.slides, out.charts, strict=True) if (found := find(f.value, "deck", s, charts))]
+            hits = [
+                (slot_ref(slot), found, where)
+                for slot, s, charts, notes in zip(placement.slots, out.deck.slides, out.charts, out.notes, strict=True)
+                for found, where in ((find(f.value, "deck", s, charts), "deck"), (in_notes(f.value, notes), "notes"))
+                if found
+            ]
             results.append(FactResult(change.id, "deck", "forbid", f.value, "deck", hits[0][1] if hits else None, not hits, superseded=f.superseded))
-            failures += [forbidden(change.id, ref, f, found) for ref, found in hits]
+            failures += [forbidden(change.id, ref, f, found, where) for ref, found, where in hits]
     for nc in sc.non_changes:
         for value in nc.absent:
             hits = [
@@ -457,10 +465,11 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
     return results, failures
 
 
-def forbidden(by: str, ref: SlideRef, f, found: str) -> Failure:
+def forbidden(by: str, ref: SlideRef, f, found: str, where: Where | Literal["notes"] | None = None) -> Failure:
+    place = place_name(ref, where or f.where)
     if f.superseded:
-        return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is on {place_name(ref, f.where)}; it was abandoned after {f.superseded}")
-    return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is still on {place_name(ref, f.where)}")
+        return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is {place}; it was abandoned after {f.superseded}")
+    return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is still {place}")
 
 
 def check_layout(sc: Scenario, out: Snapshot, placement: Placement) -> list[Failure]:
