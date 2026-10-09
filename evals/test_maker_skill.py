@@ -6,12 +6,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from deckcheck.meeting import DOCS
+from deckcheck.meeting import COMMANDS, DOCS, SKILL
 from scenario import EVALS, ROOT, public
 
 FACT_KEYS = ("money", "percent", "count", "text")
 SPEAKER = re.compile(r"^\[\d\d:\d\d:\d\d\] ([^(]+?) \(", re.M)
 TURN = re.compile(r"^\[(\d\d:\d\d:\d\d)\]", re.M)
+FENCED = re.compile(r"^```bash\n(.*?)^```", re.M | re.S)
 
 
 def facts(node: object) -> Iterator[str]:
@@ -75,3 +76,10 @@ def test_a_skill_that_quotes_a_scenario_answer_is_caught() -> None:
         ("solar-market-refresh", "2147478638"),
         ("solar-market-refresh", "cover-date"),
     ]
+
+
+def test_the_skill_runs_exactly_the_commands_the_runner_allows() -> None:
+    skill = (ROOT / SKILL).read_text()
+    runs = {line for block in FENCED.findall(skill) for line in block.splitlines() if line.startswith("uv run")}
+
+    assert runs == set(COMMANDS)
