@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { choices, deck, editable, marks, segments, slideLabel } from "../../src/deckcheck/review/web/model.js";
+import { chipLabel, choices, deck, editable, marks, segments, slideLabel } from "../../src/deckcheck/review/web/model.js";
 
 const SLIDE = { w: 12192000, h: 6858000 };
 const TITLE = { id: 2, name: "Title 2", box: { x: 630000, y: 622800, w: 10933350, h: 664797 } };
@@ -98,6 +98,18 @@ test("a changed slide is labelled by its place, not by the source title", () => 
       ["New slide 6", null],
     ],
   );
+});
+
+test("a slide chip names the old number the meeting used when it differs", () => {
+  assert.deepEqual(deck(review, {}).map(chipLabel), [
+    "Slide 1",
+    "Old slide 2 (deleted)",
+    "Slide 2 (was 3)",
+    "Slide 3 (was 6)",
+    "Slide 4",
+    "Slide 5",
+    "New slide 6",
+  ]);
 });
 
 test("two changes on one shape share one mark, placed in percent of the slide", () => {

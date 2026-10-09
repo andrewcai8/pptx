@@ -71,6 +71,13 @@ export function slideLabel(e) {
   return e.oldIndex === e.newIndex ? `Slide ${e.newIndex}` : `Slide ${e.newIndex}, slide ${e.oldIndex} in the old deck`;
 }
 
+// Meeting text names slides by their old numbers, so a chip shows both when they differ.
+export function chipLabel(e) {
+  if (e.frame === "added") return `New slide ${e.newIndex}`;
+  if (e.frame === "deleted") return `Old slide ${e.oldIndex} (deleted)`;
+  return e.oldIndex === e.newIndex ? `Slide ${e.newIndex}` : `Slide ${e.newIndex} (was ${e.oldIndex})`;
+}
+
 export function viewOf(changes) {
   if (changes.length === 0) return "plain";
   return changes.some((c) => c.structural) ? "structural" : "text";

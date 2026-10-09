@@ -266,8 +266,7 @@ function asks(v, rail) {
 function slideChip(rail, key) {
   const e = rail.find((x) => x.token === M.token(key));
   if (!e) return null;
-  const where = e.frame === "deleted" ? `old slide ${e.oldIndex}` : e.frame === "added" ? `new slide ${e.newIndex}` : `Slide ${e.newIndex}`;
-  return h("button", { class: "chip link", onclick: () => select(e.token) }, where[0].toUpperCase() + where.slice(1));
+  return h("button", { class: "chip link", onclick: () => select(e.token) }, M.chipLabel(e));
 }
 
 function needs(v, rail, entry) {
