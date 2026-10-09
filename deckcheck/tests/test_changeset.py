@@ -12,6 +12,7 @@ import pytest
 from lxml import etree
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
+from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE
 from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
@@ -21,7 +22,7 @@ from deckcheck.changeset.cli import main
 from deckcheck.changeset.model import SCHEMA_DIR, schemas
 from deckcheck.package import Package
 
-TITLE_AND_CONTENT, TITLE_ONLY = 1, 5
+TITLE_AND_CONTENT, TITLE_ONLY, BLANK = 1, 5, 6
 REF = {"t": "00:01:00", "speaker": "Ana Ruiz", "quote": "Use the new figures."}
 ASK = {"id": "a1", "text": "Refresh the figures.", "refs": [REF]}
 FLAG = {"id": "f1", "question": "Which year do the prices start?", "slides": [256], "refs": [REF]}
@@ -206,6 +207,16 @@ def test_edited_decisions_write_the_reviewers_text(deck: Path, tmp_path: Path, c
     assert [(p.text, p.level) for p in body.text_frame.paragraphs] == [("Raise prices", 0), ("Hold discounts", 1), ("Review in May", 1)]
 
 
+def test_an_empty_cell_takes_its_text_in_a_new_run(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prs = Presentation(str(deck))
+    next(s for s in prs.slides[0].shapes if s.shape_id == 5).table.cell(1, 1).text = ""
+    prs.save(str(deck))
+    out = tmp_path / "executed.pptx"
+
+    assert run(["execute", changeset(deck, [change("c1", {**CELL, "old": "", "new": "$130m\nnet"})]), "--out", out], capsys)[0] == 0
+    assert cell(out) == "$130m\nnet"
+
+
 def test_keep_old_leaves_a_change_out_and_keep_new_writes_it(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     cs = changeset(deck, [change("c1", REVENUE, "keep_old"), change("c2", CELL, "keep_new"), change("c3", POINT, "keep_old")])
     out = tmp_path / "final.pptx"
@@ -281,6 +292,105 @@ def test_untouched_runs_in_an_edited_paragraph_keep_their_formatting(deck: Path,
     before, after = runs(deck), runs(out)
     assert [t for t, _ in after] == ["Revenue grew ", "15%", " in 2025"]
     assert [rpr for _, rpr in after] == [rpr for _, rpr in before]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "runs"),
+    [
+        ("grew 12%", "grew by 12%", [("Revenue grew by ", 14.0, False), ("12%", 18.0, True), (" in 2025", 12.0, False)]),
+        ("12% in 2025", "15%", [("Revenue grew ", 14.0, False), ("15%", 18.0, True)]),
+        ("12% in 2025", "12% net in 2025", [("Revenue grew ", 14.0, False), ("12%", 18.0, True), (" net in 2025", 12.0, False)]),
+    ],
+    ids=["word-inserted-at-a-run-edge", "run-emptied", "word-inserted-after-a-formatted-run"],
+)
+def test_a_word_added_beside_a_run_edge_keeps_the_formatting_around_it(
+    deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], old: str, new: str, runs: list[tuple[str, float, bool]]
+) -> None:
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, [change("c1", {**REVENUE, "old": old, "new": new})]), "--out", out], capsys)
+
+    slide = next(s for s in Presentation(str(out)).slides if s.slide_id == 256)
+    p = next(s for s in slide.shapes if s.shape_id == 4).text_frame.paragraphs[0]
+    assert [(r.text, r.font.size.pt, r.font.bold) for r in p.runs] == runs
+
+
+GREEN = "29BA74"
+
+
+def styled_deck(path: Path, runs: list[tuple[str, dict]]) -> Path:
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[BLANK])
+    p = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(8), Inches(1)).text_frame.paragraphs[0]
+    for text, style in runs:
+        run = p.add_run()
+        run.text, run.font.bold = text, style.get("bold")
+        if "color" in style:
+            run.font.color.rgb = RGBColor.from_string(style["color"])
+        if "baseline" in style:
+            run._r.get_or_add_rPr().set("baseline", style["baseline"])
+    prs.save(str(path))
+    return path
+
+
+def styled_runs(path: Path) -> list[tuple[str, dict]]:
+    p = Presentation(str(path)).slides[0].shapes[0].text_frame.paragraphs[0]
+    out = []
+    for r in p.runs:
+        style = {"bold": r.font.bold, "color": str(r.font.color.rgb) if r.font.color.type else None, "baseline": r._r.get_or_add_rPr().get("baseline")}
+        out.append((r.text, {k: v for k, v in style.items() if v is not None}))
+    return out
+
+
+@pytest.mark.parametrize(
+    ("runs", "old", "new", "expected"),
+    [
+        (
+            [("found ", {}), ("44%", {"color": GREEN}), (" savings in markdown costs", {})],
+            "found 44% savings in markdown costs",
+            "found 44% gross savings in markdown costs",
+            [("found ", {}), ("44%", {"color": GREEN}), (" gross savings in markdown costs", {})],
+        ),
+        (
+            [("orders placed through 3", {}), ("rd", {"baseline": "30000"}), (" party delivery services", {})],
+            "3rd party delivery services",
+            "3rd and 4th party delivery services",
+            [("orders placed through 3", {}), ("rd", {"baseline": "30000"}), (" and 4th party delivery services", {})],
+        ),
+        (
+            [("Model found ", {}), ("44%", {"color": GREEN}), (" savings in markdown costs, ", {}), ("~€20M", {"color": GREEN}), (" in single market", {})],
+            "Model found 44% savings in markdown costs, ~€20M in single market",
+            "Model found 44% savings in markdown costs",
+            [("Model found ", {}), ("44%", {"color": GREEN}), (" savings in markdown costs", {})],
+        ),
+        (
+            [("Prices fell 80% in the last decade", {}), ("1", {"baseline": "30000"}), (" across markets", {})],
+            "in the last decade",
+            "since 2012",
+            [("Prices fell 80% since 2012", {}), ("1", {"baseline": "30000"}), (" across markets", {})],
+        ),
+        (
+            [("Prices fell 80% in the last decade", {}), ("1", {"baseline": "30000"}), (" across markets", {})],
+            "Prices fell 80% in the last decade1 across markets",
+            "Prices fell 80% since 20121 across markets",
+            [("Prices fell 80% since 2012", {}), ("1", {"baseline": "30000"}), (" across markets", {})],
+        ),
+    ],
+    ids=[
+        "word-inserted-after-a-coloured-number",
+        "words-inserted-after-a-superscript",
+        "tail-cut-after-a-comma",
+        "words-rewritten-before-a-footnote-marker",
+        "sentence-rewritten-around-a-footnote-marker",
+    ],
+)
+def test_text_written_beside_a_formatted_run_leaves_that_run_as_it_was(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], runs: list[tuple[str, dict]], old: str, new: str, expected: list[tuple[str, dict]]
+) -> None:
+    source = styled_deck(tmp_path / "deck.pptx", runs)
+    out = tmp_path / "executed.pptx"
+    assert run(["execute", changeset(source, [change("c1", {"kind": "replace_text", "slide": 256, "shape": 2, "old": old, "new": new})]), "--out", out], capsys)[0] == 0
+
+    assert styled_runs(out) == expected
 
 
 @pytest.mark.parametrize("order", [("grew", "pct"), ("pct", "grew")], ids=["text-order", "reverse-order"])
