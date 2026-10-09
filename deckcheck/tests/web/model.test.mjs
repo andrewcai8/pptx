@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { choices, deck, editable, marks, segments } from "../../src/deckcheck/review/web/model.js";
+import { choices, deck, editable, marks, segments, slideLabel } from "../../src/deckcheck/review/web/model.js";
 
 const SLIDE = { w: 12192000, h: 6858000 };
 const TITLE = { id: 2, name: "Title 2", box: { x: 630000, y: 622800, w: 10933350, h: 664797 } };
@@ -73,6 +73,31 @@ test("a deleted first slide leads the rail", () => {
   ];
 
   assert.deepEqual(deck({ ...review, slides, changes: [] }, {}).map((e) => e.token), ["s1", "s2", "s3"]);
+});
+
+test("a changed slide is labelled by its place, not by the source title", () => {
+  const slides = [
+    { key: 1, source_index: 1, executed_index: null, title: "Cover" },
+    { key: 2, source_index: 2, executed_index: 1, title: "About 50% of clients" },
+    { key: 3, source_index: 3, executed_index: 2, title: "Body" },
+  ];
+  const shifted = { ...review, slides, changes: [change("drop", "delete_slide", 1), change("r", "replace_text", 2)] };
+
+  assert.deepEqual(
+    [...deck(shifted, {}), ...deck(review, {})].map((e) => [slideLabel(e), e.title]),
+    [
+      ["Slide 1 of the old deck, deleted", null],
+      ["Slide 1, slide 2 in the old deck", null],
+      ["Slide 2, slide 3 in the old deck", "Body"],
+      ["Slide 1", "Intro"],
+      ["Slide 2 of the old deck, deleted", null],
+      ["Slide 2, slide 3 in the old deck", "Overview"],
+      ["Slide 3, moved from slide 6 to slide 3", null],
+      ["Slide 4", null],
+      ["Slide 5", null],
+      ["New slide 6", null],
+    ],
+  );
 });
 
 test("two changes on one shape share one mark, placed in percent of the slide", () => {

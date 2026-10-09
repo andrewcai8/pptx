@@ -300,12 +300,7 @@ function held(v, rail) {
 }
 
 function heading(e) {
-  const where = {
-    added: `New slide ${e.newIndex}`,
-    deleted: `Slide ${e.oldIndex} of the old deck, deleted`,
-    moved: `Slide ${e.newIndex}, moved from slide ${e.oldIndex} to slide ${e.newIndex}`,
-  }[e.frame] ?? `Slide ${e.newIndex}`;
-  return h("div", { class: "slide-heading" }, h("span", { class: "where" }, where), h("span", { class: "slide-title" }, e.title));
+  return h("div", { class: "slide-heading" }, h("span", { class: "where" }, M.slideLabel(e)), e.title && h("span", { class: "slide-title" }, e.title));
 }
 
 function bar(v) {

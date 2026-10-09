@@ -50,7 +50,8 @@ export function deck(review, decisions) {
     return {
       token: t,
       key: s.key,
-      title: s.title,
+      // The engine reads titles from the source deck, so a changed slide's title may say what the change undid.
+      title: changes.length ? null : s.title,
       view: viewOf(changes),
       frame,
       changes,
@@ -61,6 +62,13 @@ export function deck(review, decisions) {
       newIndex: s.executed_index,
     };
   });
+}
+
+export function slideLabel(e) {
+  if (e.frame === "added") return `New slide ${e.newIndex}`;
+  if (e.frame === "deleted") return `Slide ${e.oldIndex} of the old deck, deleted`;
+  if (e.frame === "moved") return `Slide ${e.newIndex}, moved from slide ${e.oldIndex} to slide ${e.newIndex}`;
+  return e.oldIndex === e.newIndex ? `Slide ${e.newIndex}` : `Slide ${e.newIndex}, slide ${e.oldIndex} in the old deck`;
 }
 
 export function viewOf(changes) {
