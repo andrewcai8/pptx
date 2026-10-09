@@ -112,7 +112,7 @@ Afterwards the command writes Claude's JSON result to `<out>/claude.json` and co
 | 2 | bad input, such as a missing transcript, a missing deck, `--out` outside `artifacts/` and `private/`, a meeting or deck inside `<out>/stage/`, or no `--shareable` |
 | 3 | the `claude` CLI is missing or not logged in, and the command prints ``claude CLI not found or not logged in; run `claude` once to log in`` |
 
-The flags were checked against Claude Code 2.1.293, and `deckcheck/tests/test_meeting.py` pins the argv and the staged files. No live `claude -p` run has tested them.
+These flags ran through Claude Code 2.1.293 against a local stand-in for the API. It allowed the four commands and denied each read, write, and command that reached outside `<out>/stage/`, including one that a user settings rule allowed. `deckcheck/tests/test_meeting.py` pins the argv and the staged files. No live `claude -p` run against Claude has tested them.
 
 ## Known gaps
 
