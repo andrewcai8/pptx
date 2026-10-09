@@ -18,14 +18,25 @@ const check = (ok, msg) => {
 const SCENARIOS = ["insurance-workshop-prep", "solar-market-refresh", "fmcg-diagnostic-timeline"];
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
-const discardGoldenDecisions = () => SCENARIOS.forEach((name) => rmSync(`artifacts/review/evals/${name}`, { recursive: true, force: true }));
-discardGoldenDecisions();
 
-const server = spawn("uv", ["run", "--quiet", "--project", "deckcheck", "review", "serve", "--port", String(PORT)], { stdio: ["ignore", "pipe", "inherit"] });
+const server = spawn("uv", ["run", "--quiet", "--project", "deckcheck", "review", "serve", "--port", String(PORT)], { stdio: ["ignore", "pipe", "pipe"] });
+let serverLog = "";
+server.stderr.on("data", (d) => (serverLog += d));
 const chrome = spawn(process.env.CHROME ?? "/usr/bin/google-chrome", ["--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", `--remote-debugging-port=${CDP}`,
   `--user-data-dir=/tmp/review-proof-chrome-${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
 const stop = () => { server.kill(); chrome.kill(); };
 process.on("exit", stop);
+const abort = (why) => {
+  console.log(`REVIEW PROOF FAIL (${why})`);
+  process.exit(1);
+};
+
+for (const t0 = Date.now(); ; await sleep(250)) {
+  if (server.exitCode !== null || server.signalCode !== null) abort(`the review server exited early: ${serverLog.trim()}`);
+  if (await fetch(`${BASE}/api/meetings`).then((r) => r.ok, () => false)) break;
+  if (Date.now() - t0 > 30000) abort(`the review server did not answer in 30 s: ${serverLog.trim()}`);
+}
+SCENARIOS.forEach((name) => rmSync(`artifacts/review/evals/${name}`, { recursive: true, force: true }));
 
 async function until(probe, what, ms = 30000) {
   const t0 = Date.now();
@@ -36,7 +47,6 @@ async function until(probe, what, ms = 30000) {
   }
 }
 
-await until(async () => (await fetch(`${BASE}/api/meetings`)).ok, "the review server");
 const target = await until(async () => (await (await fetch(`http://127.0.0.1:${CDP}/json`)).json()).find((t) => t.type === "page"), "chrome");
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r) => ws.addEventListener("open", r));

@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,7 +28,7 @@ from deckcheck.render import find_fc_match, find_pdftoppm, find_soffice, render
 from deckcheck.review.cli import main as review_main
 from deckcheck.review.maker import maker_for
 from deckcheck.review import meetings
-from deckcheck.review.meetings import Reviews, cascade
+from deckcheck.review.meetings import Locked, Reviews, cascade
 from deckcheck.review.server import serve
 
 WEB = Path(__file__).parents[1] / "src/deckcheck/review/web"
@@ -83,6 +83,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @dataclass(frozen=True)
 class Client:
     port: int
+    stop: Callable[[], None]
 
     def call(self, method: str, path: str, body: object = None, headers: dict | None = None) -> tuple[int, object]:
         data = json.dumps(body).encode() if method == "POST" else None
@@ -122,19 +123,25 @@ class Client:
 
 @pytest.fixture
 def start(repo: Path) -> Iterator:
-    servers = []
+    clients = []
 
-    def start(make=maker_for) -> Client:
-        server = serve(Reviews(render=fake_render, maker_for=make), port=0)
+    def start(make=maker_for, render=fake_render) -> Client:
+        reviews = Reviews(render=render, maker_for=make)
+        server = serve(reviews, port=0)
         threading.Thread(target=server.serve_forever, daemon=True).start()
-        servers.append(server)
-        return Client(server.server_address[1])
+
+        def stop() -> None:
+            server.shutdown()
+            server.server_close()
+            reviews.close()
+
+        clients.append(Client(server.server_address[1], stop))
+        return clients[-1]
 
     yield start
     GATE.set()
-    for server in servers:
-        server.shutdown()
-        server.server_close()
+    for client in clients:
+        client.stop()
 
 
 @pytest.fixture
@@ -368,19 +375,29 @@ def test_decisions_wait_while_the_meeting_is_processed(repo: Path, app: Client) 
 
 def test_start_converges_on_what_a_crash_left_behind(repo: Path, app: Client) -> None:
     app.ready()
+    app.stop()
     work = repo / "artifacts/review/evals/demo"
     os.rename(work, work.with_name("demo.discard"))
     work.with_name("demo.partial").mkdir()
     (work.with_name("demo.partial") / "changeset.json").write_text("{}")
 
     reviews = Reviews(render=fake_render, maker_for=maker_for)
-
     assert sorted(p.name for p in work.parent.iterdir()) == ["demo"]
     assert reviews.row("evals/demo").state.decided == 0
+    reviews.close()
+
     work.with_name("other").mkdir()
     shutil.copytree(work, work.with_name("other.discard"))
-    Reviews(render=fake_render, maker_for=maker_for)
+    Reviews(render=fake_render, maker_for=maker_for).close()
     assert sorted(p.name for p in work.parent.iterdir()) == ["demo", "other"]
+
+
+def test_a_second_review_server_is_refused(repo: Path, app: Client, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(Locked, match=r"^another review server is using artifacts/review/; stop it first$"):
+        Reviews(render=fake_render, maker_for=maker_for)
+
+    assert review_main(["serve", "--port", "0"]) == 2
+    assert capsys.readouterr().err == "review: another review server is using artifacts/review/; stop it first\n"
 
 
 def test_a_failed_process_again_keeps_the_review_on_disk(repo: Path, app: Client) -> None:
@@ -550,21 +567,15 @@ def test_web_model() -> None:
 
 
 @pytest.mark.skipif(not (find_soffice() and find_pdftoppm() and find_fc_match()), reason="needs soffice, pdftoppm and fc-match")
-def test_process_renders_both_decks_for_real(repo: Path) -> None:
-    reviews = Reviews(render=render, maker_for=maker_for)
-    server = serve(reviews, port=0)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    try:
-        app = Client(server.server_address[1])
-        app.post("/api/meetings/evals/demo/process")
-        deadline = time.monotonic() + 120
-        while (row := app.row("evals/demo"))["state"]["is"] == "processing":
-            assert time.monotonic() < deadline
-            time.sleep(0.2)
-        assert row["state"]["is"] == "ready", row["state"]
-        for side in ("old", "new"):
-            status, png = app.get(f"/api/meetings/evals/demo/render/{side}/slide-1.png")
-            assert (status, png[:8]) == (200, b"\x89PNG\r\n\x1a\n")
-    finally:
-        server.shutdown()
-        server.server_close()
+def test_process_renders_both_decks_for_real(repo: Path, start) -> None:
+    app = start(render=render)
+    app.post("/api/meetings/evals/demo/process")
+    deadline = time.monotonic() + 120
+    while (row := app.row("evals/demo"))["state"]["is"] == "processing":
+        assert time.monotonic() < deadline
+        time.sleep(0.2)
+
+    assert row["state"]["is"] == "ready", row["state"]
+    for side in ("old", "new"):
+        status, png = app.get(f"/api/meetings/evals/demo/render/{side}/slide-1.png")
+        assert (status, png[:8]) == (200, b"\x89PNG\r\n\x1a\n")

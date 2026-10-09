@@ -12,7 +12,7 @@ Run it from the repo root, because a ChangeSet names its deck by a path relative
 uv run --project deckcheck review serve
 ```
 
-It prints `review: http://127.0.0.1:8765`. Open that address in a browser. `--port 0` picks a free port and prints it. Stop the server with Ctrl-C.
+It prints `review: http://127.0.0.1:8765`. Open that address in a browser. `--port 0` picks a free port and prints it. Stop the server with Ctrl-C. Only one review server can use a repo at a time, because it is the one writer under `artifacts/review/`. A second one exits and says so.
 
 Processing renders slides, so it needs `soffice`, `pdftoppm`, and `fc-match`, the same tools as `deckcheck render`. A golden scenario also needs its corpus deck. Fetch the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`.
 
@@ -72,7 +72,7 @@ uv run --project deckcheck review serve --maker 'my-maker {meeting} --out {out}'
 
 ## Prove it in a browser
 
-`deckcheck/scripts/review_proof.mjs` drives the app in headless Chrome. It needs Node 24 and Chrome, and `CHROME` sets the browser path. It starts its own server on a free port and stops it at the end.
+`deckcheck/scripts/review_proof.mjs` drives the app in headless Chrome. It needs Node 24 and Chrome, and `CHROME` sets the browser path. It starts its own server on a free port and stops it at the end, so stop any other review server first.
 
 ```bash
 node deckcheck/scripts/review_proof.mjs artifacts/review-proof

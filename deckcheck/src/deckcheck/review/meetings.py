@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import fcntl
 import hashlib
 import io
 import itertools
@@ -108,6 +109,10 @@ class Unknown(Exception):
 
 
 class Conflict(Exception):
+    pass
+
+
+class Locked(Exception):
     pass
 
 
@@ -244,7 +249,13 @@ class Reviews:
         self._jobs: dict[str, _Job] = {}
         self._failed: dict[str, Failed] = {}
         self._locks: dict[str, threading.Lock] = {}
+        self._fd = _hold(WORK / ".lock")
         _converge()
+
+    def close(self) -> None:
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
 
     def meetings(self) -> list[Row]:
         return [self._row(m) for m in discover()]
@@ -393,6 +404,17 @@ class Reviews:
                 del self._jobs[meeting.id]
                 if failed:
                     self._failed[meeting.id] = failed
+
+
+def _hold(path: Path) -> int:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o666)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise Locked(f"another review server is using {WORK}/; stop it first") from None
+    return fd
 
 
 def _converge() -> None:

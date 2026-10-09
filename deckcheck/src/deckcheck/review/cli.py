@@ -8,7 +8,7 @@ from pathlib import Path
 
 from deckcheck.render import render
 from deckcheck.review.maker import maker_for
-from deckcheck.review.meetings import Reviews
+from deckcheck.review.meetings import Locked, Reviews
 from deckcheck.review.server import serve
 
 USAGE = 2
@@ -29,7 +29,12 @@ def main(argv: list[str] | None = None) -> int:
         print("review: --maker is empty", file=sys.stderr)
         return USAGE
     try:
-        server = serve(Reviews(render=render, maker_for=functools.partial(maker_for, command=command)), args.port)
+        reviews = Reviews(render=render, maker_for=functools.partial(maker_for, command=command))
+    except Locked as e:
+        print(f"review: {e}", file=sys.stderr)
+        return USAGE
+    try:
+        server = serve(reviews, args.port)
     except OSError as e:
         print(f"review: cannot listen on 127.0.0.1:{args.port}: {e.strerror}", file=sys.stderr)
         return USAGE
