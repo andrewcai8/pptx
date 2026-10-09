@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { chipLabel, choices, deck, editable, marks, segments, slideLabel } from "../../src/deckcheck/review/web/model.js";
+import { chipLabel, choices, deck, editable, marks, segments, slideLabel, viewOf } from "../../src/deckcheck/review/web/model.js";
 
 const SLIDE = { w: 12192000, h: 6858000 };
 const TITLE = { id: 2, name: "Title 2", box: { x: 630000, y: 622800, w: 10933350, h: 664797 } };
@@ -134,6 +134,15 @@ test("editable slices the replacement by code points", () => {
   assert.equal(editable(c, "pending"), "15.5%");
   assert.equal(editable(c, { edited: "16%" }), "16%");
   assert.equal(editable(change("p", "fill_placeholder", "add", { after: "Raise prices\nHold discounts" }), "keep_old"), "Raise prices\nHold discounts");
+});
+
+test("a slide with a change the engine could not place is structural", () => {
+  const boxed = change("t", "replace_text", 1, { shape: TITLE });
+  const loose = change("u", "replace_text", 1, { shape: { id: 7, name: "Subtitle 2", box: null } });
+
+  assert.equal(viewOf([boxed]), "text");
+  assert.equal(viewOf([boxed, loose]), "structural");
+  assert.equal(viewOf([change("v", "insert_paragraph", 1)]), "structural");
 });
 
 test("segments show the decision's outcome against the source text", () => {

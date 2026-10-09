@@ -75,7 +75,7 @@ export function chipLabel(e) {
 
 export function viewOf(changes) {
   if (changes.length === 0) return "plain";
-  return changes.some((c) => c.structural) ? "structural" : "text";
+  return changes.some((c) => c.structural || !c.shape?.box) ? "structural" : "text";
 }
 
 const pct = (part, whole) => Math.round((part / whole) * 100000) / 1000;
