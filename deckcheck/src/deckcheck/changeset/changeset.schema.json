@@ -1,0 +1,701 @@
+{
+  "$defs": {
+    "AddSlide": {
+      "additionalProperties": false,
+      "description": "A slide on one of the deck's own layouts, after source slide `after` (null: first), placeholders empty.",
+      "properties": {
+        "kind": {
+          "const": "add_slide",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layout": {
+          "minLength": 1,
+          "title": "Layout",
+          "type": "string"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "description": "p:sldId/@id of a source slide",
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After"
+        }
+      },
+      "required": [
+        "kind",
+        "layout",
+        "after"
+      ],
+      "title": "AddSlide",
+      "type": "object"
+    },
+    "Ask": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "minItems": 1,
+          "title": "Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "refs"
+      ],
+      "title": "Ask",
+      "type": "object"
+    },
+    "Change": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "ask_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Ask Id",
+          "type": "string"
+        },
+        "rationale": {
+          "description": "one sentence",
+          "minLength": 1,
+          "pattern": "^[^\\n]+$",
+          "title": "Rationale",
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "minItems": 1,
+          "title": "Refs",
+          "type": "array"
+        },
+        "op": {
+          "discriminator": {
+            "mapping": {
+              "add_slide": "#/$defs/AddSlide",
+              "delete_slide": "#/$defs/DeleteSlide",
+              "fill_placeholder": "#/$defs/FillPlaceholder",
+              "insert_paragraph": "#/$defs/InsertParagraph",
+              "move_slide": "#/$defs/MoveSlide",
+              "replace_text": "#/$defs/ReplaceText",
+              "set_cell": "#/$defs/SetCell",
+              "set_chart_value": "#/$defs/SetChartValue"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ReplaceText"
+            },
+            {
+              "$ref": "#/$defs/InsertParagraph"
+            },
+            {
+              "$ref": "#/$defs/SetCell"
+            },
+            {
+              "$ref": "#/$defs/SetChartValue"
+            },
+            {
+              "$ref": "#/$defs/AddSlide"
+            },
+            {
+              "$ref": "#/$defs/FillPlaceholder"
+            },
+            {
+              "$ref": "#/$defs/DeleteSlide"
+            },
+            {
+              "$ref": "#/$defs/MoveSlide"
+            }
+          ],
+          "title": "Op"
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "enum": [
+                "pending",
+                "keep_new",
+                "keep_old"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Edited"
+            }
+          ],
+          "default": "pending",
+          "description": "written by the review app; absent means pending",
+          "title": "Decision"
+        }
+      },
+      "required": [
+        "id",
+        "ask_id",
+        "rationale",
+        "refs",
+        "op"
+      ],
+      "title": "Change",
+      "type": "object"
+    },
+    "DeleteSlide": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "delete_slide",
+          "title": "Kind",
+          "type": "string"
+        },
+        "slide": {
+          "description": "p:sldId/@id of a source slide",
+          "minimum": 1,
+          "title": "Slide",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "slide"
+      ],
+      "title": "DeleteSlide",
+      "type": "object"
+    },
+    "Edited": {
+      "additionalProperties": false,
+      "properties": {
+        "edited": {
+          "title": "Edited",
+          "type": "string"
+        }
+      },
+      "required": [
+        "edited"
+      ],
+      "title": "Edited",
+      "type": "object"
+    },
+    "FillPlaceholder": {
+      "additionalProperties": false,
+      "description": "The paragraphs of placeholder `shape` (its cNvPr id on the layout) on the slide add_slide change `slide` adds.",
+      "properties": {
+        "kind": {
+          "const": "fill_placeholder",
+          "title": "Kind",
+          "type": "string"
+        },
+        "slide": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Slide",
+          "type": "string"
+        },
+        "shape": {
+          "description": "p:cNvPr/@id, unique on its slide, found inside groups too",
+          "minimum": 0,
+          "title": "Shape",
+          "type": "integer"
+        },
+        "paragraphs": {
+          "items": {
+            "$ref": "#/$defs/Paragraph"
+          },
+          "minItems": 1,
+          "title": "Paragraphs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "slide",
+        "shape",
+        "paragraphs"
+      ],
+      "title": "FillPlaceholder",
+      "type": "object"
+    },
+    "Flag": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "slides": {
+          "default": [],
+          "items": {
+            "description": "p:sldId/@id of a source slide",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Slides",
+          "type": "array"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "minItems": 1,
+          "title": "Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "question",
+        "refs"
+      ],
+      "title": "Flag",
+      "type": "object"
+    },
+    "Held": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "slides": {
+          "default": [],
+          "items": {
+            "description": "p:sldId/@id of a source slide",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Slides",
+          "type": "array"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "minItems": 1,
+          "title": "Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "refs"
+      ],
+      "title": "Held",
+      "type": "object"
+    },
+    "InsertParagraph": {
+      "additionalProperties": false,
+      "description": "A new paragraph after source paragraph `after`, styled like it.",
+      "properties": {
+        "kind": {
+          "const": "insert_paragraph",
+          "title": "Kind",
+          "type": "string"
+        },
+        "slide": {
+          "description": "p:sldId/@id of a source slide",
+          "minimum": 1,
+          "title": "Slide",
+          "type": "integer"
+        },
+        "shape": {
+          "description": "p:cNvPr/@id, unique on its slide, found inside groups too",
+          "minimum": 0,
+          "title": "Shape",
+          "type": "integer"
+        },
+        "after": {
+          "minimum": 0,
+          "title": "After",
+          "type": "integer"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "slide",
+        "shape",
+        "after",
+        "text"
+      ],
+      "title": "InsertParagraph",
+      "type": "object"
+    },
+    "Meeting": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "date"
+      ],
+      "title": "Meeting",
+      "type": "object"
+    },
+    "MoveSlide": {
+      "additionalProperties": false,
+      "description": "Move source slide `slide` after source slide `after` (null: first), wherever `after` ends up.",
+      "properties": {
+        "kind": {
+          "const": "move_slide",
+          "title": "Kind",
+          "type": "string"
+        },
+        "slide": {
+          "description": "p:sldId/@id of a source slide",
+          "minimum": 1,
+          "title": "Slide",
+          "type": "integer"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "description": "p:sldId/@id of a source slide",
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After"
+        }
+      },
+      "required": [
+        "kind",
+        "slide",
+        "after"
+      ],
+      "title": "MoveSlide",
+      "type": "object"
+    },
+    "Paragraph": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "level": {
+          "default": 0,
+          "maximum": 8,
+          "minimum": 0,
+          "title": "Level",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "Paragraph",
+      "type": "object"
+    },
+    "Ref": {
+      "additionalProperties": false,
+      "properties": {
+        "t": {
+          "description": "HH:MM:SS of the transcript turn",
+          "pattern": "^\\d{2}:\\d{2}:\\d{2}$",
+          "title": "T",
+          "type": "string"
+        },
+        "speaker": {
+          "minLength": 1,
+          "title": "Speaker",
+          "type": "string"
+        },
+        "quote": {
+          "description": "copied verbatim from the transcript",
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "speaker",
+        "quote"
+      ],
+      "title": "Ref",
+      "type": "object"
+    },
+    "ReplaceText": {
+      "additionalProperties": false,
+      "description": "Replace the quote `old`, which occurs exactly once in the shape (or in paragraph `paragraph`), with `new`.\nText is a:r and a:fld text in order with a:br as \"\\v\", as python-pptx's paragraph.text reads it.",
+      "properties": {
+        "kind": {
+          "const": "replace_text",
+          "title": "Kind",
+          "type": "string"
+        },
+        "slide": {
+          "description": "p:sldId/@id of a source slide",
+          "minimum": 1,
+          "title": "Slide",
+          "type": "integer"
+        },
+        "shape": {
+          "description": "p:cNvPr/@id, unique on its slide, found inside groups too",
+          "minimum": 0,
+          "title": "Shape",
+          "type": "integer"
+        },
+        "old": {
+          "minLength": 1,
+          "title": "Old",
+          "type": "string"
+        },
+        "new": {
+          "title": "New",
+          "type": "string"
+        },
+        "paragraph": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "index among all a:p of the shape, blank ones included; only to tell apart a quote that repeats",
+          "title": "Paragraph"
+        }
+      },
+      "required": [
+        "kind",
+        "slide",
+        "shape",
+        "old",
+        "new"
+      ],
+      "title": "ReplaceText",
+      "type": "object"
+    },
+    "SetCell": {
+      "additionalProperties": false,
+      "description": "The whole text of table cell (row, col), paragraphs joined by \"\\n\". `old` must equal the source cell.",
+      "properties": {
+        "kind": {
+          "const": "set_cell",
+          "title": "Kind",
+          "type": "string"
+        },
+        "slide": {
+          "description": "p:sldId/@id of a source slide",
+          "minimum": 1,
+          "title": "Slide",
+          "type": "integer"
+        },
+        "shape": {
+          "description": "p:cNvPr/@id, unique on its slide, found inside groups too",
+          "minimum": 0,
+          "title": "Shape",
+          "type": "integer"
+        },
+        "row": {
+          "minimum": 0,
+          "title": "Row",
+          "type": "integer"
+        },
+        "col": {
+          "minimum": 0,
+          "title": "Col",
+          "type": "integer"
+        },
+        "old": {
+          "title": "Old",
+          "type": "string"
+        },
+        "new": {
+          "title": "New",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "slide",
+        "shape",
+        "row",
+        "col",
+        "old",
+        "new"
+      ],
+      "title": "SetCell",
+      "type": "object"
+    },
+    "SetChartValue": {
+      "additionalProperties": false,
+      "description": "Point `point` (c:pt/@idx) of the `series`-th c:ser in document order: the chart cache and its workbook cell.",
+      "properties": {
+        "kind": {
+          "const": "set_chart_value",
+          "title": "Kind",
+          "type": "string"
+        },
+        "slide": {
+          "description": "p:sldId/@id of a source slide",
+          "minimum": 1,
+          "title": "Slide",
+          "type": "integer"
+        },
+        "shape": {
+          "description": "p:cNvPr/@id, unique on its slide, found inside groups too",
+          "minimum": 0,
+          "title": "Shape",
+          "type": "integer"
+        },
+        "series": {
+          "minimum": 0,
+          "title": "Series",
+          "type": "integer"
+        },
+        "point": {
+          "minimum": 0,
+          "title": "Point",
+          "type": "integer"
+        },
+        "old": {
+          "title": "Old",
+          "type": "number"
+        },
+        "new": {
+          "title": "New",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "slide",
+        "shape",
+        "series",
+        "point",
+        "old",
+        "new"
+      ],
+      "title": "SetChartValue",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "the source deck, relative to the repo root",
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "Source",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "meeting": {
+      "$ref": "#/$defs/Meeting"
+    },
+    "source": {
+      "$ref": "#/$defs/Source"
+    },
+    "asks": {
+      "items": {
+        "$ref": "#/$defs/Ask"
+      },
+      "title": "Asks",
+      "type": "array"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/Change"
+      },
+      "title": "Changes",
+      "type": "array"
+    },
+    "flags": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Flag"
+      },
+      "title": "Flags",
+      "type": "array"
+    },
+    "held": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Held"
+      },
+      "title": "Held",
+      "type": "array"
+    }
+  },
+  "required": [
+    "meeting",
+    "source",
+    "asks",
+    "changes"
+  ],
+  "title": "ChangeSet",
+  "type": "object"
+}
