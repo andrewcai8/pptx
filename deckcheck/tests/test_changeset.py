@@ -798,3 +798,31 @@ def test_no_output_overwrites_an_input_or_the_other_output(
     assert run(argv, capsys) == (2, "", f"error: {message}\n")
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()} == files
 
+
+
+def not_a_deck(path: Path, kind: str) -> Path:
+    match kind:
+        case "workbook":
+            openpyxl.Workbook().save(path)
+        case "zip":
+            with zipfile.ZipFile(path, "w") as z:
+                z.writestr("notes.txt", "hello")
+        case _:
+            path.write_text("hello")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("kind", "message"),
+    [
+        ("workbook", "xl/workbook.xml is not a presentation"),
+        ("zip", "_rels/.rels is missing"),
+        ("text", "File is not a zip file"),
+    ],
+    ids=["workbook", "zip-without-parts", "not-a-zip"],
+)
+def test_a_source_that_is_not_a_deck_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: str, message: str) -> None:
+    source = not_a_deck(tmp_path / "source.pptx", kind)
+    cs = changeset(source, [change("c1", REVENUE)])
+
+    assert run(["validate", cs], capsys) == (2, "", f"error: cannot read deck {source}: {message}\n")
