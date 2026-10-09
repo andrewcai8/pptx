@@ -6,7 +6,7 @@ Tools that check, fix, and audit PowerPoint decks against a consulting house sty
 
 This repo is public. The person using it may work with confidential client decks and data.
 
-- **You are an AI model, so anything you read leaves this machine.** That includes command output, file contents, and images you open. `check`, `diff`, and `fix` print slide titles, bullets, and numbers. `render` makes images you would look at.
+- **You are an AI model, so anything you read leaves this machine.** That includes command output, file contents, and images you open. `check`, `diff`, `fix`, and the `changeset` commands print slide titles, bullets, and numbers. `render` makes images you would look at.
 - **Ask before you touch a client deck.** Before you run any command on a deck, read any of its files, or open its renders, ask the user whether that deck may be shared with an AI service under their firm's policy. If the answer is no or unsure, do not run the tools yourself. Give the user the exact commands to run in a separate terminal window, not through Claude Code's `!` prefix, whose output enters the chat. Work only from what they choose to tell you, and skip the audit, which needs you to see the slides. This applies to every step of the `verify-pptx` skill, including opening PNGs and the audit.
 - **Keep files out of git.** Keep every deck, data file, transcript, recording, render, and report under `private/` or `artifacts/`. Git ignores both folders. As a backstop, `.gitignore` also blocks common client file types and the tools' report files anywhere in the repo. No list catches every format, so the folder rule is the real guard. Before any commit, check `git status` for anything that came from a client.
 - **Never publish client content.** Never commit, push, or open a PR or issue that contains client names, numbers, slide text, screenshots, or file names. If you report a problem upstream, describe it in generic terms and use a made-up example.
@@ -39,6 +39,18 @@ uv run --project deckcheck deckcheck render private/deck-fixed.pptx --out artifa
 - `fix` writes a new deck. It never edits the input. It fixes bullet end punctuation, text below the minimum size, and extra fonts, and lists everything else for a person. Exit 1 means some violations remain for a person.
 - `diff` compares slide text. It does not see font, size, color, or position changes, so it can call a slide `fix` changed `unchanged`. Compare renders to see those.
 - `render` writes slide PNGs, a PDF copy of the deck, and `fonts.json`, which lists any font it had to substitute.
+
+The edit engine runs a ChangeSet, a JSON file of edits to one deck, against that deck. Its commands print slide text too, so the same rules apply. `docs/changeset.md` describes the format.
+
+```bash
+uv run --project deckcheck changeset validate private/meeting/changeset.json
+uv run --project deckcheck changeset execute private/meeting/changeset.json --out private/meeting/executed.pptx --review artifacts/meeting/review.json
+uv run --project deckcheck changeset apply private/meeting/changeset.json --out private/meeting/final.pptx
+```
+
+- `validate` checks every change against the source deck. Exit 1 means it found problems, listed one per change.
+- `execute` writes a new deck with every change applied, for review. It never edits the source.
+- `apply` writes the final deck from a fresh copy of the source and the review decisions. Exit 1 means some decisions are still pending, and nothing is written.
 
 The `verify-pptx` skill in `.claude/skills/verify-pptx/` is the full procedure, including the audit. Follow it when asked to verify, fix, or audit a deck.
 
