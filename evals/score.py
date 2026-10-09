@@ -25,7 +25,7 @@ from typing import Literal
 
 from deckcheck.cli import write_atomic
 from deckcheck.diff import diff_decks
-from deckcheck.model import DeckError, Slide, Violation
+from deckcheck.model import Deck, DeckError, Slide, Violation
 from deckcheck.rules import ConfigError, RuleSet, load_rules, run_rules
 from facts import ChartValue, Value, describe, match, normalize, to_json
 from scenario import (
@@ -49,6 +49,7 @@ from scenario import (
     Where,
     corpus,
     find,
+    on_slide,
     open_scenario,
     snapshot,
 )
@@ -310,7 +311,7 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement) -> tuple[list
                     failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k}"))
             # An edited slide must keep everything its edits do not replace. What it gains is the intent checker's to judge.
             replaced = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None and not isinstance(f.value, ChartValue)]
-            if text := lost_text(sc.source.deck.slides[k - 1], out.deck.slides[i], replaced):
+            if text := lost_text(visible(sc.source.deck, k - 1), visible(out.deck, i), replaced):
                 failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to change this text on slide {k}, but it is gone or reworded: {shown(text)}"))
             if pieces := unmatched(sc.source.pieces[k - 1], out.pieces[i], key=lambda p: p.key):
                 failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to remove these from slide {k}, but they are gone: {', '.join(f'{p.kind} {p.name!r}' for p in pieces)}"))
@@ -360,6 +361,12 @@ def clauses(slide: Slide) -> list[str]:
                 pieces.append(piece)
         found += [c for c in pieces if words(c)]
     return found
+
+
+def visible(deck: Deck, i: int) -> Slide:
+    """Slide i with only the shapes that overlap the slide, so text parked off the slide is neither required nor kept."""
+    slide = deck.slides[i]
+    return replace(slide, shapes=tuple(s for s in slide.shapes if on_slide(s, deck.slide_width, deck.slide_height)))
 
 
 def lost_text(before: Slide, after: Slide, replaced: list[Value]) -> list[str]:

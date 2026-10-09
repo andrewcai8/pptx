@@ -20,6 +20,7 @@ changes:
       - The headline still makes one argument about the new generations; only the figure changed.
       - The footnotes attribute the headline figure to the client's member survey, by a new footnote, a source line, or by extending an existing one, and the curve keeps its US census source.
       - Slide 5 adds nothing unrelated to the survey citation, such as a remark about the workshop, its lunch, or its logistics, and an extended footnote gains only words about the survey.
+      - No text on slide 5 is hidden in white, in a colour close to the background, or behind the curve or another shape, so every footnote the slide holds is one a reader can see.
 
   - id: c2
     kind: delete-slide

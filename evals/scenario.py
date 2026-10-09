@@ -454,7 +454,7 @@ def _plots(chart: Chart) -> tuple[str, ...]:
 # top-level shape overlaps the slide, so moving it off the slide loses it.
 def _pieces(shapes: SlideShapes, width: int, height: int, top_level: bool = True) -> Iterator[Piece]:
     for shape in shapes:
-        if top_level and not _on_slide(shape, width, height):
+        if top_level and not on_slide(shape, width, height):
             continue
         el = shape._element
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
@@ -478,7 +478,7 @@ def _pieces(shapes: SlideShapes, width: int, height: int, top_level: bool = True
             yield Piece("object", " ".join(filter(None, (data.get("uri") if data is not None else None, ole.get("progId") if ole is not None else None))), shape.name)
 
 
-def _on_slide(shape, width: int, height: int) -> bool:
+def on_slide(shape, width: int, height: int) -> bool:
     if None in (shape.left, shape.top, shape.width, shape.height):
         return True
     return shape.left < width and shape.top < height and shape.left + shape.width > 0 and shape.top + shape.height > 0
