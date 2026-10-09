@@ -107,18 +107,28 @@ def chart_bar_left_at_380(d: DeckEdit) -> None:
     _chart_2022_bar(d, "410", "380")
 
 
-def _rebuild_chart(d: DeckEdit, values: tuple[float, ...], categories: tuple[str, ...]) -> None:
-    """Rewrite slide 10's chart through replace_data. The source chart has no categories, so a maker has to invent them."""
+def _chart_data(values: tuple[float, ...], categories: tuple[str, ...], name: str = "") -> CategoryChartData:
     data = CategoryChartData()
     data.categories = categories
-    data.add_series("", values)
-    next(s.chart for s in d.slide(10).shapes if s.has_chart).replace_data(data)
+    data.add_series(name, values)
+    return data
+
+
+def _rebuild_chart(d: DeckEdit, values: tuple[float, ...], categories: tuple[str, ...], name: str = "") -> None:
+    """Rewrite slide 10's chart through replace_data. The source chart has no categories, so a maker has to invent them."""
+    next(s.chart for s in d.slide(10).shapes if s.has_chart).replace_data(_chart_data(values, categories, name))
 
 
 @variant(base=good)
 def chart_rebuilt_with_replace_data(d: DeckEdit) -> None:
     """Slide 10's chart is rebuilt with replace_data under invented categories, with the 2022 bar at 410 and the other bars kept."""
     _rebuild_chart(d, (410, 2000, 11000), ("2022", "2027", "Potential"))
+
+
+@variant(base=good)
+def chart_rebuilt_with_named_series(d: DeckEdit) -> None:
+    """Slide 10's chart is rebuilt with replace_data under a named series, the way add_series asks for one, with every bar kept."""
+    _rebuild_chart(d, (410, 2000, 11000), ("2022", "2027", "Potential"), name="Market size ($m)")
 
 
 @variant(base=good, fails={("lost", 10)})

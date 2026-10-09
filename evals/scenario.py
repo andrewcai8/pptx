@@ -231,7 +231,7 @@ PieceKind = Literal["picture", "chart", "table", "object", "group"]
 @dataclass(frozen=True)
 class Piece:
     """A non-text thing on a slide, matched across decks by kind and a signature an edit does not change: a picture's
-    image hash, a chart's series, a table's shape, an embedded object's type, a group's member kinds. A chart
+    image hash, a chart's number of series, a table's shape, an embedded object's type, a group's member kinds. A chart
     also carries its plot types, so a redraw in another type is told apart from a lost chart."""
 
     kind: PieceKind
@@ -476,8 +476,7 @@ def _pieces(shapes: SlideShapes, width: int, height: int, top_level: bool = True
             yield from _pieces(shape.shapes, width, height, top_level=False)
         elif shape.has_chart:
             chart = shape.chart
-            series = [" ".join(v.text or "" for tx in ser.iterchildren(qn("c:tx")) for v in tx.iter(qn("c:v"))) for ser in chart._chartSpace.iter(qn("c:ser"))]
-            yield Piece("chart", f"{len(series)} series: " + ", ".join(series), shape.name, _plots(chart))
+            yield Piece("chart", f"{len(chart._chartSpace.findall('.//' + qn('c:ser')))} series", shape.name, _plots(chart))
         elif shape.has_table:
             yield Piece("table", f"{len(el.findall('.//' + qn('a:tr')))} rows x {len(el.findall('.//' + qn('a:gridCol')))} columns", shape.name)
         elif el.tag == qn("p:pic"):
