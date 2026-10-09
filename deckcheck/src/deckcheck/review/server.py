@@ -100,21 +100,22 @@ class App:
         name = mid.split("/", 1)[1]
         return 200, File(self.reviews.final_pptx(mid), PPTX, download=f"{name}-final.pptx")
 
-    def handle(self, method: str, path: str, body: bytes) -> tuple[Reply, str]:
-        """The reply and a log line naming the route with the meeting left out, since a private meeting's name
-        can be a client's name."""
+    def handle(self, method: str, path: str, body: bytes) -> Reply:
         for verb, pattern, handler in self.routes:
             if verb == method and (m := pattern.fullmatch(path)):
-                shown = path.replace(m["mid"], "<meeting>") if "mid" in m.groupdict() else path
                 try:
-                    return handler(body, **m.groupdict()), shown
+                    return handler(body, **m.groupdict())
                 except Exception as e:
                     for kind, reply in ERRORS.items():
                         if isinstance(e, kind):
-                            return reply(e), shown
-                    print(f"review: {type(e).__name__} on {method} {shown}", file=sys.stderr)
-                    return (500, {"error": f"internal error: {e}"}), shown
-        return (404, {"error": "not found"}), "(no route)"
+                            return reply(e)
+                    print(f"review: {type(e).__name__} on {method} {redacted(path)}", file=sys.stderr)
+                    return 500, {"error": f"internal error: {e}"}
+        return 404, {"error": "not found"}
+
+
+def redacted(path: str) -> str:
+    return re.sub(r"^/api/meetings/[^/]+/[^/]+", "/api/meetings/<meeting>", path)
 
 
 ERRORS: dict[type[Exception], Callable[..., Reply]] = {
@@ -186,15 +187,15 @@ def serve(reviews: Reviews, port: int = 8765) -> ThreadingHTTPServer:
             path = urlsplit(self.path).path
             refused = _guard(method, self.headers, server.server_address[1])
             if refused:
-                reply, shown = refused, path
+                reply = refused
             else:
                 length = int(self.headers.get("Content-Length") or 0)
                 if length > MAX_BODY:
-                    reply, shown = (413, {"error": "request body too large"}), path
+                    reply = 413, {"error": "request body too large"}
                 else:
-                    reply, shown = app.handle(method, path, self.rfile.read(length) if method == "POST" else b"")
+                    reply = app.handle(method, path, self.rfile.read(length) if method == "POST" else b"")
             self._send(*reply)
-            print(f"{method} {shown} {reply[0]}", file=sys.stderr, flush=True)
+            print(f"{method} {redacted(path)} {reply[0]}", file=sys.stderr, flush=True)
 
         def _send(self, status: int, payload: object) -> None:
             if isinstance(payload, File):

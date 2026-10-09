@@ -390,6 +390,18 @@ def test_requests_from_another_site_are_refused(repo: Path, app: Client) -> None
         conn.close()
 
 
+def test_the_log_leaves_out_meeting_names(app: Client, capfd: pytest.CaptureFixture[str]) -> None:
+    app.call("POST", "/api/meetings/private/acme-board/process", {}, headers={"Origin": "http://evil.example"})
+    app.get("/api/meetings/evals/demo")
+    deadline, err = time.monotonic() + 5, ""
+    while "GET /api/meetings/<meeting> 409" not in err and time.monotonic() < deadline:
+        err += capfd.readouterr().err
+        time.sleep(0.02)
+
+    assert err.splitlines()[-2:] == ["POST /api/meetings/<meeting>/process 403", "GET /api/meetings/<meeting> 409"]
+    assert "acme" not in err and "demo" not in err
+
+
 def test_the_app_and_its_files_are_served(app: Client) -> None:
     status, page = app.get("/")
     assert status == 200
