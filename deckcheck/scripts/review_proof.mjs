@@ -244,6 +244,10 @@ try {
   await click(mark("contents-cagr"));
   await decide("contents-cagr", "keep_new");
   await applyThroughBar(sol);
+  await click('#rail [data-act="asks"]');
+  check(/market size/i.test((await text("#rail")) ?? ""), "the rail groups the changes by ask on request");
+  await shot("08-asks");
+  await click('#rail [data-act="slides"]');
   proveApply(sol, { "title-market-size": "keep_new", "title-cagr": "keep_old", "header-market-size": { edited: "$410m market set to grow" }, "table-market-size": "keep_new", "chart-2022-bar": { edited: "405" }, "cagr-label": "keep_old", "contents-cagr": "keep_new" });
 
   const fm = "fmcg-diagnostic-timeline";
