@@ -428,6 +428,20 @@ def test_a_failed_process_again_keeps_the_review_on_disk(repo: Path, app: Client
     assert app.post("/api/meetings/evals/demo/process")[1]["state"]["is"] == "ready"
 
 
+def test_opening_a_review_whose_source_deck_is_gone_names_the_problem(repo: Path, app: Client) -> None:
+    app.ready()
+    (repo / "decks/deck.pptx").unlink()
+
+    assert app.get("/api/meetings/evals/demo") == (
+        422,
+        {"problems": [{"where": "source.path", "message": "cannot read decks/deck.pptx: No such file or directory"}]},
+    )
+    assert app.decide(c1="keep_old") == (
+        422,
+        {"problems": [{"where": "source.path", "message": "cannot read decks/deck.pptx: No such file or directory"}]},
+    )
+
+
 def test_a_changeset_the_engine_refuses_fails_with_its_problems(repo: Path, app: Client) -> None:
     write_meeting("bad", [("c1", {**REVENUE, "shape": 99})])
 

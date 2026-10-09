@@ -149,11 +149,13 @@ function failure(message, problems) {
 
 function renderMissing() {
   const row = state.missing;
-  const why = row?.state ? `This meeting is ${row.state.is === "new" ? "not processed yet" : row.state.is}.` : row?.error ?? "No such meeting.";
+  const why = row?.problems
+    ? h("div", { class: "failed" }, failure("The engine refused this review's ChangeSet, so it cannot open. Fix the problem or process the meeting again.", row.problems))
+    : h("p", null, row?.state ? `This meeting is ${row.state.is === "new" ? "not processed yet" : row.state.is}.` : row?.error ?? "No such meeting.");
   mount(
     root,
     h("header", { class: "top" }, h("a", { class: "back", href: "#/" }, "← Meetings")),
-    h("main", { class: "home" }, h("p", null, why), h("a", { class: "button", href: "#/" }, "Back to the meetings")),
+    h("main", { class: "home" }, why, h("a", { class: "button", href: "#/" }, "Back to the meetings")),
   );
 }
 
