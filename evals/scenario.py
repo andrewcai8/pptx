@@ -925,8 +925,12 @@ def _provenance_problems(sc: Scenario, value: Value, source: Provenance, turns: 
             if sc.dir not in path.parents or not path.is_file():
                 yield f"from.data: no file {data} in the scenario directory"
                 return
-            with path.open(newline="") as f:
-                rows = list(csv.reader(f))
+            try:
+                with path.open(newline="") as f:
+                    rows = list(csv.reader(f))
+            except UnicodeDecodeError:
+                yield f"{data}: only CSV is read; export the sheet to CSV"
+                return
             header = rows[0] if rows else []
             hits = [r for r in rows[1:] if r and r[0] == row]
             spec = value.alternatives[0] if isinstance(value, Words) else value.text

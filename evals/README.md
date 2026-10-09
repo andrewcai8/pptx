@@ -7,7 +7,7 @@ A scenario directory holds these files:
 - `transcript.md` is the meeting. It has a short header, then one turn per line in the form `[00:04:10] Name (Role, Org): text`.
 - `expected.yaml` lists the changes, the things discussed that must not become edits, and the facts the output must and must not contain.
 - `build.py` declares the outputs as `@variant` functions. At least one passes, such as the edit the meeting settled on and faithful rewordings of it. At least two fail, each with its exact set of `(code, slide)` failures. A variant declared with `intent=(id, phrase)` is a wrong deck whose only fault is something it added. The script passes it, and `prove.py` checks that it passes and that the change or non-change `id` has an intent check containing `phrase`, so every wrong deck the script lets through names the check that catches it.
-- `data/*.csv` holds synthetic client data that a number can cite.
+- `data/*.csv` holds synthetic client data that a number can cite. Only CSV is read. A `from.data` that points at a spreadsheet such as an `.xlsx` exits 2 with `data/<file>: only CSV is read; export the sheet to CSV`.
 
 Source decks are never committed. A public scenario names a deck in `.claude/skills/verify-pptx/corpus/known-good.yaml` by id and sha256, and the scorer reads it from the corpus cache. Generated decks and `score.json` files go under `artifacts/evals/`.
 
@@ -97,7 +97,7 @@ non_changes:
 The loader lints every field against the real deck and transcript, and a bad scenario exits 2 with the field named. These are the main rules:
 
 - Each `said` and `superseded` timestamp is a transcript turn.
-- A `require` with a number needs `from`. The value is `{said: <ts>}` when the turn states it, `{data: <csv>, row: <first-column key>, column: <header>}` when the cell value appears in the fact, or `{slide: <n>}` when it is already on that source slide.
+- A `require` with a number needs `from`. The value is `{said: <ts>}` when the turn states it, `{data: <csv>, row: <first-column key>, column: <header>}`, which must name a CSV file, when the cell value appears in the fact, or `{slide: <n>}` when it is already on that source slide.
 - A `require` on an edited slide must not already hold on the source slide, or it could not show the edit happened.
 - A plain `forbid` is an old value, so it must be on the source slide. It also names the text the edit may rewrite. A source clause that states it is exempt from preservation (see `lost` below). A `superseded` forbid is the abandoned answer from a change of mind. Its timestamp is the turn where that answer was said, so that turn must state it. It must be absent from the source slide.
 - A forbid with `where: deck` is checked on every output slide and its speaker notes, not only the slide it is listed under. Use it where the transcript rules a value out of the whole deck, such as "not tripled anywhere" in retail or "take the eight out completely" in fmcg. Notes count because a deck that goes out as a pptx carries them, as retail's does at 00:07:05. It must be absent from every source slide no change edits, so `3x` on retail slide 5 stays a slide 15 forbid only. It must also be absent from the speaker notes of every source slide the output keeps, edited slides included, because the edit does not ask the maker to rewrite notes.

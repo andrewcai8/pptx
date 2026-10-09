@@ -362,3 +362,22 @@ def test_a_deck_wide_forbid_reads_speaker_notes(tmp_path, scenario, variant, fai
     report = json.loads((tmp_path / "score.json").read_text())
     assert [(f["code"], f["slide"], f["message"]) for f in report["failures"]] == [failure]
     assert [(f["where"], f["ok"]) for f in report["facts"] if f["slide"] == "deck" and f["kind"] == "forbid"] == [("notes", False)]
+
+
+def test_a_data_file_that_is_not_csv_is_a_bad_scenario(private_dir, tmp_path, capsys):
+    change = [
+        {
+            "id": "c1",
+            "kind": "update-number",
+            "intent": "Move the growth rate.",
+            "said": ["00:00:05"],
+            "slides": {1: {"require": [{"percent": "5%", "from": {"data": "data/model.xlsx", "row": "growth", "column": "value"}}], "forbid": [{"percent": "4%"}]}},
+            "intent_checks": ["Only the rate moves."],
+        }
+    ]
+    d = scenario_at(private_dir / "xlsx", change)
+    (d / "data").mkdir()
+    with zipfile.ZipFile(d / "data/model.xlsx", "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("xl/workbook.xml", bytes(range(256)) * 64)
+    assert score.main([str(d), str(d / "input.pptx"), "--out", str(tmp_path)]) == score.BAD
+    assert capsys.readouterr().err.strip() == "error: c1 slide 1 require '5%': data/model.xlsx: only CSV is read; export the sheet to CSV"
