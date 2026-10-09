@@ -547,10 +547,7 @@ def test_a_bad_content_length_is_refused(app: Client, length: str) -> None:
 def test_the_log_leaves_out_meeting_names(app: Client, capfd: pytest.CaptureFixture[str]) -> None:
     app.call("POST", "/api/meetings/private/acme-board/process", {}, headers={"Origin": "http://evil.example"})
     app.get("/api/meetings/evals/demo")
-    deadline, err = time.monotonic() + 5, ""
-    while "GET /api/meetings/<meeting> 409" not in err and time.monotonic() < deadline:
-        err += capfd.readouterr().err
-        time.sleep(0.02)
+    err = capfd.readouterr().err
 
     assert err.splitlines()[-2:] == ["POST /api/meetings/<meeting>/process 403", "GET /api/meetings/<meeting> 409"]
     assert "acme" not in err and "demo" not in err

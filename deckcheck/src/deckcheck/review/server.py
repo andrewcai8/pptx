@@ -218,8 +218,9 @@ def serve(reviews: Reviews, port: int = 8765) -> ThreadingHTTPServer:
                 reply = 413, {"error": "request body too large"}
             else:
                 reply = app.handle(method, path, self.rfile.read(length) if method == "POST" else b"")
+            sys.stderr.write(f"{method} {redacted(path)} {reply[0]}\n")
+            sys.stderr.flush()
             self._send(*reply)
-            print(f"{method} {redacted(path)} {reply[0]}", file=sys.stderr, flush=True)
 
         def _send(self, status: int, payload: object) -> None:
             blob = payload if isinstance(payload, Blob) else Blob(json.dumps(payload, ensure_ascii=False).encode())
