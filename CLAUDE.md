@@ -42,6 +42,25 @@ uv run --project deckcheck deckcheck render private/deck-fixed.pptx --out artifa
 
 The `verify-pptx` skill in `.claude/skills/verify-pptx/` is the full procedure, including the audit. Follow it when asked to verify, fix, or audit a deck.
 
+## Adding a real meeting
+
+Real meetings let us measure the meeting-to-slides step on real work, once it exists. Each meeting is a private scenario in `private/meetings/<name>/`, a folder git ignores. The ask-first rule above applies to every file in it.
+
+Save these for each meeting:
+
+- `before.pptx` is the deck as it stood before the meeting.
+- `after.pptx` is the version the consultant actually made after it. It is the best evidence of what the meeting asked for.
+- `notes.md` holds the meeting notes or transcript exactly as the recording app exported them.
+- `data/` holds any client file a new number came from, such as a spreadsheet.
+
+Then, with the user's permission, help turn the folder into a scenario that `evals/score.py` can read:
+
+- `transcript.md` rewrites the notes as one turn per line, `[00:04:10] Name (Role, Org): text`. Keep `notes.md` as the original.
+- `expected.yaml` is the answer key. Draft it from the difference between `before.pptx` and `after.pptx` plus what the notes say, and name the deck as `deck: {file: before.pptx, sha256: <sha256 of before.pptx>}`. Follow the format in `evals/README.md` and copy the shape of a public scenario such as `evals/insurance-workshop-prep/expected.yaml`. Ask the user to confirm each change, each thing discussed that must not change, and each ask too vague to act on.
+- Check the key with `GOLDEN_PRIVATE_DIR=private/meetings uv run --project deckcheck python evals/score.py <name> private/meetings/<name>/after.pptx`. The consultant's own `after.pptx` should pass. If it fails, read each reason before changing anything. A change the key missed or got wrong means fixing the key. Two failures mean something else and need a note in `private/feedback.md`, in generic terms. One is an untouched slide reported as changed, which can happen if PowerPoint rewrote it on save. The other is a house-style break the consultant introduced. Do not bend the key to hide either.
+
+Never copy anything from `private/meetings/` into `evals/` or any other tracked folder.
+
 ## The rules
 
 `standards/house-style.yaml` holds the rules. They were calibrated against 20 public BCG decks, listed in `.claude/skills/verify-pptx/corpus/known-good.yaml`. Do not edit the rules to make a deck pass.
