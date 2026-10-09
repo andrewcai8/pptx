@@ -36,7 +36,7 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 - `changes`, each with an `id`, the `ask_id` it serves, a one-sentence `rationale`, `refs`, an `op`, and a `decision`.
 - `flags`, questions the maker could not settle, and `held`, things discussed and deliberately left alone. Each names its slides and refs. Neither touches the deck.
 
-A ref is `{"t": "00:05:46", "speaker": "Grace Adeyemi", "quote": "..."}`, with the quote copied verbatim from the transcript.
+A ref is `{"t": "00:41:07", "speaker": "Ana Ruiz", "quote": "..."}`, with the quote copied verbatim from the transcript.
 
 A slide is named by its slide id (`p:sldId/@id`) and a shape by its id on that slide (`p:cNvPr/@id`), including shapes inside groups. These ids survive edits, deletions, and moves, so they mean the same thing in every deck the engine writes.
 
@@ -114,7 +114,7 @@ Afterwards the command writes Claude's JSON result to `<out>/claude.json` and co
 
 The flags were checked against Claude Code 2.1.293, and `deckcheck/tests/test_meeting.py` pins the argv and the staged files. No live `claude -p` run has tested them.
 
-## Known limits
+## Known gaps
 
 - A chart whose workbook is `.xlsb` gets a new `.xlsx` workbook that holds the old workbook's values only. Formulas, defined names, cell styles, and date formats in that workbook are lost, and a text cell that begins with `=` becomes a formula. The solar deck's six charts are the only `.xlsb` charts in the corpus.
 - `delete_slide` leaves a slide's part in the package when another slide links to it, for example through a click action that jumps to it. The part drops out of the slide list, and the link still points at it. No corpus deck has such a link, and it is not known whether PowerPoint asks to repair the file. Agenda decks often have them.

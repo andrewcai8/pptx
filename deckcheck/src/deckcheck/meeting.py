@@ -17,6 +17,7 @@ from deckcheck.model import DeckError
 OK, PROBLEMS, USAGE, NO_CLAUDE = 0, 1, 2, 3
 SKILL = ".claude/skills/process-meeting/SKILL.md"
 DOC = "docs/changeset.md"
+DOCS = (SKILL, DOC)
 ENGINE = "deckcheck"
 OUT_ROOTS = ("artifacts", "private")
 NOT_LOGGED_IN = "claude CLI not found or not logged in; run `claude` once to log in"
@@ -102,8 +103,7 @@ def stage(root: Path, job: Job) -> Path:
         posixpath.basename(job.transcript): job.transcript,
         **{f"data/{posixpath.basename(d)}": d for d in job.data},
         DECK: job.deck,
-        SKILL: SKILL,
-        DOC: DOC,
+        **{d: d for d in DOCS},
     }
     for name, source in copies.items():
         (folder / name).parent.mkdir(parents=True, exist_ok=True)

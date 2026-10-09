@@ -3,13 +3,15 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
 import yaml
 
+from deckcheck.meeting import DOCS
 from scenario import EVALS, ROOT, public
 
-SKILL = ROOT / ".claude/skills/process-meeting/SKILL.md"
 FACT_KEYS = ("money", "percent", "count", "text")
 SPEAKER = re.compile(r"^\[\d\d:\d\d:\d\d\] ([^(]+?) \(", re.M)
+TURN = re.compile(r"^\[(\d\d:\d\d:\d\d)\]", re.M)
 
 
 def facts(node: object) -> Iterator[str]:
@@ -40,7 +42,9 @@ def answers(scenario: Path) -> set[str]:
     found = {f for f in facts(key) if "#" not in f}
     found |= {q for c in fixture["changes"] for q in quoted(c)}
     found |= {str(s) for item in (*fixture["flags"], *fixture["held"]) for s in item.get("slides", ())}
-    found |= set(SPEAKER.findall((scenario / "transcript.md").read_text()))
+    found |= {item["id"] for key in ("asks", "changes", "flags", "held") for item in fixture[key]}
+    transcript = (scenario / "transcript.md").read_text()
+    found |= set(SPEAKER.findall(transcript)) | set(TURN.findall(transcript))
     return {a for a in found if len(a) >= 3}
 
 
@@ -53,12 +57,13 @@ def leaks(text: str, scenarios: list[Path]) -> list[tuple[str, str]]:
     )
 
 
-def test_the_maker_skill_holds_no_answer_from_a_public_scenario() -> None:
-    assert leaks(SKILL.read_text(), public()) == []
+@pytest.mark.parametrize("doc", DOCS)
+def test_no_file_the_maker_reads_holds_an_answer_from_a_public_scenario(doc: str) -> None:
+    assert leaks((ROOT / doc).read_text(), public()) == []
 
 
 def test_a_skill_that_quotes_a_scenario_answer_is_caught() -> None:
-    text = 'Replace "ca. 50%" on slide 301 with the 48% that Mojca Zupan gave, as for slide 2147478638.'
+    text = 'Replace "ca. 50%" on slide 301 with the 48% that Mojca Zupan gave at 00:05:46, as for slide 2147478638 and cover-date.'
 
     assert leaks(text, [EVALS / "insurance-workshop-prep", EVALS / "solar-market-refresh"]) == [
         ("insurance-workshop-prep", "301"),
@@ -66,5 +71,7 @@ def test_a_skill_that_quotes_a_scenario_answer_is_caught() -> None:
         ("insurance-workshop-prep", "50%"),
         ("insurance-workshop-prep", "Mojca Zupan"),
         ("insurance-workshop-prep", "ca. 50%"),
+        ("solar-market-refresh", "00:05:46"),
         ("solar-market-refresh", "2147478638"),
+        ("solar-market-refresh", "cover-date"),
     ]
