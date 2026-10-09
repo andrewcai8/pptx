@@ -96,8 +96,8 @@ claude -p '<prompt>' --tools Read,Write,Edit,Bash --permission-mode dontAsk \
 | exit | meaning |
 |---|---|
 | 0 | the ChangeSet is valid, and the command prints what `changeset validate` prints |
-| 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. A ChangeSet that is not JSON is listed as `changeset: not JSON`. A source deck that is missing or cannot be read is listed under `source.path`, and one with another hash under `source.sha256`. Nothing is written. |
-| 2 | the ChangeSet file is missing, is a folder, cannot be read, or is not UTF-8 text, the deck given to `outline` or named as the source is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
+| 1 | Claude wrote no ChangeSet, or it is invalid or names another deck |
+| 2 | bad input, such as a missing transcript, a missing deck, `--out` outside `artifacts/` and `private/`, or no `--shareable` |
 | 3 | the `claude` CLI is missing or not logged in, and the command prints ``claude CLI not found or not logged in; run `claude` once to log in`` |
 
 The flags were checked against `claude --help` for Claude Code 2.1.293, and `deckcheck/tests/test_meeting.py` pins the argv. No live `claude -p` run has tested them.
