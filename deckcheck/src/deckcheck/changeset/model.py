@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, ClassVar, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -203,6 +203,7 @@ AnyOp = Annotated[
     ReplaceText | InsertParagraph | SetCell | SetChartValue | AddSlide | FillPlaceholder | DeleteSlide | MoveSlide,
     Field(discriminator="kind"),
 ]
+OP_KINDS: tuple[str, ...] = tuple(get_args(c.model_fields["kind"].annotation)[0] for c in get_args(get_args(AnyOp)[0]))
 
 
 class Change(Wire):
