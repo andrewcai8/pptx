@@ -236,6 +236,14 @@ def test_a_fill_is_dropped_when_its_added_slide_is_kept_old(deck: Path, tmp_path
     assert out.read_bytes() == deck.read_bytes()
 
 
+def test_a_tab_is_written_as_a_tab(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cs = changeset(deck, [change("c1", {**REVENUE, "new": "15%\t"}, {"edited": "\t18%"}), change("c2", CELL, {"edited": "$125m\tnet"})])
+    out = tmp_path / "final.pptx"
+
+    assert run(["apply", cs, "--out", out], capsys)[0] == 0
+    assert (paragraphs(out, 256, 4), cell(out)) == (["Revenue grew \t18% in 2025"], "$125m\tnet")
+
+
 ALL_OPS = [change("c1", REVENUE), change("c2", CELL), change("c3", POINT), change("add", ADD), change("fill", FILL), change("c4", MOVE), change("c5", LABEL_OP)]
 
 
@@ -680,6 +688,22 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
             "c1 op: shape 3 'Chart 2': the workbook ppt/embeddings/Microsoft_Excel_Sheet1.xlsx cannot be read: File is not a zip file",
         ),
         (lambda d: changeset(rezip(d, "ppt/charts/chart1.xml", None), [change("c1", POINT)]), "c1 op: cannot read the deck: ppt/charts/chart1.xml is missing"),
+        (lambda d: changeset(d, [change("c1", {**REVENUE, "new": "15%\f"})]), "c1 op.new: holds the control character '\\x0c' at index 3, which a deck cannot hold; remove it"),
+        (lambda d: changeset(d, [change("c1", {**INSERT, "text": "Up\x07"})]), "c1 op.text: holds the control character '\\x07' at index 2, which a deck cannot hold; remove it"),
+        (lambda d: changeset(d, [change("c1", {**CELL, "new": "$1\r30m"})]), "c1 op.new: holds the control character '\\r' at index 2, which a deck cannot hold; remove it"),
+        (lambda d: changeset(d, [change("c1", {**REVENUE, "new": "15\ufffe%"})]), "c1 op.new: holds the control character '\\ufffe' at index 2, which a deck cannot hold; remove it"),
+        (
+            lambda d: changeset(d, [change("add", ADD), change("fill", {**FILL, "paragraphs": [{"text": "a\x1fb"}]})]),
+            "fill op.paragraphs.0.text: holds the control character '\\x1f' at index 1, which a deck cannot hold; remove it",
+        ),
+        (
+            lambda d: changeset(d, [change("c1", REVENUE, {"edited": "15%\x1f"})]),
+            "c1 decision: edited text '15%\\x1f': holds the control character '\\x1f' at index 3, which a deck cannot hold; remove it",
+        ),
+        (
+            lambda d: changeset(d, [change("add", ADD), change("fill", FILL, {"edited": "Raise prices\r\nHold discounts"})]),
+            "fill decision: edited text 'Raise prices\\r\\nHold discounts': holds the control character '\\r' at index 12, which a deck cannot hold; remove it",
+        ),
     ],
     ids=[
         "unknown-slide",
@@ -717,6 +741,13 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
         "nul-in-source-path",
         "workbook-not-a-zip",
         "chart-part-missing",
+        "form-feed-in-new",
+        "bell-in-inserted-text",
+        "carriage-return-in-a-cell",
+        "noncharacter-in-new",
+        "unit-separator-in-a-fill",
+        "unit-separator-in-an-edit",
+        "windows-line-ending-in-an-edited-fill",
     ],
 )
 def test_a_bad_changeset_names_each_problem_and_exits_1(deck: Path, capsys: pytest.CaptureFixture[str], write, problem) -> None:
