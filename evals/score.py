@@ -16,6 +16,7 @@ import reprlib
 import string
 import sys
 from collections import Counter
+from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from functools import cached_property
@@ -311,8 +312,12 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement) -> tuple[list
             replaced = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None and not isinstance(f.value, ChartValue)]
             if text := lost_text(sc.source.deck.slides[k - 1], out.deck.slides[i], replaced):
                 failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to change this text on slide {k}, but it is gone or reworded: {shown(text)}"))
-            if pieces := lost_pieces(sc.source.pieces[k - 1], out.pieces[i]):
+            if pieces := unmatched(sc.source.pieces[k - 1], out.pieces[i], key=lambda p: p.key):
                 failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to remove these from slide {k}, but they are gone: {', '.join(f'{p.kind} {p.name!r}' for p in pieces)}"))
+            targeted = {f.value.value for e in edits for f in e.slides[k].forbid if isinstance(f.value, ChartValue)}
+            kept = [v for v in sc.source.charts[k - 1].values if v not in targeted]
+            if not redraws and (values := unmatched(kept, out.charts[i].values)):
+                failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to change these chart values on slide {k}, but they are gone: {', '.join(f'{v.normalize():f}' for v in values)}"))
             continue
         if not look_changed:
             continue
@@ -371,14 +376,15 @@ def says(clause: tuple[str, ...], text: tuple[str, ...]) -> bool:
     return bool(ends)
 
 
-def lost_pieces(had: tuple[Piece, ...], has: tuple[Piece, ...]) -> list[Piece]:
-    left = Counter(p.key for p in has)
+def unmatched[T](had: Iterable[T], has: Iterable[T], key: Callable[[T], Hashable] = lambda x: x) -> list[T]:
+    """What `had` holds that `has` does not, counting repeats: each item in `has` matches one item in `had`."""
+    left = Counter(map(key, has))
     lost = []
-    for p in had:
-        if left[p.key]:
-            left[p.key] -= 1
+    for x in had:
+        if left[key(x)]:
+            left[key(x)] -= 1
         else:
-            lost.append(p)
+            lost.append(x)
     return lost
 
 

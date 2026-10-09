@@ -157,6 +157,19 @@ def test_a_3d_chart_on_a_copy_of_the_solar_deck_fails_scope(tmp_path, variant, f
     assert [(f["code"], f["slide"], f["message"]) for f in report["failures"]] == failures
 
 
+@pytest.mark.parametrize(
+    ("variant", "message"),
+    [
+        ("chart_2027_bar_overwritten", "c1 does not ask to change these chart values on slide 10, but they are gone: 2000"),
+        ("chart_rebuilt_without_potential", "c1 does not ask to change these chart values on slide 10, but they are gone: 11000"),
+    ],
+)
+def test_a_solar_chart_value_the_edit_does_not_target_must_survive(tmp_path, variant, message):
+    assert score.main(["solar-market-refresh", str(built(tmp_path, "solar-market-refresh", variant))]) == score.FAIL
+    report = json.loads((tmp_path / "score.json").read_text())
+    assert [(f["code"], f["slide"], f["message"]) for f in report["failures"]] == [("lost", 10, message)]
+
+
 def test_a_chart_the_scorer_cannot_read_leaves_the_deck_unreadable(private_dir, tmp_path, capsys):
     gone = [{"id": "n1", "kind": "not-a-change", "said": ["00:00:05"], "why": "The 2022 bar stays.", "absent": [{"chart": 380}]}]
     d = scenario_at(private_dir / "bar3d", make=lambda path: chart_deck(path, "bar3DChart"), non_changes=gone)
