@@ -14,6 +14,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from functools import cached_property
+from itertools import chain
 from pathlib import Path
 from typing import Any, Literal
 
@@ -875,6 +876,7 @@ def _numbered(value: Value) -> list[Value]:
 
 def _fact_problems(sc: Scenario, turns: dict[str, Turn]) -> Iterator[str]:
     n = len(sc.source.deck.slides)
+    kept = [s.slide for s in sc.skeleton if isinstance(s, SourceSlot)]
     for change, slot, fs in sc.fact_targets:
         src = slot.slide if isinstance(slot, SourceSlot) and 1 <= slot.slide <= n else None
         label = f"{change.id} slide {slot.slide}" if isinstance(slot, SourceSlot) else f"{change.id}"
@@ -890,8 +892,11 @@ def _fact_problems(sc: Scenario, turns: dict[str, Turn]) -> Iterator[str]:
                 else:
                     yield from (f"{label} require {facts.describe(piece)}: {p}" for p in _provenance_problems(sc, piece, r.source, turns))
         for f in fs.forbid:
-            if f.where == "deck" and (kept := next(((k, hit) for k in sc.frozen if (hit := find_in(sc.source, k, f.value) or in_notes(f.value, sc.source.notes[k - 1]))), None)):
-                yield f"{label} forbid {kept[1]!r}: a deck-wide forbid must be absent from every slide no change edits and its notes, but source slide {kept[0]} has it"
+            if f.where == "deck":
+                on_slides = ((hit, f"on source slide {k}") for k in sc.frozen if (hit := find_in(sc.source, k, f.value)))
+                in_notes_of = ((hit, f"in the speaker notes of source slide {k}") for k in kept if (hit := in_notes(f.value, sc.source.notes[k - 1])))
+                if found := next(chain(on_slides, in_notes_of), None):
+                    yield f"{label} forbid {found[0]!r}: a deck-wide forbid must be absent from every slide no change edits and from the speaker notes of every slide the output keeps, but it is {found[1]}"
             if f.superseded is not None:
                 if f.superseded not in turns:
                     yield f"{label} forbid {facts.describe(f.value)}: no transcript turn at {f.superseded}"

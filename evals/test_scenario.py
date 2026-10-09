@@ -317,7 +317,7 @@ def test_a_deck_wide_forbid_must_be_absent_from_every_slide_no_change_edits(priv
         return [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [forbid]}}, "intent_checks": ["Only the rate moves."]}]
 
     assert open_scenario(scenario_at(private_dir / "slide", change({"percent": "4%"}), two_slides)).changes[0].slides[1].forbid[0].where == "slide"
-    with pytest.raises(BadScenario, match="c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits and its notes, but source slide 2 has it"):
+    with pytest.raises(BadScenario, match="c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits and from the speaker notes of every slide the output keeps, but it is on source slide 2"):
         open_scenario(scenario_at(private_dir / "deck", change({"percent": "4%", "where": "deck"}), two_slides))
 
 
@@ -330,23 +330,24 @@ def test_a_deck_wide_forbid_fails_every_slide_that_states_it(tmp_path):
     ]
 
 
-def supply_in_notes(notes: str):
+def notes_on(slide: int, notes: str):
     def make(path: Path) -> Path:
         prs = Presentation()
         for text in ("Demand grows 4% a year", "Supply grows 5% a year"):
             prs.slides.add_slide(prs.slide_layouts[1]).placeholders[1].text_frame.text = text
-        prs.slides[1].notes_slide.notes_text_frame.text = notes
+        prs.slides[slide - 1].notes_slide.notes_text_frame.text = notes
         prs.save(path)
         return path
 
     return make
 
 
-def test_a_deck_wide_forbid_must_be_absent_from_the_notes_of_every_slide_no_change_edits(private_dir):
+@pytest.mark.parametrize("slide", [1, 2], ids=["edited", "untouched"])
+def test_a_deck_wide_forbid_must_be_absent_from_the_notes_of_every_slide_the_output_keeps(private_dir, slide):
     change = [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [{"percent": "4%", "where": "deck"}]}}, "intent_checks": ["Only the rate moves."]}]
-    assert open_scenario(scenario_at(private_dir / "clean", change, supply_in_notes("Supply grew 5% last year"))).source.notes[1] == ("Supply grew 5% last year",)
-    with pytest.raises(BadScenario, match="c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits and its notes, but source slide 2 has it"):
-        open_scenario(scenario_at(private_dir / "noted", change, supply_in_notes("Demand grew 4% last year")))
+    assert open_scenario(scenario_at(private_dir / "clean", change, notes_on(slide, "Supply grew 5% last year"))).source.notes[slide - 1] == ("Supply grew 5% last year",)
+    with pytest.raises(BadScenario, match=f"c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits and from the speaker notes of every slide the output keeps, but it is in the speaker notes of source slide {slide}"):
+        open_scenario(scenario_at(private_dir / "noted", change, notes_on(slide, "Demand grew 4% last year")))
 
 
 @pytest.mark.parametrize(
