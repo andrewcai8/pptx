@@ -73,6 +73,7 @@ class Code(StrEnum):
 
 
 SlideRef = int | str | None
+Place = Where | Literal["notes"]
 
 
 @dataclass(frozen=True)
@@ -98,7 +99,7 @@ class FactResult:
     slide: SlideRef
     kind: Literal["require", "forbid", "absent"]
     value: Value
-    where: Where
+    where: Place
     found: str | None
     ok: bool
     source: Provenance | None = None
@@ -196,7 +197,7 @@ def line(sc_name: str, verdict: Verdict, deferred: int) -> str:
     return f"SCENARIO {verdict.status}: " + "; ".join(f"[{f.code}] {f.message}" for f in verdict.failures)
 
 
-def place_name(ref: SlideRef, where: Where | Literal["notes"]) -> str:
+def place_name(ref: SlideRef, where: Place) -> str:
     if where == "notes":
         return f"in the speaker notes of {slide_name(ref)}"
     return f"on the title of {slide_name(ref)}" if where == "title" else f"on {slide_name(ref)}"
@@ -445,7 +446,7 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
                 for found, where in ((find(f.value, "deck", visible(out.deck, i), charts), "deck"), (in_notes(f.value, notes), "notes"))
                 if found
             ]
-            results.append(FactResult(change.id, "deck", "forbid", f.value, "deck", hits[0][1] if hits else None, not hits, superseded=f.superseded))
+            results.append(FactResult(change.id, "deck", "forbid", f.value, hits[0][2] if hits else "deck", hits[0][1] if hits else None, not hits, superseded=f.superseded))
             failures += [forbidden(change.id, ref, f, found, where) for ref, found, where in hits]
     for nc in sc.non_changes:
         for value in nc.absent:
@@ -459,7 +460,7 @@ def check_facts(sc: Scenario, out: Snapshot, placement: Placement, applied: set[
     return results, failures
 
 
-def forbidden(by: str, ref: SlideRef, f, found: str, where: Where | Literal["notes"] | None = None) -> Failure:
+def forbidden(by: str, ref: SlideRef, f, found: str, where: Place | None = None) -> Failure:
     place = place_name(ref, where or f.where)
     if f.superseded:
         return Failure(Code.FORBIDDEN, ref, by, f"{by}: {found!r} is {place}; it was abandoned after {f.superseded}")

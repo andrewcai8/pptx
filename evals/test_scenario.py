@@ -361,3 +361,4 @@ def test_a_deck_wide_forbid_reads_speaker_notes(tmp_path, scenario, variant, fai
     assert score.main([scenario, str(built(tmp_path, scenario, variant))]) == score.FAIL
     report = json.loads((tmp_path / "score.json").read_text())
     assert [(f["code"], f["slide"], f["message"]) for f in report["failures"]] == [failure]
+    assert [(f["where"], f["ok"]) for f in report["facts"] if f["slide"] == "deck" and f["kind"] == "forbid"] == [("notes", False)]
