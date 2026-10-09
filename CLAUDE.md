@@ -1,6 +1,6 @@
 # pptx
 
-Tools that check, fix, and audit PowerPoint decks against a consulting house style. The long-term goal is in `docs/PLAN.md`: turn a recorded meeting into deck edits a consultant approves with zero changes. That meeting-to-slides step is not built yet. What exists today is the quality layer: check, fix, and audit.
+Tools that check, fix, and audit PowerPoint decks against a consulting house style. The long-term goal is in `docs/PLAN.md`: turn a recorded meeting into deck edits a consultant approves with zero changes. What exists today is the quality layer (check, fix, and audit), the edit engine, and the maker, a skill that turns a meeting into a ChangeSet. The review site and the OneDrive publish step are not built yet.
 
 ## Confidentiality first
 
@@ -43,20 +43,30 @@ uv run --project deckcheck deckcheck render private/deck-fixed.pptx --out artifa
 The edit engine runs a ChangeSet, a JSON file of edits to one deck, against that deck. Its commands print slide text too, so the same rules apply. `docs/changeset.md` describes the format.
 
 ```bash
+uv run --project deckcheck changeset outline private/meeting/before.pptx --json private/meeting/outline.json
 uv run --project deckcheck changeset validate private/meeting/changeset.json
 uv run --project deckcheck changeset execute private/meeting/changeset.json --out private/meeting/executed.pptx --review artifacts/meeting/review.json
 uv run --project deckcheck changeset apply private/meeting/changeset.json --out private/meeting/final.pptx
 ```
 
+- `outline` lists every slide, layout, shape, paragraph, table cell, and chart point by the ids a ChangeSet uses.
 - `validate` checks every change against the source deck. Exit 1 means it found problems, listed one per change.
 - `execute` writes a new deck with every change applied, for review. It never edits the source.
 - `apply` writes the final deck from a fresh copy of the source and the review decisions. Exit 1 means some decisions are still pending, and nothing is written.
 
 The `verify-pptx` skill in `.claude/skills/verify-pptx/` is the full procedure, including the audit. Follow it when asked to verify, fix, or audit a deck.
 
+The `process-meeting` skill in `.claude/skills/process-meeting/` is the maker. It reads a meeting folder and writes a ChangeSet, and the engine makes the edits. Follow it when asked to turn a meeting into deck changes. `meeting process` runs it headless through `claude -p`:
+
+```bash
+uv run --project deckcheck meeting process private/meetings/q3-steerco --out private/meetings/q3-steerco/run1 --shareable
+```
+
+`--shareable` is the ask-first answer. Pass it only when the deck and the meeting may be shared with an AI service under the firm's policy. Exit 0 means the ChangeSet is valid, 1 means it is missing or invalid, 2 means bad input, and 3 means the `claude` CLI is missing or not logged in.
+
 ## Adding a real meeting
 
-Real meetings let us measure the meeting-to-slides step on real work, once it exists. Each meeting is a private scenario in `private/meetings/<name>/`, a folder git ignores. The ask-first rule above applies to every file in it.
+Real meetings let us measure the meeting-to-slides step on real work. Each meeting is a private scenario in `private/meetings/<name>/`, a folder git ignores. The ask-first rule above applies to every file in it.
 
 Save these for each meeting:
 
