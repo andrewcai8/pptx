@@ -23,8 +23,8 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 | exit | meaning |
 |---|---|
 | 0 | done |
-| 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. A ChangeSet that is not JSON is listed as `changeset: not JSON`, and a source deck that is missing or has another hash is listed under `source.path` or `source.sha256`. Nothing is written. |
-| 2 | the ChangeSet file is missing or is not UTF-8 text, the deck given to `outline` or named as the source is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
+| 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. A ChangeSet that is not JSON is listed as `changeset: not JSON`. A source deck that is missing or cannot be read is listed under `source.path`, and one with another hash under `source.sha256`. Nothing is written. |
+| 2 | the ChangeSet file is missing, is a folder, cannot be read, or is not UTF-8 text, the deck given to `outline` or named as the source is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
 
 ## The ChangeSet
 
@@ -51,7 +51,7 @@ A slide is named by its slide id (`p:sldId/@id`) and a shape by its id on that s
 | `delete_slide` | deletes slide `slide` | structural |
 | `move_slide` | moves slide `slide` after source slide `after`, or first when `after` is null | structural |
 
-The text a change writes is `new`, `text`, a fill's paragraphs, or an `edited` decision. It may hold a tab, which the deck keeps as a tab. It may not hold any other control character, such as `\f`, `\r`, or `\x1f`, and a change with one is refused with the character and its index. A line feed and a line break keep their rules. `\n` splits paragraphs in `set_cell` and in an edited `fill_placeholder` and is refused elsewhere, and `\v` is a line break. So a review app turns a pasted `\r\n` into `\n` before it writes a decision.
+The text a change writes is `new`, `text`, a fill's paragraphs, or an `edited` decision. It may hold a tab, which the deck keeps as a tab. It may not hold any other control character, such as `\f`, `\r`, or `\x1f`, and a change with one is refused with the character and its index, counted from the start of that text. A line feed and a line break keep their rules. `\n` splits paragraphs in `set_cell` and in an edited `fill_placeholder` and is refused elsewhere, and `\v` is a line break. So a review app turns a pasted `\r\n` into `\n` before it writes a decision.
 
 A chart point's workbook cell must hold a plain number. A blank cell, a formula, text, a true/false value, an error, or a date is refused. Paragraph indexes count every paragraph in the shape, blank ones included. Text reads the way python-pptx's `paragraph.text` reads it, with a line break as `\v`. A slide placed after another follows it wherever that slide ends up. Several slides placed after one slide follow it in ChangeSet order.
 
@@ -96,8 +96,8 @@ claude -p '<prompt>' --tools Read,Write,Edit,Bash --permission-mode dontAsk \
 | exit | meaning |
 |---|---|
 | 0 | the ChangeSet is valid, and the command prints what `changeset validate` prints |
-| 1 | Claude wrote no ChangeSet, or it is invalid or names another deck |
-| 2 | bad input, such as a missing transcript, a missing deck, `--out` outside `artifacts/` and `private/`, or no `--shareable` |
+| 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. A ChangeSet that is not JSON is listed as `changeset: not JSON`. A source deck that is missing or cannot be read is listed under `source.path`, and one with another hash under `source.sha256`. Nothing is written. |
+| 2 | the ChangeSet file is missing, is a folder, cannot be read, or is not UTF-8 text, the deck given to `outline` or named as the source is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
 | 3 | the `claude` CLI is missing or not logged in, and the command prints ``claude CLI not found or not logged in; run `claude` once to log in`` |
 
 The flags were checked against `claude --help` for Claude Code 2.1.293, and `deckcheck/tests/test_meeting.py` pins the argv. No live `claude -p` run has tested them.

@@ -722,6 +722,10 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
             lambda d: changeset(d, [change("add", ADD), change("fill", FILL, {"edited": "Raise prices\r\nHold discounts"})]),
             "fill decision: edited text 'Raise prices\\r\\nHold discounts': holds the control character '\\r' at index 12, which a deck cannot hold; remove it",
         ),
+        (
+            lambda d: changeset(d, [change("add", ADD), change("fill", FILL, {"edited": "Raise prices\nHold\x07discounts"})]),
+            "fill decision: edited text 'Raise prices\\nHold\\x07discounts': holds the control character '\\x07' at index 17, which a deck cannot hold; remove it",
+        ),
     ],
     ids=[
         "unknown-slide",
@@ -766,6 +770,7 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
         "unit-separator-in-a-fill",
         "unit-separator-in-an-edit",
         "windows-line-ending-in-an-edited-fill",
+        "bell-on-the-second-line-of-an-edited-fill",
     ],
 )
 def test_a_bad_changeset_names_each_problem_and_exits_1(deck: Path, capsys: pytest.CaptureFixture[str], write, problem) -> None:

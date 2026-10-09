@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Annotated, ClassVar, Literal, get_args
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from pydantic_core import PydanticCustomError
 
 DecisionKind = Literal["keep_new", "keep_old", "edited"]
@@ -39,6 +39,7 @@ def _no_control(value: str) -> str:
 
 # Tab is kept; "\n" and "\v" mean a paragraph and a line break, so each op decides where they may go.
 DeckText = Annotated[str, AfterValidator(_no_control)]
+EDITED_TEXT = TypeAdapter(DeckText)
 
 
 class Ref(Wire):
@@ -97,6 +98,7 @@ class Op(Wire):
     def _edited(self, text: str, /, **update: object) -> Op:
         """The op with the reviewer's text, validated like the maker's: model_copy would skip validation."""
         try:
+            EDITED_TEXT.validate_python(text)
             return self.model_validate({**dict(self), **update})
         except ValidationError as e:
             raise ValueError(f"edited text {text!r}: {e.errors()[0]['msg']}") from None
