@@ -358,7 +358,7 @@ def find(value: Value, where: Where, slide: Slide, charts: Charts) -> str | None
 
 def in_notes(value: Value, notes: tuple[str, ...]) -> str | None:
     """Where a slide's speaker notes state the value. Only a `where: deck` forbid reads notes."""
-    return None if isinstance(value, ChartValue) else next((hit for t in notes if (hit := facts.match(value, t))), None)
+    return next((hit for t in notes if (hit := facts.match(value, t))), None)
 
 
 def find_in(snap: Snapshot, k: int, value: Value, where: Where = "slide") -> str | None:
@@ -788,6 +788,9 @@ def _problems(sc: Scenario) -> Iterator[str]:
         for at in item.said:
             if at not in turns:
                 yield f"{item.id}.said: no transcript turn at {at}"
+    for c in sc.changes:
+        if isinstance(c, Edit | AddSlide) and not c.intent_checks:
+            yield f"{c.id}.intent_checks: an edited or added slide needs one that says what the slide may gain and what it must not"
 
     def in_range(k: int, where: str, low: int = 1) -> Iterator[str]:
         if not low <= k <= n:

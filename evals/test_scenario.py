@@ -114,7 +114,7 @@ def test_a_private_deck_scenario_opens_only_under_the_repos_private_folder(folde
         shutil.rmtree(top, ignore_errors=True)
 
 
-EDIT_SLIDE_1 = [{"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {}}}]
+EDIT_SLIDE_1 = [{"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {}}, "intent_checks": ["Slide 1 gains only the reworded callout."]}]
 
 
 def chart_deck(path: Path, plot: str = "barChart") -> Path:
@@ -193,10 +193,24 @@ def test_a_chart_relationship_to_a_missing_part_is_a_bad_output(tmp_path, capsys
 
 
 def test_a_chart_fact_cannot_target_a_source_chart_that_cannot_be_read(private_dir):
-    change = [{"id": "c1", "kind": "update-number", "intent": "Redraw the bar.", "said": ["00:00:05"], "slides": {1: {"forbid": [{"chart": 410}]}}}]
+    change = [{"id": "c1", "kind": "update-number", "intent": "Redraw the bar.", "said": ["00:00:05"], "slides": {1: {"forbid": [{"chart": 410}]}}, "intent_checks": ["Only the bar moves."]}]
     assert open_scenario(scenario_at(private_dir / "bar", change, chart_deck)).source.charts[0].values == (Decimal("410.0"), Decimal("2000.0"))
     with pytest.raises(BadScenario, match="c1 slide 1: a chart fact cannot target a slide whose bar3DChart chart cannot be read"):
         open_scenario(scenario_at(private_dir / "bar3d", change, lambda path: chart_deck(path, "bar3DChart")))
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"id": "c1", "kind": "edit-text", "intent": "Reword the callout.", "said": ["00:00:05"], "slides": {1: {}}},
+        {"id": "c1", "kind": "add-slide", "after": 1, "layout": "Title and Content", "intent": "Add a summary.", "said": ["00:00:05"]},
+    ],
+    ids=["edit", "add-slide"],
+)
+def test_an_edited_or_added_slide_needs_an_intent_check(private_dir, change):
+    with pytest.raises(BadScenario, match="c1.intent_checks: an edited or added slide needs one that says what the slide may gain and what it must not"):
+        open_scenario(scenario_at(private_dir / "unchecked", [change]))
+    assert open_scenario(scenario_at(private_dir / "checked", [{**change, "intent_checks": ["Nothing else changes."]}])).deferred == (("c1", "Nothing else changes."),)
 
 
 UNCLEAR_CALLOUT = {"id": "n1", "kind": "ambiguous", "said": ["00:00:05"], "why": "Nobody said which callout.", "slides": [1], "flag": "Which callout should change?"}
@@ -300,7 +314,7 @@ def two_slides(path: Path) -> Path:
 
 def test_a_deck_wide_forbid_must_be_absent_from_every_slide_no_change_edits(private_dir):
     def change(forbid: dict) -> list[dict]:
-        return [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [forbid]}}}]
+        return [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [forbid]}}, "intent_checks": ["Only the rate moves."]}]
 
     assert open_scenario(scenario_at(private_dir / "slide", change({"percent": "4%"}), two_slides)).changes[0].slides[1].forbid[0].where == "slide"
     with pytest.raises(BadScenario, match="c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits and its notes, but source slide 2 has it"):
@@ -329,7 +343,7 @@ def supply_in_notes(notes: str):
 
 
 def test_a_deck_wide_forbid_must_be_absent_from_the_notes_of_every_slide_no_change_edits(private_dir):
-    change = [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [{"percent": "4%", "where": "deck"}]}}}]
+    change = [{"id": "c1", "kind": "update-number", "intent": "Move the growth rate.", "said": ["00:00:05"], "slides": {1: {"forbid": [{"percent": "4%", "where": "deck"}]}}, "intent_checks": ["Only the rate moves."]}]
     assert open_scenario(scenario_at(private_dir / "clean", change, supply_in_notes("Supply grew 5% last year"))).source.notes[1] == ("Supply grew 5% last year",)
     with pytest.raises(BadScenario, match="c1 slide 1 forbid '4%': a deck-wide forbid must be absent from every slide no change edits and its notes, but source slide 2 has it"):
         open_scenario(scenario_at(private_dir / "noted", change, supply_in_notes("Demand grew 4% last year")))

@@ -312,7 +312,7 @@ def check_scope(sc: Scenario, out: Snapshot, placement: Placement) -> tuple[list
                     failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k} (no restyle)"))
                 elif e.kind != "restyle" and not text_changed:
                     failures.append(Failure(Code.MISSING, k, e.id, f"{e.id} not applied to slide {k}"))
-            # An edited slide must keep everything its edits do not replace. What it gains is the intent checker's to judge.
+            # An edited slide must keep the on-slide text, pieces, and chart values its edits do not target. What it gains is the intent checker's to judge.
             replaced = [f.value for e in edits for f in e.slides[k].forbid if f.superseded is None and not isinstance(f.value, ChartValue)]
             if text := lost_text(visible(sc.source.deck, k - 1), visible(out.deck, i), replaced):
                 failures.append(Failure(Code.LOST, k, by, f"{by} does not ask to change this text on slide {k}, but it is gone or reworded: {shown(text)}"))
