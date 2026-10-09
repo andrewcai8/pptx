@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal
 
 from lxml import etree
 from pptx.oxml.ns import qn
@@ -25,6 +26,7 @@ from deckcheck.changeset.model import (
     InsertParagraph,
     MoveSlide,
     Op,
+    Paragraph,
     ReplaceText,
     Review,
     ReviewChange,
@@ -70,64 +72,7 @@ class Miss(Exception):
         self.message = message
 
 
-@dataclass(frozen=True)
-class TextAt:
-    slide: slides.SourceSlide
-    shape: etree._Element
-    p: etree._Element
-    paragraph: int
-    at: int
-    before: str
-    splice: text.Splice
-
-
-@dataclass(frozen=True)
-class ParagraphAt:
-    slide: slides.SourceSlide
-    shape: etree._Element
-    anchor: etree._Element
-
-
-@dataclass(frozen=True)
-class CellAt:
-    slide: slides.SourceSlide
-    shape: etree._Element
-    tc: etree._Element
-
-
-@dataclass(frozen=True)
-class PointAt:
-    slide: slides.SourceSlide
-    shape: etree._Element
-    point: chart.Point
-
-
-@dataclass(frozen=True)
-class NewSlide:
-    layout: slides.Layout
-    id: int
-    part: str
-    after: slides.SourceSlide | None
-
-
-@dataclass(frozen=True)
-class PlaceholderAt:
-    add: NewSlide
-    placeholder: slides.Placeholder
-
-
-@dataclass(frozen=True)
-class SlideAt:
-    slide: slides.SourceSlide
-
-
-@dataclass(frozen=True)
-class MoveTo:
-    slide: slides.SourceSlide
-    after: slides.SourceSlide | None
-
-
-Target = TextAt | ParagraphAt | CellAt | PointAt | NewSlide | PlaceholderAt | SlideAt | MoveTo
+FIELD_NOTE = "a think-cell label: its field format is rewritten too, so a refresh keeps the new text"
 
 
 @dataclass(frozen=True)
@@ -135,15 +80,260 @@ class Item:
     """One change as checked against the source deck. Everything here is read from the source, not the maker."""
 
     change: Change
+    target: Target
     slide: int | str
     source_index: int | None
-    shape: tuple[int, str] | None
-    before: str | None
-    after: str | None
-    span: tuple[int, int] | None
-    depends_on: str | None
-    notes: tuple[str, ...]
-    target: Target
+    shape: tuple[int, str] | None = None
+    before: str | None = None
+    after: str | None = None
+    quote: tuple[str, str] | None = None
+    span: tuple[int, int] | None = None
+    depends_on: str | None = None
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Claim:
+    """Something only one change may write, keyed for comparison, and how a second claimant's problem reads."""
+
+    key: tuple
+    field: str
+    taken: str
+
+
+@dataclass
+class Build:
+    """The package _build writes into, and what the slide writes collect for the final slide list."""
+
+    pkg: Package
+    deck: slides.Deck
+    rids: dict[int, str]
+    placements: list[tuple[int, int | None]]
+    deleted: set[int]
+    tails: dict[etree._Element, etree._Element]
+
+
+class Target(ABC):
+    """What one op writes, found on the pristine source deck by locate, the one dispatch on the op. Each kind
+    writes itself in its phase, describes itself for check, and names the slide it touches and what it claims,
+    so a kind cannot be located and then silently skipped."""
+
+    phase: ClassVar[int] = 1
+
+    @abstractmethod
+    def write(self, build: Build) -> None: ...
+
+    @abstractmethod
+    def describe(self, change: Change, pkg: Package) -> Item: ...
+
+    def rank(self) -> tuple[int, int]:
+        return self.phase, 0
+
+    @property
+    def touches(self) -> slides.SourceSlide | None:
+        """The source slide this writes on or moves, which no change may delete."""
+        return None
+
+    @property
+    def follows(self) -> slides.SourceSlide | None:
+        """The source slide this places a slide after, which no change may delete."""
+        return None
+
+    def claim(self) -> Claim | None:
+        return None
+
+
+@dataclass(frozen=True)
+class OnShape(Target):
+    slide: slides.SourceSlide
+    shape: etree._Element
+
+    @property
+    def touches(self) -> slides.SourceSlide:
+        return self.slide
+
+    def _item(self, change: Change, **fields: object) -> Item:
+        shape = (slides.shape_id(self.shape), slides.shape_name(self.shape))
+        return Item(change=change, target=self, slide=self.slide.id, source_index=self.slide.index, shape=shape, **fields)
+
+
+@dataclass(frozen=True)
+class TextAt(OnShape):
+    p: etree._Element
+    paragraph: int
+    at: int
+    before: str
+    old: str
+    new: str
+    splice: text.Splice
+    phase: ClassVar[int] = 0
+
+    def rank(self) -> tuple[int, int]:
+        # Quotes in one paragraph never overlap, so their starts order them. Splice offsets do not: two abutting
+        # quotes can both trim to an insertion at their shared edge, and the later quote's must be written first.
+        return self.phase, -self.at
+
+    def write(self, build: Build) -> None:
+        text.write_splice(self.p, self.splice)
+
+    def describe(self, change: Change, pkg: Package) -> Item:
+        end = self.at + len(self.old)
+        touched = [x for x in text.atoms(self.p) if x.lo < self.splice.end and x.hi > self.splice.start]
+        return self._item(
+            change,
+            before=self.before,
+            after=self.before[: self.at] + self.new + self.before[end:],
+            quote=(self.old, self.new),
+            span=(self.at, end),
+            notes=(FIELD_NOTE,) if any(x.el.tag == text.A_FLD for x in touched) else (),
+        )
+
+
+@dataclass(frozen=True)
+class ParagraphAt(OnShape):
+    anchor: etree._Element
+    new: str
+
+    def write(self, build: Build) -> None:
+        p = text.new_paragraph(self.anchor, self.new)
+        build.tails.get(self.anchor, self.anchor).addnext(p)
+        build.tails[self.anchor] = p
+
+    def describe(self, change: Change, pkg: Package) -> Item:
+        return self._item(change, after=self.new)
+
+
+@dataclass(frozen=True)
+class CellAt(OnShape):
+    tc: etree._Element
+    row: int
+    col: int
+    new: str
+
+    def write(self, build: Build) -> None:
+        text.write_cell(self.tc, self.new)
+
+    def describe(self, change: Change, pkg: Package) -> Item:
+        return self._item(change, before=text.cell_text(self.tc), after=self.new)
+
+    def claim(self) -> Claim:
+        shape = slides.shape_id(self.shape)
+        return Claim(("cell", self.slide.id, shape, self.row, self.col), "op", f"shape {shape} row {self.row} col {self.col} is already changed")
+
+
+@dataclass(frozen=True)
+class PointAt(OnShape):
+    point: chart.Point
+    series: int
+    index: int
+    new: float
+
+    def write(self, build: Build) -> None:
+        chart.set_point(build.pkg, self.point, self.new)
+
+    def describe(self, change: Change, pkg: Package) -> Item:
+        book = self.point.workbook
+        notes = (f"workbook cell {self.point.cell.sheet}!{self.point.cell.ref} in {book}",)
+        if book.endswith(".xlsb"):
+            notes += ("the .xlsb workbook is rewritten as .xlsx, values only",)
+        return self._item(change, before=chart.number_text(self.point.value), after=chart.number_text(self.new), notes=notes)
+
+    def claim(self) -> Claim:
+        shape = slides.shape_id(self.shape)
+        return Claim(
+            ("point", self.slide.id, shape, self.series, self.index), "op", f"shape {shape} series {self.series} point {self.index} is already changed"
+        )
+
+
+@dataclass(frozen=True)
+class NewSlide(Target):
+    layout: slides.Layout
+    id: int
+    part: str
+    after: slides.SourceSlide | None
+
+    @property
+    def follows(self) -> slides.SourceSlide | None:
+        return self.after
+
+    def write(self, build: Build) -> None:
+        build.rids[self.id] = slides.new_slide(build.pkg, build.deck, self.layout, self.part)
+        build.placements.append((self.id, self.after.id if self.after else None))
+
+    def describe(self, change: Change, pkg: Package) -> Item:
+        where = f"after {self.after.name}" if self.after else "first"
+        return Item(change=change, target=self, slide=change.id, source_index=None, after=f"new slide on layout {self.layout.name!r}, {where}")
+
+
+@dataclass(frozen=True)
+class PlaceholderAt(Target):
+    """A fill writes on a slide an earlier phase adds, so it writes last."""
+
+    add: NewSlide
+    add_id: str
+    placeholder: slides.Placeholder
+    paragraphs: tuple[Paragraph, ...]
+    phase: ClassVar[int] = 2
+
+    def write(self, build: Build) -> None:
+        sp = next(s for s in slides.shapes(slides.shape_tree(build.pkg.xml(self.add.part))) if slides.shape_id(s) == self.placeholder.id)
+        text.fill(sp.find(qn("p:txBody")), self.paragraphs)
+
+    def describe(self, change: Change, pkg: Package) -> Item:
+        return Item(
+            change=change,
+            target=self,
+            slide=self.add_id,
+            source_index=None,
+            shape=(self.placeholder.id, self.placeholder.name),
+            after="\n".join(p.text for p in self.paragraphs),
+            depends_on=self.add_id,
+        )
+
+    def claim(self) -> Claim:
+        ph = self.placeholder.id
+        return Claim(("placeholder", self.add_id, ph), "op", f"placeholder {ph} on {self.add_id}'s slide is already changed")
+
+
+@dataclass(frozen=True)
+class SlideAt(Target):
+    slide: slides.SourceSlide
+
+    def write(self, build: Build) -> None:
+        build.deleted.add(self.slide.id)
+
+    def describe(self, change: Change, pkg: Package) -> Item:
+        title = slides.title(pkg.xml(self.slide.part))
+        return Item(change=change, target=self, slide=self.slide.id, source_index=self.slide.index, before=title)
+
+    def claim(self) -> Claim:
+        return Claim(("delete", self.slide.id), "op.slide", f"{self.slide.name} is already deleted")
+
+
+@dataclass(frozen=True)
+class MoveTo(Target):
+    slide: slides.SourceSlide
+    after: slides.SourceSlide | None
+    previous: slides.SourceSlide | None
+
+    @property
+    def touches(self) -> slides.SourceSlide:
+        return self.slide
+
+    @property
+    def follows(self) -> slides.SourceSlide | None:
+        return self.after
+
+    def write(self, build: Build) -> None:
+        build.placements.append((self.slide.id, self.after.id if self.after else None))
+
+    def describe(self, change: Change, pkg: Package) -> Item:
+        before = f"after {self.previous.name}" if self.previous else "first"
+        after = f"after {self.after.name}" if self.after else "first"
+        return Item(change=change, target=self, slide=self.slide.id, source_index=self.slide.index, before=before, after=after)
+
+    def claim(self) -> Claim:
+        return Claim(("move", self.slide.id), "op.slide", f"{self.slide.name} is already moved")
 
 
 @dataclass(frozen=True)
@@ -252,10 +442,10 @@ def check(cs: ChangeSet, data: bytes, path: Path = Path("changeset.json")) -> Ch
         raise DeckError(f"cannot read deck {cs.source.path}: {e}") from e
     ctx = Context.of(cs)
     problems: list[Problem] = []
-    targets: dict[str, Target] = {}
+    located: list[tuple[Change, Target]] = []
     for change in cs.changes:
         try:
-            targets[change.id] = locate(pkg, deck, ctx, change.id, change.op)
+            located.append((change, locate(pkg, deck, ctx, change.id, change.op)))
         except Miss as m:
             problems.append(Problem(f"{change.id} {m.field}", m.message))
             continue
@@ -263,10 +453,10 @@ def check(cs: ChangeSet, data: bytes, path: Path = Path("changeset.json")) -> Ch
             problems.append(Problem(f"{change.id} op", f"cannot read the deck: {e}"))
             continue
         problems += _decision_problems(pkg, deck, ctx, change)
-    problems += _conflicts(cs, deck, targets)
+    problems += _references(cs, deck) + _conflicts(located)
     if problems:
         raise Invalid(problems)
-    return Checked(path, cs, data, tuple(_item(c, targets[c.id], deck, pkg) for c in cs.changes))
+    return Checked(path, cs, data, tuple(t.describe(c, pkg) for c, t in located))
 
 
 def _decision_problems(pkg: Package, deck: slides.Deck, ctx: Context, change: Change) -> list[Problem]:
@@ -293,7 +483,7 @@ def locate(pkg: Package, deck: slides.Deck, ctx: Context, cid: str, op: Op) -> T
             if op.after >= len(paras):
                 raise Miss("op.after", f"shape {op.shape} {slides.shape_name(shape)!r} has {_count(len(paras))}")
             _no_newline(op.text, "op.text")
-            return ParagraphAt(slide, shape, paras[op.after])
+            return ParagraphAt(slide, shape, anchor=paras[op.after], new=op.text)
         case SetCell():
             return _locate_cell(pkg, deck, op)
         case SetChartValue():
@@ -305,7 +495,7 @@ def locate(pkg: Package, deck: slides.Deck, ctx: Context, cid: str, op: Op) -> T
                 raise Miss("op", f"shape {op.shape} {slides.shape_name(shape)!r}: {e}") from e
             if point.value != op.old:
                 raise Miss("op.old", f"series {op.series} point {op.point} caches {chart.number_text(point.value)}, not {chart.number_text(op.old)}")
-            return PointAt(slide, shape, point)
+            return PointAt(slide, shape, point=point, series=op.series, index=op.point, new=op.new)
         case AddSlide():
             return _locate_add(deck, ctx, cid, op)
         case FillPlaceholder():
@@ -313,8 +503,11 @@ def locate(pkg: Package, deck: slides.Deck, ctx: Context, cid: str, op: Op) -> T
         case DeleteSlide():
             return SlideAt(_slide(deck, op.slide, "op.slide"))
         case MoveSlide():
+            slide = _slide(deck, op.slide, "op.slide")
+            if op.after == op.slide:
+                raise Miss("op.after", "a slide cannot follow itself")
             after = _slide(deck, op.after, "op.after") if op.after is not None else None
-            return MoveTo(_slide(deck, op.slide, "op.slide"), after)
+            return MoveTo(slide, after, deck.slides[slide.index - 2] if slide.index > 1 else None)
     raise AssertionError(op)
 
 
@@ -346,7 +539,7 @@ def _locate_text(pkg: Package, deck: slides.Deck, op: ReplaceText) -> TextAt:
         splice = text.plan_splice(paras[i], at, op.old, op.new)
     except text.SpliceError as e:
         raise Miss("op.new", str(e)) from e
-    return TextAt(slide, shape, paras[i], i, at, texts[i], splice)
+    return TextAt(slide, shape, p=paras[i], paragraph=i, at=at, before=texts[i], old=op.old, new=op.new, splice=splice)
 
 
 def _locate_cell(pkg: Package, deck: slides.Deck, op: SetCell) -> CellAt:
@@ -373,7 +566,7 @@ def _locate_cell(pkg: Package, deck: slides.Deck, op: SetCell) -> CellAt:
         text.plan_cell(tc, op.new)
     except text.SpliceError as e:
         raise Miss("op.new", str(e)) from e
-    return CellAt(slide, shape, tc)
+    return CellAt(slide, shape, tc=tc, row=op.row, col=op.col, new=op.new)
 
 
 def _locate_add(deck: slides.Deck, ctx: Context, cid: str, op: AddSlide) -> NewSlide:
@@ -409,7 +602,7 @@ def _locate_fill(pkg: Package, deck: slides.Deck, ctx: Context, op: FillPlacehol
         raise Miss("op.shape", f"placeholder {op.shape} {ph.name!r} is a {ph.type} placeholder and holds no text")
     for i, para in enumerate(op.paragraphs):
         _no_newline(para.text, f"op.paragraphs.{i}.text")
-    return PlaceholderAt(new, ph)
+    return PlaceholderAt(new, op.slide, ph, op.paragraphs)
 
 
 def _slide(deck: slides.Deck, slide_id: int, field: str) -> slides.SourceSlide:
@@ -478,8 +671,8 @@ def _list(items) -> str:
     return ", ".join(str(i) for i in items)
 
 
-def _conflicts(cs: ChangeSet, deck: slides.Deck, targets: Mapping[str, Target]) -> list[Problem]:
-    """Judged over every change whatever its decision, so any subset a reviewer keeps is conflict-free."""
+def _references(cs: ChangeSet, deck: slides.Deck) -> list[Problem]:
+    """Ids that repeat, and ids that name nothing: an ask_id, or a flag's or held item's slides."""
     problems: list[Problem] = []
     for kind, items in (("changes", cs.changes), ("asks", cs.asks), ("flags", cs.flags), ("held", cs.held)):
         first: dict[str, int] = {}
@@ -495,125 +688,49 @@ def _conflicts(cs: ChangeSet, deck: slides.Deck, targets: Mapping[str, Target]) 
     for c in cs.changes:
         if c.ask_id not in asks:
             problems.append(Problem(f"{c.id} ask_id", f"no ask {c.ask_id!r}; asks: {_list(asks) or 'none'}"))
-
-    def name(slide_id: int) -> str:
-        slide = deck.slide(slide_id)
-        return slide.name if slide else f"slide {slide_id}"
-
-    deleted: dict[int, str] = {}
-    for c in cs.changes:
-        if isinstance(c.op, DeleteSlide):
-            if c.op.slide in deleted:
-                problems.append(Problem(f"{c.id} op.slide", f"{name(c.op.slide)} is already deleted by {deleted[c.op.slide]}"))
-            deleted.setdefault(c.op.slide, c.id)
-    moved: dict[int, str] = {}
-    claims: dict[tuple, str] = {}
-    quotes: dict[tuple, list[tuple[int, int, str, str]]] = {}
-    for c in cs.changes:
-        op = c.op
-        if isinstance(op, MoveSlide):
-            if op.slide in moved:
-                problems.append(Problem(f"{c.id} op.slide", f"{name(op.slide)} is already moved by {moved[op.slide]}"))
-            if op.after == op.slide:
-                problems.append(Problem(f"{c.id} op.after", "a slide cannot follow itself"))
-            moved.setdefault(op.slide, c.id)
-        if isinstance(op, ReplaceText | InsertParagraph | SetCell | SetChartValue | MoveSlide) and op.slide in deleted:
-            problems.append(Problem(f"{c.id} op.slide", f"{name(op.slide)} is deleted by {deleted[op.slide]}"))
-        if isinstance(op, AddSlide | MoveSlide) and op.after in deleted:
-            problems.append(
-                Problem(f"{c.id} op.after", f"{name(op.after)} is deleted by {deleted[op.after]}; nothing can follow it")
-            )
-        key = _claim(op)
-        if key in claims:
-            problems.append(Problem(f"{c.id} op", f"{_claim_name(key)} is already changed by {claims[key]}"))
-        elif key is not None:
-            claims[key] = c.id
-        target = targets.get(c.id)
-        if isinstance(target, TextAt):
-            spans = quotes.setdefault((op.slide, op.shape, target.paragraph), [])
-            end = target.at + len(op.old)
-            other = next((s for s in spans if target.at < s[1] and s[0] < end), None)
-            if other:
-                problems.append(
-                    Problem(f"{c.id} op.old", f"{op.old!r} overlaps {other[2]}'s quote {other[3]!r} in paragraph {target.paragraph}")
-                )
-            spans.append((target.at, end, c.id, op.old))
-    problems += _cycles(cs, name)
     return problems
 
 
-def _cycles(cs: ChangeSet, name) -> list[Problem]:
-    after = {c.op.slide: (c.op.after, c.id) for c in cs.changes if isinstance(c.op, MoveSlide)}
+def _conflicts(located: Sequence[tuple[Change, Target]]) -> list[Problem]:
+    """Judged over every change whatever its decision, so any subset a reviewer keeps is conflict-free."""
+    deleted: dict[int, str] = {}
+    for c, t in located:
+        if isinstance(t, SlideAt):
+            deleted.setdefault(t.slide.id, c.id)
+    problems: list[Problem] = []
+    claims: dict[tuple, str] = {}
+    quotes: dict[tuple, list[tuple[int, int, str, str]]] = {}
+    for c, t in located:
+        claim = t.claim()
+        if claim and claim.key in claims:
+            problems.append(Problem(f"{c.id} {claim.field}", f"{claim.taken} by {claims[claim.key]}"))
+        elif claim:
+            claims[claim.key] = c.id
+        if t.touches and t.touches.id in deleted:
+            problems.append(Problem(f"{c.id} op.slide", f"{t.touches.name} is deleted by {deleted[t.touches.id]}"))
+        if t.follows and t.follows.id in deleted:
+            problems.append(Problem(f"{c.id} op.after", f"{t.follows.name} is deleted by {deleted[t.follows.id]}; nothing can follow it"))
+        if isinstance(t, TextAt):
+            spans = quotes.setdefault((t.slide.id, slides.shape_id(t.shape), t.paragraph), [])
+            end = t.at + len(t.old)
+            other = next((s for s in spans if t.at < s[1] and s[0] < end), None)
+            if other:
+                problems.append(Problem(f"{c.id} op.old", f"{t.old!r} overlaps {other[2]}'s quote {other[3]!r} in paragraph {t.paragraph}"))
+            spans.append((t.at, end, c.id, t.old))
+    return problems + _cycles(located)
+
+
+def _cycles(located: Sequence[tuple[Change, Target]]) -> list[Problem]:
+    after = {t.slide.id: (t.after.id if t.after else None, c.id, t.slide) for c, t in located if isinstance(t, MoveTo)}
     problems = []
-    for start, (_, cid) in after.items():
-        seen, at = {start}, after[start][0]
+    for start, (first, cid, slide) in after.items():
+        seen, at = {start}, first
         while at in after and at not in seen:
             seen.add(at)
             at = after[at][0]
-        if at == start and after[start][0] != start:
-            problems.append(Problem(f"{cid} op.after", f"{name(start)} is placed after a slide that is placed after it"))
+        if at == start:
+            problems.append(Problem(f"{cid} op.after", f"{slide.name} is placed after a slide that is placed after it"))
     return problems
-
-
-def _claim(op: Op) -> tuple | None:
-    match op:
-        case SetCell():
-            return ("cell", op.slide, op.shape, op.row, op.col)
-        case SetChartValue():
-            return ("point", op.slide, op.shape, op.series, op.point)
-        case FillPlaceholder():
-            return ("placeholder", op.slide, op.shape)
-    return None
-
-
-def _claim_name(key: tuple) -> str:
-    match key:
-        case ("cell", _, shape, row, col):
-            return f"shape {shape} row {row} col {col}"
-        case ("point", _, shape, series, point):
-            return f"shape {shape} series {series} point {point}"
-        case ("placeholder", add, shape):
-            return f"placeholder {shape} on {add}'s slide"
-    raise AssertionError(key)
-
-
-def _item(c: Change, target: Target, deck: slides.Deck, pkg: Package) -> Item:
-    op = c.op
-    match target:
-        case TextAt():
-            after = target.before[: target.at] + op.new + target.before[target.at + len(op.old) :]
-            notes = ()
-            if any(x.el.tag == text.A_FLD for x in text.atoms(target.p) if x.lo < target.splice.end and x.hi > target.splice.start):
-                notes = ("a think-cell label: its field format is rewritten too, so a refresh keeps the new text",)
-            return _at(c, target, target.before, after, (target.at, target.at + len(op.old)), notes)
-        case ParagraphAt():
-            return _at(c, target, None, op.text)
-        case CellAt():
-            return _at(c, target, op.old, op.new)
-        case PointAt():
-            book = target.point.workbook
-            notes = (f"workbook cell {target.point.cell.sheet}!{target.point.cell.ref} in {book}",)
-            if book.endswith(".xlsb"):
-                notes += ("the .xlsb workbook is rewritten as .xlsx, values only",)
-            return _at(c, target, chart.number_text(op.old), chart.number_text(op.new), None, notes)
-        case PlaceholderAt():
-            after = "\n".join(p.text for p in op.paragraphs)
-            return Item(c, op.slide, None, (target.placeholder.id, target.placeholder.name), None, after, None, op.slide, (), target)
-        case SlideAt():
-            return Item(c, target.slide.id, target.slide.index, None, slides.title(pkg.xml(target.slide.part)), None, None, None, (), target)
-        case MoveTo():
-            before = f"after {deck.slides[target.slide.index - 2].name}" if target.slide.index > 1 else "first"
-            after = f"after {target.after.name}" if target.after else "first"
-            return Item(c, target.slide.id, target.slide.index, None, before, after, None, None, (), target)
-        case NewSlide():
-            where = f"after {target.after.name}" if target.after else "first"
-            return Item(c, c.id, None, None, None, f"new slide on layout {target.layout.name!r}, {where}", None, None, (), target)
-    raise AssertionError(target)
-
-
-def _at(c, target, before, after, span=None, notes=()) -> Item:
-    slide, shape = target.slide, target.shape
-    return Item(c, slide.id, slide.index, (slides.shape_id(shape), slides.shape_name(shape)), before, after, span, None, notes, target)
 
 
 def execute(checked: Checked) -> bytes:
@@ -652,39 +769,12 @@ def _build(checked: Checked, ops: Sequence[tuple[str, Op]]) -> bytes:
     pkg = Package(checked.source)
     deck = slides.read_deck(pkg)
     ctx = Context.of(checked.changeset)
-    located = [(cid, op, locate(pkg, deck, ctx, cid, op)) for cid, op in ops]
-    spans = [t for _, _, t in located if isinstance(t, TextAt)]
-    # Quotes in one paragraph never overlap, so their starts order them. Splice offsets do not: two abutting
-    # quotes can both trim to an insertion at their shared edge, and the later quote's must be written first.
-    for t in sorted(spans, key=lambda t: t.at, reverse=True):
-        text.write_splice(t.p, t.splice)
-    tails: dict[etree._Element, etree._Element] = {}
-    rids: dict[int, str] = {s.id: s.rid for s in deck.slides}
-    placements: list[tuple[int, int | None]] = []
-    deleted: set[int] = set()
-    for _, op, t in located:
-        match t:
-            case ParagraphAt():
-                p = text.new_paragraph(t.anchor, op.text)
-                tails.get(t.anchor, t.anchor).addnext(p)
-                tails[t.anchor] = p
-            case CellAt():
-                text.write_cell(t.tc, op.new)
-            case PointAt():
-                chart.set_point(pkg, t.point, op.new)
-            case NewSlide():
-                rids[t.id] = slides.new_slide(pkg, deck, t.layout, t.part)
-                placements.append((t.id, t.after.id if t.after else None))
-            case SlideAt():
-                deleted.add(t.slide.id)
-            case MoveTo():
-                placements.append((t.slide.id, t.after.id if t.after else None))
-    for _, op, t in located:
-        if isinstance(t, PlaceholderAt):
-            sp = next(s for s in slides.shapes(slides.shape_tree(pkg.xml(t.add.part))) if slides.shape_id(s) == t.placeholder.id)
-            text.fill(sp.find(qn("p:txBody")), op.paragraphs)
-    order = slides.final_order([s.id for s in deck.slides], deleted, placements)
-    slides.write_order(pkg, deck, [(sid, rids[sid]) for sid in order], dict(placements))
+    targets = [locate(pkg, deck, ctx, cid, op) for cid, op in ops]
+    build = Build(pkg, deck, {s.id: s.rid for s in deck.slides}, [], set(), {})
+    for t in sorted(targets, key=lambda t: t.rank()):
+        t.write(build)
+    order = slides.final_order([s.id for s in deck.slides], build.deleted, build.placements)
+    slides.write_order(pkg, deck, [(sid, build.rids[sid]) for sid in order], dict(build.placements))
     return pkg.to_bytes()
 
 

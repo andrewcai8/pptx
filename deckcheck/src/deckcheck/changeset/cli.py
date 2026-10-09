@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 from deckcheck.changeset.engine import Checked, Invalid, Item, Undecided, apply, execute, load, review
-from deckcheck.changeset.model import ReplaceText
 from deckcheck.cli import write_atomic
 from deckcheck.fix import plural
 from deckcheck.model import DeckError
@@ -73,7 +72,7 @@ def format_item(item: Item) -> str:
     op = item.change.op
     slide = f"slide {item.source_index}" if item.source_index is not None else f"new slide {item.slide}"
     shape = f" shape {item.shape[0]} {item.shape[1]!r}" if item.shape else ""
-    before, after = (op.old, op.new) if isinstance(op, ReplaceText) else (item.before, item.after)
+    before, after = item.quote or (item.before, item.after)
     kind = "structural" if op.structural else "text-only"
     return f"{item.change.id} {op.kind} {slide}{shape}: {_show(before)} -> {_show(after)} ({kind})"
 
