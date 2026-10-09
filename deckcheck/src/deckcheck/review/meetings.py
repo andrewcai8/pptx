@@ -294,6 +294,7 @@ class Reviews:
             self._idle(mid)
             loaded = work.changeset.read_bytes()
             result = apply(load(work.changeset))
+            work.applied.unlink(missing_ok=True)
             write_atomic(work.final_pptx, result.data)
             final = Final(
                 path=str(work.final_pptx),

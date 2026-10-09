@@ -21,9 +21,11 @@ import pytest
 from test_changeset import ADD, CELL, FILL, REF, REVENUE, build_deck
 
 from deckcheck.changeset.cli import main as changeset_main
+from deckcheck.cli import write_atomic
 from deckcheck.render import find_fc_match, find_pdftoppm, find_soffice, render
 from deckcheck.review.cli import main as review_main
 from deckcheck.review.maker import maker_for
+from deckcheck.review import meetings
 from deckcheck.review.meetings import Reviews, cascade
 from deckcheck.review.server import serve
 
@@ -307,6 +309,24 @@ def test_apply_writes_the_bytes_the_changeset_cli_writes(repo: Path, app: Client
     assert app.decide(c3="keep_new")[1]["final"] is None
     assert app.get("/api/meetings/evals/demo/final.pptx")[0] == 404
     assert app.row("evals/demo")["state"]["applied"] is False
+
+
+def test_a_failed_apply_never_leaves_an_older_final_deck_current(repo: Path, app: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+    app.ready()
+    app.decide(c1="keep_new", c2="keep_new", c3="keep_new", add="keep_new", fill="keep_new")
+    app.post("/api/meetings/evals/demo/apply")
+    app.decide(c3="keep_old")
+
+    def crash(path: Path, data: bytes) -> None:
+        if path.name == "applied.json":
+            raise OSError("disk full")
+        write_atomic(path, data)
+
+    monkeypatch.setattr(meetings, "write_atomic", crash)
+    assert app.post("/api/meetings/evals/demo/apply") == (500, {"error": "internal error: disk full"})
+
+    assert app.decide(c3="keep_new")[1]["final"] is None
+    assert app.get("/api/meetings/evals/demo/final.pptx") == (404, {"error": "no final deck for the current decisions; apply them first"})
 
 
 def test_decisions_wait_while_the_meeting_is_processed(repo: Path, app: Client) -> None:
