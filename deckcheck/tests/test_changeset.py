@@ -533,6 +533,24 @@ SECTIONS = (
 )
 
 
+def test_two_added_slides_get_their_own_ids_and_parts(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    changes = [
+        change("add", ADD, "keep_old"),
+        change("fill", FILL, "keep_new"),
+        change("lead", {**ADD, "after": None}, "keep_new"),
+        change("lead-fill", {**FILL, "slide": "lead", "paragraphs": [{"text": "Agenda"}]}, "keep_new"),
+    ]
+    executed, final = tmp_path / "executed.pptx", tmp_path / "final.pptx"
+
+    run(["execute", changeset(deck, changes), "--out", executed], capsys)
+    run(["apply", changeset(deck, changes), "--out", final], capsys)
+
+    with zipfile.ZipFile(executed) as z:
+        added = sorted(n for n in z.namelist() if n in ("ppt/slides/slide4.xml", "ppt/slides/slide5.xml"))
+    assert (slide_ids(executed), added) == ([260, 256, 257, 259, 258], ["ppt/slides/slide4.xml", "ppt/slides/slide5.xml"])
+    assert (paragraphs(executed, 259, 3), paragraphs(executed, 260, 3)) == (["Raise list prices", "Hold discounts"], ["Agenda"])
+    assert (slide_ids(final), paragraphs(final, 260, 3)) == ([260, 256, 257, 258], ["Agenda"])
+
 def test_added_moved_and_deleted_slides_keep_the_sections_in_step(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     prs = Presentation(str(deck))
     prs.slides.add_slide(prs.slide_layouts[TITLE_ONLY]).shapes.title.text = "Appendix"
@@ -779,3 +797,4 @@ def test_no_output_overwrites_an_input_or_the_other_output(
 
     assert run(argv, capsys) == (2, "", f"error: {message}\n")
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()} == files
+
