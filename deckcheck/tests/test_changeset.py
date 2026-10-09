@@ -261,6 +261,22 @@ def test_untouched_runs_in_an_edited_paragraph_keep_their_formatting(deck: Path,
     assert [rpr for _, rpr in after] == [rpr for _, rpr in before]
 
 
+def test_inserted_paragraphs_follow_their_anchor_in_changeset_order_styled_like_it(
+    deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    first = {"kind": "insert_paragraph", "slide": 256, "shape": 4, "after": 0, "text": "Up from 9%"}
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, [change("c1", first), change("c2", {**first, "text": "Margins hold"})]), "--out", out], capsys)
+
+    slide = next(s for s in Presentation(str(out)).slides if s.slide_id == 256)
+    box = next(s for s in slide.shapes if s.shape_id == 4).text_frame
+    assert [[(r.text, r.font.size.pt) for r in p.runs] for p in box.paragraphs] == [
+        [("Revenue grew ", 14.0), ("12%", 18.0), (" in 2025", 12.0)],
+        [("Up from 9%", 14.0)],
+        [("Margins hold", 14.0)],
+    ]
+
+
 def test_a_think_cell_label_rewrites_its_field_format_with_its_text(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     out = tmp_path / "executed.pptx"
     run(["execute", changeset(deck, [change("c1", LABEL_OP)]), "--out", out], capsys)
