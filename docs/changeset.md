@@ -104,6 +104,7 @@ The flags were checked against `claude --help` for Claude Code 2.1.293, and `dec
 
 ## Known limits
 
-- A chart whose workbook is `.xlsb` gets a new `.xlsx` workbook that holds the old workbook's values only. Formulas and formatting in that workbook are lost. The solar deck's six charts are the only `.xlsb` charts in the corpus.
+- A chart whose workbook is `.xlsb` gets a new `.xlsx` workbook that holds the old workbook's values only. Formulas, defined names, cell styles, and date formats in that workbook are lost, and a text cell that begins with `=` becomes a formula. The solar deck's six charts are the only `.xlsb` charts in the corpus.
+- `delete_slide` leaves a slide's part in the package when another slide links to it, for example through a click action that jumps to it. The part drops out of the slide list, and the link still points at it. No corpus deck has such a link, and it is not known whether PowerPoint asks to repair the file. Agenda decks often have them.
 - `replace_text` cannot add or remove a line break, and no op changes fonts, sizes, colors, or positions.
 - Some decks hold a line feed inside a paragraph's text. `replace_text` cannot quote across one, and `set_cell` refuses a cell that holds one, because `\n` there would not say where the cell's paragraphs split.
