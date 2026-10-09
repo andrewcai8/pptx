@@ -1,0 +1,445 @@
+from __future__ import annotations
+
+import copy
+import hashlib
+import itertools
+import json
+import os
+import re
+import shutil
+import tempfile
+import threading
+from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Literal
+
+from pptx.oxml.ns import qn
+
+from deckcheck.changeset import Invalid, Problem, Review, apply, execute, load, review, slides
+from deckcheck.changeset.model import Decision, Edited
+from deckcheck.cli import write_atomic
+from deckcheck.fix import plural
+from deckcheck.package import Package
+from deckcheck.review.maker import Maker
+
+Origin = Literal["evals", "private"]
+Step = Literal["making", "executing", "rendering"]
+Side = Literal["old", "new"]
+Render = Callable[[Path, Path], object]
+
+ROOTS: dict[Origin, Path] = {"evals": Path("evals"), "private": Path("private/meetings")}
+WORK = Path("artifacts/review")
+# The suffixes are refused so a meeting can never be mistaken for a job's build dir and swept on start.
+NAME = re.compile(r"^(?!.*\.(?:partial|discard)$)[A-Za-z0-9][A-Za-z0-9_.-]*$")
+DATE = re.compile(r"^Date:\s*(\d{4}-\d{2}-\d{2})")
+CORPUS = "download the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`"
+
+
+@dataclass(frozen=True)
+class Meeting:
+    origin: Origin
+    name: str
+    dir: Path
+    title: str
+    date: str | None
+
+    @property
+    def id(self) -> str:
+        return f"{self.origin}/{self.name}"
+
+
+@dataclass(frozen=True)
+class New:
+    pass
+
+
+@dataclass(frozen=True)
+class Processing:
+    step: Step
+
+
+@dataclass(frozen=True)
+class Failed:
+    message: str
+    problems: tuple[Problem, ...] = ()
+
+
+@dataclass(frozen=True)
+class Ready:
+    decided: int
+    total: int
+    applied: bool
+
+
+State = New | Processing | Failed | Ready
+
+
+@dataclass(frozen=True)
+class Final:
+    path: str
+    sha256: str
+    changeset_sha256: str
+    kept_new: tuple[str, ...]
+    edited: tuple[str, ...]
+    kept_old: tuple[str, ...]
+    dropped: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class Row:
+    meeting: Meeting
+    maker: Maker | None
+    state: State
+    fonts: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class View:
+    row: Row
+    review: Review
+    slide: tuple[int, int]
+    final: Final | None
+
+
+class Unknown(Exception):
+    pass
+
+
+class Conflict(Exception):
+    pass
+
+
+def discover() -> list[Meeting]:
+    found = []
+    for origin, root in ROOTS.items():
+        if not root.is_dir():
+            continue
+        for d in sorted(root.iterdir()):
+            if d.is_dir() and NAME.match(d.name) and ((d / "transcript.md").is_file() or (d / "changeset.json").is_file()):
+                found.append(_meeting(origin, d))
+    return found
+
+
+def _meeting(origin: Origin, d: Path) -> Meeting:
+    title = date = None
+    transcript = d / "transcript.md"
+    if transcript.is_file():
+        with transcript.open(encoding="utf-8", errors="replace") as f:
+            for line in itertools.islice(f, 40):
+                if title is None and line.startswith("# "):
+                    title = line[2:].strip() or None
+                if date is None and (match := DATE.match(line)):
+                    date = match[1]
+    if title is None or date is None:
+        meeting = _changeset_meeting(d / "changeset.json")
+        title = title or meeting.get("title")
+        date = date or meeting.get("date")
+    return Meeting(origin, d.name, d, title or d.name, date)
+
+
+def _changeset_meeting(path: Path) -> dict[str, str]:
+    try:
+        meeting = json.loads(path.read_text(encoding="utf-8-sig")).get("meeting")
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return {k: v for k, v in meeting.items() if isinstance(v, str)} if isinstance(meeting, dict) else {}
+
+
+def cascade(changes: Sequence[Mapping], batch: Mapping[str, Decision]) -> dict[str, Decision]:
+    """The batch plus the fills of each add_slide it decides. Dropping a slide drops its fills; restoring it asks
+    for them again, because apply refuses a pending fill and a silently empty slide must not come back."""
+    out = dict(batch)
+    for c in changes:
+        op = c["op"]
+        if op["kind"] != "fill_placeholder" or c["id"] in batch or op["slide"] not in batch:
+            continue
+        if batch[op["slide"]] == "keep_old":
+            out[c["id"]] = "keep_old"
+        elif c.get("decision") == "keep_old":
+            out[c["id"]] = "pending"
+    return out
+
+
+@dataclass(frozen=True)
+class _Workdir:
+    dir: Path
+
+    @classmethod
+    def of(cls, meeting: Meeting) -> _Workdir:
+        return cls(WORK / meeting.origin / meeting.name)
+
+    @property
+    def partial(self) -> Path:
+        return self.dir.with_name(self.dir.name + ".partial")
+
+    @property
+    def discard(self) -> Path:
+        return self.dir.with_name(self.dir.name + ".discard")
+
+    @property
+    def changeset(self) -> Path:
+        return self.dir / "changeset.json"
+
+    @property
+    def executed(self) -> Path:
+        return self.dir / "executed.pptx"
+
+    @property
+    def final_pptx(self) -> Path:
+        return self.dir / "final.pptx"
+
+    @property
+    def applied(self) -> Path:
+        return self.dir / "applied.json"
+
+    def render(self, side: Side) -> Path:
+        return self.dir / "render" / side
+
+    def final(self) -> Final | None:
+        try:
+            doc = json.loads(self.applied.read_text())
+            current = _sha(self.changeset.read_bytes())
+        except OSError:
+            return None
+        if doc["changeset_sha256"] != current or not self.final_pptx.is_file():
+            return None
+        lists = {k: tuple(doc[k]) for k in ("kept_new", "edited", "kept_old")}
+        return Final(doc["path"], doc["sha256"], doc["changeset_sha256"], **lists, dropped=tuple(map(tuple, doc["dropped"])))
+
+    def fonts(self) -> tuple[tuple[str, str], ...]:
+        found = set()
+        for side in ("old", "new"):
+            try:
+                report = json.loads((self.render(side) / "fonts.json").read_text())
+            except OSError:
+                continue
+            found |= {(font, m["family"]) for font, m in report.items() if m["substituted"]}
+        return tuple(sorted(found))
+
+
+@dataclass
+class _Job:
+    step: Step = "making"
+
+
+class Reviews:
+    """The only writer under artifacts/review/. Paths are relative to the CWD, the repo root, because the engine
+    reads a ChangeSet's source.path from there."""
+
+    def __init__(self, *, render: Render, maker_for: Callable[[Meeting], Maker | None]) -> None:
+        self._render = render
+        self._maker_for = maker_for
+        self._lock = threading.Lock()
+        self._jobs: dict[str, _Job] = {}
+        self._failed: dict[str, Failed] = {}
+        self._locks: dict[str, threading.Lock] = {}
+        _converge()
+
+    def meetings(self) -> list[Row]:
+        return [self._row(m) for m in discover()]
+
+    def row(self, mid: str) -> Row:
+        return self._row(self._find(mid))
+
+    def process(self, mid: str, again: bool = False) -> Row:
+        meeting = self._find(mid)
+        maker = self._maker_for(meeting)
+        if maker is None:
+            raise Conflict("this meeting needs the maker, which is not built yet")
+        with self._lock:
+            idle = mid not in self._jobs
+            start = idle and (again or mid in self._failed or not _Workdir.of(meeting).dir.is_dir())
+            if start:
+                self._failed.pop(mid, None)
+                job = self._jobs[mid] = _Job()
+        if start:
+            threading.Thread(target=self._run, args=(meeting, maker, job), daemon=True).start()
+        return self._row(meeting)
+
+    def view(self, mid: str) -> View:
+        meeting = self._find(mid)
+        work = self._ready(meeting)
+        with self._meeting_lock(mid):
+            self._idle(mid)
+            checked = load(work.changeset)
+            doc = review(checked, work.executed, work.executed.read_bytes())
+            final = work.final()
+        pkg = Package(checked.source)
+        size = pkg.xml(slides.read_deck(pkg).presentation).find(qn("p:sldSz"))
+        return View(self._row(meeting), doc, (int(size.get("cx")), int(size.get("cy"))), final)
+
+    def decide(self, mid: str, decisions: Mapping[str, Decision]) -> tuple[dict[str, Decision], Final | None]:
+        work = self._ready(self._find(mid))
+        with self._meeting_lock(mid):
+            self._idle(mid)
+            raw = json.loads(work.changeset.read_text(encoding="utf-8-sig"))
+            changes = raw["changes"]
+            known = {c["id"] for c in changes}
+            if unknown := [cid for cid in decisions if cid not in known]:
+                raise Invalid([Problem(cid, "no such change") for cid in unknown])
+            before = copy.deepcopy(changes)
+            updates = cascade(changes, decisions)
+            for c in changes:
+                if c["id"] in updates:
+                    _set_decision(c, updates[c["id"]])
+            if changes != before:
+                _write_checked(work.changeset, raw)
+            return {c["id"]: _decision(c) for c in changes}, work.final()
+
+    def apply(self, mid: str) -> Final:
+        work = self._ready(self._find(mid))
+        with self._meeting_lock(mid):
+            self._idle(mid)
+            loaded = work.changeset.read_bytes()
+            result = apply(load(work.changeset))
+            write_atomic(work.final_pptx, result.data)
+            final = Final(
+                path=str(work.final_pptx),
+                sha256=_sha(result.data),
+                changeset_sha256=_sha(loaded),
+                kept_new=result.kept_new,
+                edited=result.edited,
+                kept_old=result.kept_old,
+                dropped=result.dropped,
+            )
+            write_atomic(work.applied, (json.dumps(asdict(final), indent=2) + "\n").encode())
+            return final
+
+    def slide_png(self, mid: str, side: Side, n: int) -> Path:
+        png = _Workdir.of(self._find(mid)).render(side) / f"slide-{n}.png"
+        if not png.is_file():
+            raise Unknown(f"no slide {n} in the {side} render")
+        return png
+
+    def final_pptx(self, mid: str) -> Path:
+        work = _Workdir.of(self._find(mid))
+        if work.final() is None:
+            raise Unknown("no final deck for the current decisions; apply them first")
+        return work.final_pptx
+
+    def _find(self, mid: str) -> Meeting:
+        for m in discover():
+            if m.id == mid:
+                return m
+        raise Unknown(f"no meeting {mid}")
+
+    def _row(self, meeting: Meeting) -> Row:
+        work = _Workdir.of(meeting)
+        return Row(meeting, self._maker_for(meeting), self._state(meeting, work), work.fonts())
+
+    def _state(self, meeting: Meeting, work: _Workdir) -> State:
+        with self._lock:
+            job, failed = self._jobs.get(meeting.id), self._failed.get(meeting.id)
+        if job:
+            return Processing(job.step)
+        if failed:
+            return failed
+        try:
+            changes = json.loads(work.changeset.read_text(encoding="utf-8-sig"))["changes"]
+        except FileNotFoundError:
+            return New()
+        decided = sum(c.get("decision", "pending") != "pending" for c in changes)
+        return Ready(decided, len(changes), work.final() is not None)
+
+    def _ready(self, meeting: Meeting) -> _Workdir:
+        work = _Workdir.of(meeting)
+        if not work.changeset.is_file():
+            raise Conflict("this meeting has not been processed yet")
+        return work
+
+    def _idle(self, mid: str) -> None:
+        with self._lock:
+            if mid in self._jobs:
+                raise Conflict("this meeting is being processed; wait until it is ready")
+
+    def _meeting_lock(self, mid: str) -> threading.Lock:
+        with self._lock:
+            return self._locks.setdefault(mid, threading.Lock())
+
+    def _run(self, meeting: Meeting, maker: Maker, job: _Job) -> None:
+        work = _Workdir.of(meeting)
+        build = _Workdir(work.partial)
+        failed = None
+        try:
+            shutil.rmtree(build.dir, ignore_errors=True)
+            build.dir.mkdir(parents=True)
+            maker.make(meeting, build.changeset)
+            job.step = "executing"
+            checked = load(build.changeset)
+            write_atomic(build.executed, execute(checked))
+            job.step = "rendering"
+            sources = {"old": Path(checked.changeset.source.path), "new": build.executed}
+            with ThreadPoolExecutor(len(sources)) as pool:
+                for done in [pool.submit(self._render, deck, build.render(side)) for side, deck in sources.items()]:
+                    done.result()
+            with self._meeting_lock(meeting.id):
+                if work.dir.exists():
+                    os.rename(work.dir, work.discard)
+                os.rename(build.dir, work.dir)
+                shutil.rmtree(work.discard, ignore_errors=True)
+        except Invalid as e:
+            failed = _refused(meeting, e)
+        except Exception as e:
+            failed = Failed(str(e) or type(e).__name__)
+        finally:
+            shutil.rmtree(build.dir, ignore_errors=True)
+            with self._lock:
+                del self._jobs[meeting.id]
+                if failed:
+                    self._failed[meeting.id] = failed
+
+
+def _converge() -> None:
+    for origin in ROOTS:
+        root = WORK / origin
+        if not root.is_dir():
+            continue
+        for p in root.iterdir():
+            if p.name.endswith(".partial"):
+                shutil.rmtree(p)
+            elif p.name.endswith(".discard"):
+                live = p.with_name(p.name.removesuffix(".discard"))
+                if live.exists():
+                    shutil.rmtree(p)
+                else:
+                    os.rename(p, live)
+
+
+def _refused(meeting: Meeting, e: Invalid) -> Failed:
+    message = f"The engine refused the ChangeSet: {plural(len(e.problems), 'problem', 'problems')}."
+    if any(p.where == "source.path" for p in e.problems):
+        message += f" The source deck is missing; {CORPUS}."
+    return Failed(message, e.problems)
+
+
+def _decision(change: Mapping) -> Decision:
+    d = change.get("decision", "pending")
+    return Edited(edited=d["edited"]) if isinstance(d, dict) else d
+
+
+def _set_decision(change: dict, decision: Decision) -> None:
+    if decision == "pending":
+        change.pop("decision", None)
+    elif isinstance(decision, Edited):
+        change["decision"] = {"edited": decision.edited}
+    else:
+        change["decision"] = decision
+
+
+def _write_checked(path: Path, raw: dict) -> None:
+    """Validate the new decisions exactly as apply will, by loading the would-be file, before it replaces the old one."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".part")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(raw, indent=2, ensure_ascii=False) + "\n")
+        load(Path(tmp))
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
