@@ -69,3 +69,13 @@ uv run --project deckcheck review serve --maker 'my-maker {meeting} --out {out}'
 ```
 
 `deckcheck/src/deckcheck/review/maker.py` holds this seam.
+
+## Prove it in a browser
+
+`deckcheck/scripts/review_proof.mjs` drives the app in headless Chrome. It needs Node 24 and Chrome, and `CHROME` sets the browser path. It starts its own server on a free port and stops it at the end.
+
+```bash
+node deckcheck/scripts/review_proof.mjs artifacts/review-proof
+```
+
+It processes the insurance, solar, and fmcg golden meetings from the home screen, decides every change through the page, applies, and saves screenshots. For each meeting it runs `changeset apply` on a copy of the committed ChangeSet with the same decisions and checks that both decks have the same bytes. It prints `REVIEW PROOF PASS` or `REVIEW PROOF FAIL` and exits 0 or 1. It starts those three meetings over, so their decisions under `artifacts/review/` are lost.
