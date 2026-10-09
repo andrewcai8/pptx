@@ -1,6 +1,135 @@
 from __future__ import annotations
 
+import hashlib
+import io
+import json
+import zipfile
+from pathlib import Path
+
+import openpyxl
+import pytest
+from lxml import etree
+from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
+from pptx.oxml import parse_xml
+from pptx.oxml.ns import qn
+from pptx.util import Inches, Pt
+
+from deckcheck.changeset.cli import main
 from deckcheck.changeset.model import SCHEMA_DIR, schemas
+
+TITLE_AND_CONTENT, TITLE_ONLY = 1, 5
+REF = {"t": "00:01:00", "speaker": "Ana Ruiz", "quote": "Use the new figures."}
+LABEL = (
+    '<a:fld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" id="{00000000-0000-0000-0000-000000000001}"'
+    " type=\"datetime'''+''''9''''%'''\"><a:rPr lang=\"en-US\" b=\"1\"/><a:t>+9%</a:t></a:fld>"
+)
+CUSTOM_SHOW = (
+    '<p:custShowLst xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+    ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+    '<p:custShow name="Short" id="0"><p:sldLst><p:sld r:id="{one}"/><p:sld r:id="{two}"/></p:sldLst></p:custShow>'
+    "</p:custShowLst>"
+)
+
+
+def build_deck(path: Path) -> Path:
+    prs = Presentation()
+    one = prs.slides.add_slide(prs.slide_layouts[TITLE_AND_CONTENT])
+    one.shapes.title.text = "Market outlook"
+    body = one.placeholders[1].text_frame
+    body.text = "Demand grows 4% a year"
+    body.add_paragraph().text = "Prices hold"
+    note = one.shapes.add_textbox(Inches(1), Inches(5), Inches(6), Inches(1)).text_frame.paragraphs[0]
+    for text, size, bold in (("Revenue grew ", 14, False), ("12%", 18, True), (" in 2025", 12, False)):
+        run = note.add_run()
+        run.text, run.font.size, run.font.bold = text, Pt(size), bold
+    table = one.shapes.add_table(2, 2, Inches(1), Inches(6), Inches(4), Inches(1)).table
+    for (r, c), text in {(0, 0): "Year", (0, 1): "Sales", (1, 0): "2025", (1, 1): "$120m"}.items():
+        table.cell(r, c).text = text
+
+    two = prs.slides.add_slide(prs.slide_layouts[TITLE_ONLY])
+    two.shapes.title.text = "Sales by year"
+    data = CategoryChartData()
+    data.categories = ["2024", "2025"]
+    data.add_series("Sales", (100, 120))
+    two.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(2), Inches(6), Inches(4), data)
+
+    three = prs.slides.add_slide(prs.slide_layouts[TITLE_ONLY])
+    three.shapes.title.text = "Next steps"
+    label = three.shapes.add_textbox(Inches(1), Inches(2), Inches(2), Inches(1)).text_frame.paragraphs[0]
+    label._p.append(parse_xml(LABEL))
+
+    rids = [s.get(qn("r:id")) for s in prs.slides._sldIdLst]
+    prs.part._element.find(qn("p:notesSz")).addnext(parse_xml(CUSTOM_SHOW.format(one=rids[0], two=rids[1])))
+    prs.save(str(path))
+    return path
+
+
+REVENUE = {"kind": "replace_text", "slide": 256, "shape": 4, "old": "12%", "new": "15%"}
+CELL = {"kind": "set_cell", "slide": 256, "shape": 5, "row": 1, "col": 1, "old": "$120m", "new": "$130m"}
+POINT = {"kind": "set_chart_value", "slide": 257, "shape": 3, "series": 0, "point": 1, "old": 120, "new": 130}
+ADD = {"kind": "add_slide", "layout": "Title and Content", "after": 257}
+FILL = {"kind": "fill_placeholder", "slide": "add", "shape": 3, "paragraphs": [{"text": "Raise list prices"}, {"text": "Hold discounts", "level": 1}]}
+MOVE = {"kind": "move_slide", "slide": 256, "after": 257}
+DELETE = {"kind": "delete_slide", "slide": 257}
+LABEL_OP = {"kind": "replace_text", "slide": 258, "shape": 3, "old": "+9%", "new": "+10%"}
+
+
+def sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def change(cid: str, op: dict, decision: str | dict | None = None, **extra) -> dict:
+    c = {"id": cid, "ask_id": "a1", "rationale": "The figures moved.", "refs": [REF], "op": op, **extra}
+    if decision is not None:
+        c["decision"] = decision
+    return c
+
+
+def changeset(deck: Path, changes: list[dict], name: str = "changeset.json", **source) -> Path:
+    doc = {
+        "meeting": {"title": "Pricing review", "date": "2026-10-01"},
+        "source": {"path": str(deck), "sha256": sha(deck), **source},
+        "asks": [{"id": "a1", "text": "Refresh the figures.", "refs": [REF]}],
+        "changes": changes,
+    }
+    path = deck.parent / name
+    path.write_text(json.dumps(doc, indent=2))
+    return path
+
+
+def run(argv: list[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, str, str]:
+    code = main([str(a) for a in argv])
+    out, err = capsys.readouterr()
+    return code, out, err
+
+
+@pytest.fixture
+def deck(tmp_path: Path) -> Path:
+    return build_deck(tmp_path / "deck.pptx")
+
+
+def paragraphs(path: Path, slide_id: int, shape_id: int) -> list[str]:
+    slide = next(s for s in Presentation(str(path)).slides if s.slide_id == slide_id)
+    shape = next(s for s in slide.shapes if s.shape_id == shape_id)
+    return [p.text for p in shape.text_frame.paragraphs]
+
+
+def cell(path: Path) -> str:
+    slide = next(s for s in Presentation(str(path)).slides if s.slide_id == 256)
+    return next(s for s in slide.shapes if s.shape_id == 5).table.cell(1, 1).text
+
+
+def chart_values(path: Path) -> tuple[tuple[float, ...], object]:
+    slide = next(s for s in Presentation(str(path)).slides if s.slide_id == 257)
+    chart = next(s for s in slide.shapes if s.has_chart).chart
+    book = openpyxl.load_workbook(io.BytesIO(chart.part.chart_workbook.xlsx_part.blob))
+    return tuple(chart.plots[0].series[0].values), book.active["B3"].value
+
+
+def slide_ids(path: Path) -> list[int]:
+    return [s.slide_id for s in Presentation(str(path)).slides]
 
 
 def test_committed_schemas_match_the_models() -> None:
@@ -8,3 +137,249 @@ def test_committed_schemas_match_the_models() -> None:
         assert (SCHEMA_DIR / name).read_text() == text, (
             f"{name} is stale; run uv run --project deckcheck python -m deckcheck.changeset.model"
         )
+
+
+def test_validate_lists_each_change_with_its_source_text(deck: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cs = changeset(deck, [change("c1", REVENUE), change("c2", CELL)])
+
+    assert run(["validate", cs], capsys) == (
+        0,
+        f"VALID {cs}: 2 changes (1 text-only, 1 structural) on slide 1; 1 ask, 0 flags, 0 held\n"
+        "  c1 replace_text slide 1 shape 4 'TextBox 3': '12%' -> '15%' (text-only)\n"
+        "  c2 set_cell slide 1 shape 5 'Table 4': '$120m' -> '$130m' (structural)\n",
+        "",
+    )
+
+
+def test_execute_writes_every_change_as_written(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cs = changeset(deck, [change("c1", REVENUE), change("c2", CELL), change("c3", POINT), change("add", ADD), change("fill", FILL)])
+    out = tmp_path / "executed.pptx"
+
+    code, printed, _ = run(["execute", cs, "--out", out], capsys)
+
+    assert (code, printed.splitlines()[0]) == (
+        0,
+        f"EXECUTED {cs} -> {out}: 5 changes (1 text-only, 4 structural) written, sha256 {sha(out)}",
+    )
+    assert paragraphs(out, 256, 4) == ["Revenue grew 15% in 2025"]
+    assert cell(out) == "$130m"
+    assert chart_values(out) == ((100.0, 130.0), 130)
+    assert slide_ids(out) == [256, 257, 259, 258]
+    assert paragraphs(out, 259, 3) == ["Raise list prices", "Hold discounts"]
+
+
+def test_edited_decisions_write_the_reviewers_text(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cs = changeset(
+        deck,
+        [
+            change("c1", REVENUE, {"edited": "18%"}),
+            change("c2", CELL, {"edited": "$125m"}),
+            change("c3", POINT, {"edited": "125"}),
+            change("add", ADD, "keep_new"),
+            change("fill", FILL, {"edited": "Raise prices\nHold discounts\nReview in May"}),
+        ],
+    )
+    out = tmp_path / "final.pptx"
+
+    code, printed, _ = run(["apply", cs, "--out", out], capsys)
+
+    assert (code, printed) == (0, f"APPLIED {cs} -> {out}: 1 kept new, 4 edited, 0 kept old, 0 dropped, sha256 {sha(out)}\n")
+    assert paragraphs(out, 256, 4) == ["Revenue grew 18% in 2025"]
+    assert cell(out) == "$125m"
+    assert chart_values(out) == ((100.0, 125.0), 125)
+    slide = next(s for s in Presentation(str(out)).slides if s.slide_id == 259)
+    body = next(s for s in slide.shapes if s.shape_id == 3)
+    assert [(p.text, p.level) for p in body.text_frame.paragraphs] == [("Raise prices", 0), ("Hold discounts", 1), ("Review in May", 1)]
+
+
+def test_keep_old_leaves_a_change_out_and_keep_new_writes_it(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cs = changeset(deck, [change("c1", REVENUE, "keep_old"), change("c2", CELL, "keep_new"), change("c3", POINT, "keep_old")])
+    out = tmp_path / "final.pptx"
+
+    code, _, _ = run(["apply", cs, "--out", out], capsys)
+
+    assert (code, paragraphs(out, 256, 4), cell(out), chart_values(out)) == (0, ["Revenue grew 12% in 2025"], "$130m", ((100.0, 120.0), 120))
+
+
+def test_apply_refuses_pending_decisions_and_writes_nothing(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cs = changeset(deck, [change("c1", REVENUE), change("c2", CELL, "keep_new"), change("c3", POINT, "pending")])
+    out = tmp_path / "final.pptx"
+
+    assert run(["apply", cs, "--out", out], capsys) == (1, f"PENDING {cs}: 2 decisions pending (c1, c3); nothing written\n", "")
+    assert not out.exists()
+
+
+def test_a_fill_is_dropped_when_its_added_slide_is_kept_old(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cs = changeset(deck, [change("add", ADD, "keep_old"), change("fill", FILL, "keep_new"), change("c1", REVENUE, "keep_old")])
+    out = tmp_path / "final.pptx"
+
+    assert run(["apply", cs, "--out", out], capsys) == (
+        0,
+        f"APPLIED {cs} -> {out}: 0 kept new, 0 edited, 2 kept old, 1 dropped, sha256 {sha(deck)}\n"
+        "  dropped fill: it fills the slide add adds, which was kept old\n",
+        "",
+    )
+    assert out.read_bytes() == deck.read_bytes()
+
+
+ALL_OPS = [change("c1", REVENUE), change("c2", CELL), change("c3", POINT), change("add", ADD), change("fill", FILL), change("c4", MOVE), change("c5", LABEL_OP)]
+
+
+def decided(decision: str) -> list[dict]:
+    return [{**c, "decision": decision} for c in ALL_OPS]
+
+
+def test_decisions_replay_onto_the_source_byte_for_byte(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    source_sha = sha(deck)
+    executed = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, ALL_OPS), "--out", executed], capsys)
+    executed_sha = sha(executed)
+    old, new, again = tmp_path / "old.pptx", tmp_path / "new.pptx", tmp_path / "again.pptx"
+
+    run(["apply", changeset(deck, decided("keep_old"), "old.json"), "--out", old], capsys)
+    run(["apply", changeset(deck, decided("keep_new"), "new.json"), "--out", new], capsys)
+    run(["apply", changeset(deck, decided("keep_new"), "new.json"), "--out", again], capsys)
+
+    assert old.read_bytes() == deck.read_bytes()
+    # Equal bytes for an edited deck hold for one zlib build: untouched members are recompressed.
+    assert new.read_bytes() == executed.read_bytes() == again.read_bytes()
+    assert (sha(deck), sha(executed)) == (source_sha, executed_sha)
+    assert executed.read_bytes() != deck.read_bytes()
+
+
+def test_untouched_runs_in_an_edited_paragraph_keep_their_formatting(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, [change("c1", {**REVENUE, "old": "grew 12%", "new": "grew 15%"})]), "--out", out], capsys)
+
+    def runs(path: Path) -> list[tuple[str, bytes]]:
+        slide = next(s for s in Presentation(str(path)).slides if s.slide_id == 256)
+        p = next(s for s in slide.shapes if s.shape_id == 4).text_frame.paragraphs[0]._p
+        return [(r.text, etree.tostring(r.find(qn("a:rPr")), method="c14n")) for r in p.r_lst]
+
+    before, after = runs(deck), runs(out)
+    assert [t for t, _ in after] == ["Revenue grew ", "15%", " in 2025"]
+    assert [rpr for _, rpr in after] == [rpr for _, rpr in before]
+
+
+def test_a_think_cell_label_rewrites_its_field_format_with_its_text(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, [change("c1", LABEL_OP)]), "--out", out], capsys)
+
+    slide = next(s for s in Presentation(str(out)).slides if s.slide_id == 258)
+    field = next(s for s in slide.shapes if s.shape_id == 3).text_frame.paragraphs[0]._p.find(qn("a:fld"))
+    assert (field.findtext(qn("a:t")), field.get("type")[8:].replace("'", "")) == ("+10%", "+10%")
+
+
+def test_a_chart_edit_writes_the_cache_and_the_embedded_xlsx(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, [change("c1", POINT)]), "--out", out], capsys)
+
+    with zipfile.ZipFile(out) as z:
+        chart = z.read("ppt/charts/chart1.xml").decode()
+        book = openpyxl.load_workbook(io.BytesIO(z.read("ppt/embeddings/Microsoft_Excel_Sheet1.xlsx")))
+    assert ('<c:pt idx="1"><c:v>130</c:v></c:pt>' in chart, book.active["B3"].value) == (True, 130)
+
+
+def test_delete_drops_the_slide_its_parts_and_its_custom_show_entry(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, [change("c1", DELETE)]), "--out", out], capsys)
+
+    with zipfile.ZipFile(out) as z:
+        names = set(z.namelist())
+        pres = etree.fromstring(z.read("ppt/presentation.xml"))
+    shown = pres.findall(f".//{qn('p:custShow')}/{qn('p:sldLst')}/{qn('p:sld')}")
+    assert slide_ids(out) == [256, 258]
+    assert {"ppt/slides/slide2.xml", "ppt/charts/chart1.xml", "ppt/embeddings/Microsoft_Excel_Sheet1.xlsx"} & names == set()
+    assert len(shown) == 1
+
+
+@pytest.mark.parametrize(
+    ("changes", "order"),
+    [
+        ([change("c1", MOVE)], [257, 256, 258]),
+        ([change("c1", {**MOVE, "after": None})], [256, 257, 258]),
+        ([change("c1", {**MOVE, "slide": 258, "after": None})], [258, 256, 257]),
+        ([change("add", ADD), change("c1", MOVE)], [257, 259, 256, 258]),
+        ([change("c1", {**MOVE, "after": 258}), change("add", {**ADD, "after": 256})], [257, 258, 256, 259]),
+    ],
+    ids=["after", "first", "last-to-first", "chained-after-one-anchor", "follows-a-moved-anchor"],
+)
+def test_moved_and_added_slides_land_after_their_anchor(
+    deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], changes: list[dict], order: list[int]
+) -> None:
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, changes), "--out", out], capsys)
+
+    assert slide_ids(out) == order
+
+
+def bad_json(deck: Path) -> Path:
+    path = deck.parent / "changeset.json"
+    path.write_text("{")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("write", "problem"),
+    [
+        (lambda d: changeset(d, [change("c1", {**REVENUE, "slide": 999})]), "c1 op.slide: no slide 999; slide ids: 256 (slide 1), 257 (slide 2), 258 (slide 3)"),
+        (
+            lambda d: changeset(d, [change("c1", {**REVENUE, "shape": 9})]),
+            "c1 op.shape: slide 1 (id 256) has no shape 9; shapes with text: 2 'Title 1' ('Market outlook'), "
+            "3 'Content Placeholder 2' ('Demand grows 4% a year Prices…'), 4 'TextBox 3' ('Revenue grew 12% in 2025')",
+        ),
+        (lambda d: changeset(d, [change("c1", {**REVENUE, "old": "13%"})]), "c1 op.old: '13%' is not in shape 4 'TextBox 3'; its text is 'Revenue grew 12% in 2025'"),
+        (
+            lambda d: changeset(d, [change("c1", {**REVENUE, "shape": 3, "old": "s "})]),
+            "c1 op.old: 's ' occurs 2 times in shape 3 'Content Placeholder 2', in paragraphs 0, 1; quote more of the text or name the paragraph",
+        ),
+        (lambda d: changeset(d, [change("c1", REVENUE), change("c2", {**REVENUE, "old": "12% in", "new": "15% in"})]), "c2 op.old: '12% in' overlaps c1's quote '12%' in paragraph 0"),
+        (lambda d: changeset(d, [change("c1", CELL), change("c2", CELL)]), "c2 op: shape 5 row 1 col 1 is already changed by c1"),
+        (lambda d: changeset(d, [change("c1", {**DELETE, "slide": 256}), change("c2", REVENUE)]), "c2 op.slide: slide 1 (id 256) is deleted by c1"),
+        (lambda d: changeset(d, [change("c1", {**MOVE, "after": 256})]), "c1 op.after: a slide cannot follow itself"),
+        (lambda d: changeset(d, [change("c1", MOVE), change("c2", {**MOVE, "after": 258})]), "c2 op.slide: slide 1 (id 256) is already moved by c1"),
+        (
+            lambda d: changeset(d, [change("c1", REVENUE)], sha256="0" * 64),
+            lambda d: f"source.sha256: {d} has sha256 {sha(d)}; the deck changed since the maker read it",
+        ),
+        (lambda d: changeset(d, [change("c1", REVENUE, before="12%")]), "c1 before: the engine reads this from the source deck; remove it"),
+        (lambda d: changeset(d, [change("c1", DELETE, {"edited": "Costs"})]), "c1 decision: delete_slide admits keep_new or keep_old only"),
+        (lambda d: changeset(d, [change("c1", POINT, {"edited": "lots"})]), "c1 decision: edited value 'lots' is not a number"),
+        (bad_json, "changeset: not JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"),
+        (
+            lambda d: changeset(d, [change("c1", {"kind": "recolor", "slide": 256})]),
+            "c1 op: Input tag 'recolor' found using 'kind' does not match any of the expected tags: 'replace_text', "
+            "'insert_paragraph', 'set_cell', 'set_chart_value', 'add_slide', 'fill_placeholder', 'delete_slide', 'move_slide'",
+        ),
+        (lambda d: changeset(d, [change("c1", REVENUE), change("c2", {**FILL, "slide": "c1"})]), "c2 op.slide: c1 is a replace_text change, not an add_slide"),
+    ],
+    ids=[
+        "unknown-slide",
+        "unknown-shape",
+        "old-not-in-shape",
+        "old-occurs-twice",
+        "overlapping-quotes",
+        "same-cell-twice",
+        "edit-on-deleted-slide",
+        "move-after-itself",
+        "two-moves",
+        "wrong-sha256",
+        "maker-written-before",
+        "edited-delete",
+        "non-numeric-chart-edit",
+        "malformed-json",
+        "unknown-op-kind",
+        "fill-names-a-non-add",
+    ],
+)
+def test_a_bad_changeset_names_each_problem_and_exits_1(deck: Path, capsys: pytest.CaptureFixture[str], write, problem) -> None:
+    cs = write(deck)
+    expected = problem(deck) if callable(problem) else problem
+
+    assert run(["validate", cs], capsys) == (1, f"INVALID {cs}: 1 problem\n  {expected}\n", "")
+
+
+def test_out_may_not_be_the_source_deck(deck: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cs = changeset(deck, [change("c1", REVENUE)])
+
+    assert run(["execute", cs, "--out", deck], capsys) == (2, "", f"error: --out {deck} is the source deck; the engine never writes over it\n")

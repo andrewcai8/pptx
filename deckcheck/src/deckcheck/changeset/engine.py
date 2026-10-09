@@ -319,12 +319,12 @@ def _locate_text(pkg: Package, deck: slides.Deck, op: ReplaceText) -> TextAt:
     mine = [(i, at) for i, at in hits if op.paragraph in (None, i)]
     if not mine:
         where = f" paragraph {op.paragraph}" if op.paragraph is not None else ""
-        elsewhere = f"; it occurs in paragraphs {_list(sorted({i for i, _ in hits}))}" if hits else ""
+        elsewhere = f"; it occurs in {_paragraph_list({i for i, _ in hits})}" if hits else ""
         raise Miss("op.old", f"{op.old!r} is not in {name}{where}{elsewhere}; its text is {_clip(chr(10).join(texts))!r}")
     if len(mine) > 1:
         raise Miss(
             "op.old",
-            f"{op.old!r} occurs {len(mine)} times in {name}, in paragraphs {_list(sorted({i for i, _ in mine}))}; "
+            f"{op.old!r} occurs {len(mine)} times in {name}, in {_paragraph_list({i for i, _ in mine})}; "
             "quote more of the text or name the paragraph",
         )
     i, at = mine[0]
@@ -432,6 +432,10 @@ def _paragraphs(pkg: Package, deck: slides.Deck, slide_id: int, shape_id: int):
 def _no_newline(value: str, field: str) -> None:
     if "\n" in value:
         raise Miss(field, '"\\n" would start a new paragraph; use insert_paragraph, or "\\v" for a line break')
+
+
+def _paragraph_list(indices: set[int]) -> str:
+    return f"{'paragraph' if len(indices) == 1 else 'paragraphs'} {_list(sorted(indices))}"
 
 
 def _count(n: int) -> str:
