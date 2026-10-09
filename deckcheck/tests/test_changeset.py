@@ -560,6 +560,18 @@ def bad_json(deck: Path) -> Path:
     return path
 
 
+def rezip(deck: Path, part: str, body: bytes | None) -> Path:
+    """The deck with `part` replaced by `body`, or left out when `body` is None."""
+    data = deck.read_bytes()
+    with zipfile.ZipFile(io.BytesIO(data)) as src, zipfile.ZipFile(deck, "w") as dst:
+        for info in src.infolist():
+            if info.filename != part:
+                dst.writestr(info, src.read(info))
+            elif body is not None:
+                dst.writestr(info, body)
+    return deck
+
+
 @pytest.mark.parametrize(
     ("write", "problem"),
     [
@@ -614,6 +626,12 @@ def bad_json(deck: Path) -> Path:
         ),
         (lambda d: changeset(d, [change("c1", REVENUE)], lists={"flags": [FLAG, FLAG]}), "f1 id: flags[0] and flags[1] share this id"),
         (lambda d: changeset(d, [change("c1", REVENUE)], lists={"held": [HELD, HELD]}), "h1 id: held[0] and held[1] share this id"),
+        (lambda d: changeset(d, [change("c1", REVENUE)], path="deck\x00.pptx"), "source.path: 'deck\\x00.pptx' is not a path: embedded null byte"),
+        (
+            lambda d: changeset(rezip(d, "ppt/embeddings/Microsoft_Excel_Sheet1.xlsx", b"not a workbook"), [change("c1", POINT)]),
+            "c1 op: shape 3 'Chart 2': the workbook ppt/embeddings/Microsoft_Excel_Sheet1.xlsx cannot be read: File is not a zip file",
+        ),
+        (lambda d: changeset(rezip(d, "ppt/charts/chart1.xml", None), [change("c1", POINT)]), "c1 op: cannot read the deck: ppt/charts/chart1.xml is missing"),
     ],
     ids=[
         "unknown-slide",
@@ -641,6 +659,9 @@ def bad_json(deck: Path) -> Path:
         "duplicate-ask-ids",
         "duplicate-flag-ids",
         "duplicate-held-ids",
+        "nul-in-source-path",
+        "workbook-not-a-zip",
+        "chart-part-missing",
     ],
 )
 def test_a_bad_changeset_names_each_problem_and_exits_1(deck: Path, capsys: pytest.CaptureFixture[str], write, problem) -> None:

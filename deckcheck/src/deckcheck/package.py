@@ -62,13 +62,20 @@ def _canonical(xml: etree._Element) -> bytes:
     return etree.tostring(xml, method="c14n")
 
 
+class PartError(ValueError):
+    """The package, or a part it names, cannot be read: not a zip, missing, or not XML."""
+
+
 class Package:
     """An OPC zip (a deck, or a workbook inside one) held in memory. Parts parse on first use and are
     written only when their canonical XML changed, so reading a part never changes the output."""
 
     def __init__(self, data: bytes) -> None:
         self.source = data
-        self._zip = zipfile.ZipFile(io.BytesIO(data))
+        try:
+            self._zip = zipfile.ZipFile(io.BytesIO(data))
+        except zipfile.BadZipFile as e:
+            raise PartError(str(e)) from e
         self._names = set(self._zip.namelist())
         self._xml: dict[str, etree._Element] = {}
         self._at_parse: dict[str, bytes] = {}
@@ -82,7 +89,10 @@ class Package:
 
     def xml(self, part: str) -> etree._Element:
         if part not in self._xml:
-            xml = parse_xml(self.blob(part))
+            try:
+                xml = parse_xml(self.blob(part))
+            except etree.XMLSyntaxError as e:
+                raise PartError(f"{part} is not XML: {e}") from e
             self._xml[part] = xml
             if part not in self._blobs:
                 self._at_parse[part] = _canonical(xml)
@@ -94,6 +104,8 @@ class Package:
             return serialize(self._xml[part])
         if part in self._blobs:
             return self._blobs[part]
+        if part not in self._names:
+            raise PartError(f"{part} is missing")
         return self._zip.read(part)
 
     def put(self, part: str, data: bytes, content_type: str | None = None) -> None:

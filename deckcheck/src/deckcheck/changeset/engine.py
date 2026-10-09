@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,7 +33,7 @@ from deckcheck.changeset.model import (
     SetChartValue,
 )
 from deckcheck.model import DeckError, open_presentation, read_deck
-from deckcheck.package import Package
+from deckcheck.package import Package, PartError
 
 DERIVED = {
     "before": "the engine reads this from the source deck; remove it",
@@ -191,6 +190,8 @@ def load(path: Path) -> Checked:
         data = source.read_bytes()
     except OSError as e:
         raise Invalid([Problem("source.path", f"cannot read {source}: {e.strerror}")]) from e
+    except ValueError as e:
+        raise Invalid([Problem("source.path", f"{cs.source.path!r} is not a path: {e}")]) from e
     sha = hashlib.sha256(data).hexdigest()
     if sha != cs.source.sha256:
         raise Invalid([Problem("source.sha256", f"{source} has sha256 {sha}; the deck changed since the maker read it")])
@@ -241,7 +242,7 @@ def check(cs: ChangeSet, data: bytes, path: Path = Path("changeset.json")) -> Ch
     try:
         pkg = Package(data)
         deck = slides.read_deck(pkg)
-    except (zipfile.BadZipFile, KeyError, StopIteration, etree.XMLSyntaxError) as e:
+    except (PartError, StopIteration) as e:
         raise DeckError(f"cannot read deck {cs.source.path}: {e}") from e
     ctx = Context.of(cs)
     problems: list[Problem] = []
@@ -251,6 +252,9 @@ def check(cs: ChangeSet, data: bytes, path: Path = Path("changeset.json")) -> Ch
             targets[change.id] = locate(pkg, deck, ctx, change.id, change.op)
         except Miss as m:
             problems.append(Problem(f"{change.id} {m.field}", m.message))
+            continue
+        except PartError as e:
+            problems.append(Problem(f"{change.id} op", f"cannot read the deck: {e}"))
             continue
         problems += _decision_problems(pkg, deck, ctx, change)
     problems += _conflicts(cs, deck, targets)

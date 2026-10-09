@@ -11,7 +11,7 @@ from lxml import etree
 from pptx.oxml.ns import qn
 from pyxlsb import open_workbook
 
-from deckcheck.package import FIXED_TIME, Package
+from deckcheck.package import FIXED_TIME, Package, PartError
 
 C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 S_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -71,7 +71,10 @@ def locate_point(pkg: Package, slide_part: str, frame: etree._Element, series: i
         raise ChartError(f"series {series} point {point} caches {cache.text!r}, not a number") from None
     cell = _cell(num_ref.findtext(f"{{{C_NS}}}f") or "", point)
     rid, workbook = _workbook(pkg, chart, space)
-    _check_cell(pkg.blob(workbook), workbook, cell)
+    try:
+        _check_cell(pkg.blob(workbook), workbook, cell)
+    except (PartError, zipfile.BadZipFile) as e:
+        raise ChartError(f"the workbook {workbook} cannot be read: {e}") from e
     return Point(chart, cache, value, rid, workbook, cell)
 
 
