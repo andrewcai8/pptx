@@ -15,6 +15,7 @@ dependencies = [
 deckcheck = "deckcheck.cli:main"
 changeset = "deckcheck.changeset.cli:main"
 meeting = "deckcheck.meeting:main"
+review = "deckcheck.review.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

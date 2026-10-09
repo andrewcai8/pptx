@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
-import tempfile
 from dataclasses import asdict, fields, replace
 from importlib.metadata import version
 from pathlib import Path
@@ -186,16 +186,15 @@ def cmd_fix(deck_path: Path, out: Path, rules_path: Path | None, report: Path | 
 
 def write_atomic(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".part")
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.part")
+    # os.open applies the umask itself; reading it means setting it, which races with other threads.
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        umask = os.umask(0)
-        os.umask(umask)
-        os.chmod(tmp, 0o666 & ~umask)
         os.replace(tmp, path)
     except BaseException:
-        Path(tmp).unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
         raise
 
 
