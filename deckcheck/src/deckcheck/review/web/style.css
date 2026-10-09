@@ -12,6 +12,7 @@
   --error: #b42318;
   --top: 52px;
   --bar: 60px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
   color: var(--ink);
@@ -60,7 +61,8 @@ button:disabled {
 }
 
 button.primary,
-.button.primary {
+.button.primary,
+button.on {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
@@ -76,12 +78,6 @@ button.quiet {
   border-color: transparent;
   background: transparent;
   color: var(--muted);
-}
-
-button.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
 .muted {
@@ -160,11 +156,9 @@ button.on {
 }
 
 .chip.link {
-  cursor: pointer;
   color: var(--accent);
   background: #fff;
   border-color: var(--accent-soft);
-  padding: 2px 8px;
 }
 
 .chips {
@@ -284,7 +278,7 @@ button.on {
   padding-left: 18px;
   font-size: 12px;
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--mono);
 }
 
 .review {
@@ -327,7 +321,6 @@ button.on {
   border-radius: 0;
   padding: 2px 7px;
   font-size: 11px;
-  background: #fff;
   color: var(--muted);
 }
 
@@ -372,12 +365,6 @@ button.on {
   box-shadow: 0 0 0 1px var(--line);
 }
 
-.thumb-frame img {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
 .thumb:hover .thumb-frame {
   box-shadow: 0 0 0 1px #b8c4d6;
 }
@@ -392,13 +379,12 @@ button.on {
   filter: grayscale(1);
 }
 
-.thumb .count {
-  position: absolute;
-  top: -6px;
-  right: -6px;
+.thumb .count,
+.thumb .flagged,
+.mark .badge,
+.change-head .number {
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
   border-radius: 9px;
   background: var(--accent);
   color: #fff;
@@ -407,6 +393,13 @@ button.on {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.thumb .count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  padding: 0 5px;
 }
 
 .thumb .count.done {
@@ -419,17 +412,10 @@ button.on {
   position: absolute;
   right: 4px;
   bottom: 4px;
-  width: 18px;
-  height: 18px;
-  border-radius: 9px;
   background: #fff;
   border: 1px solid var(--accent);
   color: var(--accent);
-  font-size: 11px;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .thumb .tag {
@@ -443,10 +429,16 @@ button.on {
   color: #fff;
 }
 
-.ask {
+#needs,
+.ask,
+.held,
+#changes .change {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.ask {
   padding: 8px 10px;
   margin-left: 6px;
   font-size: 12px;
@@ -470,18 +462,19 @@ button.on {
 }
 
 #needs {
-  background: #fff;
-  border: 1px solid var(--line);
   border-left: 3px solid var(--accent);
-  border-radius: 8px;
   padding: 10px 14px;
+}
+
+#needs h3,
+.side-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 #needs h3 {
   margin: 0 0 6px;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--accent);
 }
 
@@ -511,9 +504,6 @@ button.on {
 }
 
 .held {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 8px;
   padding: 8px 12px;
   margin-top: 8px;
   color: var(--ink);
@@ -536,7 +526,7 @@ button.on {
 }
 
 .refs .t {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--mono);
   color: var(--accent);
 }
 
@@ -570,10 +560,14 @@ button.on {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
 }
 
-.frame img {
+.frame img,
+.thumb-frame img {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.frame img {
   user-select: none;
 }
 
@@ -615,10 +609,6 @@ button.on {
   border: 2px dashed #8a929e;
 }
 
-.mark.edited {
-  border-color: var(--accent);
-}
-
 .mark.lit,
 .mark:hover {
   background: var(--accent-soft);
@@ -629,17 +619,7 @@ button.on {
   position: absolute;
   top: -10px;
   left: -10px;
-  min-width: 18px;
-  height: 18px;
   padding: 0 4px;
-  border-radius: 9px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .text-view {
@@ -720,9 +700,6 @@ button.on {
 }
 
 .side-label {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 6px;
 }
@@ -739,19 +716,12 @@ button.on {
 }
 
 #changes .change {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 8px;
   padding: 10px 12px;
 }
 
 #changes .change.lit {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.change + .change {
-  margin-top: 0;
 }
 
 #bubble .change + .change {
@@ -774,16 +744,7 @@ button.on {
 }
 
 .change-head .number {
-  min-width: 18px;
-  height: 18px;
-  border-radius: 9px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
   align-self: center;
 }
 
@@ -800,7 +761,6 @@ button.on {
   margin: 8px 0;
   line-height: 1.5;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .diff del {
@@ -854,7 +814,6 @@ button.on {
 
 .why {
   margin: 6px 0 2px;
-  color: var(--ink);
   font-size: 13px;
 }
 
@@ -921,7 +880,7 @@ button.on {
 #final-path {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--mono);
   font-size: 12px;
 }
 
