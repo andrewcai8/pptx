@@ -206,6 +206,7 @@ function card(c, { number, named = true } = {}) {
     c.notes.length > 0 && h("ul", { class: "notes" }, c.notes.map((n) => h("li", null, n))),
     h("p", { class: "why" }, c.rationale),
     refs(c.refs),
+    state.editing !== c.id && state.errors[c.id] && h("p", { class: "error", "data-error": "", role: "alert" }, state.errors[c.id]),
     state.editing !== c.id &&
       h(
         "div",
@@ -246,6 +247,7 @@ function diff(c, decision) {
 
 function startEdit(c, decision) {
   state.editing = c.id;
+  delete state.errors[c.id];
   state.drafts[c.id] ??= M.editable(c, decision);
   if (document.getElementById("stage").dataset.view === "text") state.pinned = c.shape.id;
   ui.rerender();

@@ -113,8 +113,8 @@ class Client:
             time.sleep(0.02)
         return row
 
-    def ready(self, mid: str = "evals/demo") -> dict:
-        assert self.post(f"/api/meetings/{mid}/process")[0] == 202
+    def ready(self, mid: str = "evals/demo", **body: object) -> dict:
+        assert self.post(f"/api/meetings/{mid}/process", body)[0] == 202
         return self.settle(mid)
 
     def decide(self, mid: str = "evals/demo", **decisions: object) -> tuple[int, object]:
@@ -169,6 +169,7 @@ def test_meetings_list_each_meeting_dir_with_its_maker(repo: Path, app: Client) 
                     "maker": SIMULATED,
                     "state": {"is": "new"},
                     "fonts": [],
+                    "log": None,
                 },
                 {
                     "id": "private/x",
@@ -179,14 +180,47 @@ def test_meetings_list_each_meeting_dir_with_its_maker(repo: Path, app: Client) 
                     "maker": None,
                     "state": {"is": "new"},
                     "fonts": [],
+                    "log": None,
                 },
             ]
         },
     )
     assert app.post("/api/meetings/private/x/process") == (409, {"error": "this meeting has no changeset.json; start the server with --maker to process it"})
-    assert app.get("/api/meetings/evals/__pycache__") == (404, {"error": "not found"})
+    assert app.get("/api/meetings/evals/__pycache__") == (404, {"error": "no meeting evals/__pycache__"})
     assert app.get("/api/meetings/evals/notes") == (404, {"error": "no meeting evals/notes"})
-    assert app.get("/api/meetings/evals/demo.partial") == (404, {"error": "not found"})
+    assert app.get("/api/meetings/evals/demo.partial") == (404, {"error": "no meeting evals/demo.partial"})
+
+
+def test_any_folder_name_is_listed_under_an_id_that_maps_back_to_it(repo: Path, start) -> None:
+    for name, file in [("my meeting", "notes.md"), ("Q3 (draft) #2 café", "transcript.md"), ("x.partial", "notes.md"), (".hidden", "notes.md")]:
+        (repo / "private/meetings" / name).mkdir(parents=True)
+        (repo / "private/meetings" / name / file).write_text("# Board prep\n\nDate: 2026-10-02\n")
+    (repo / "private/meetings/empty").mkdir()
+    copy = "import shutil,sys;shutil.copyfile(*sys.argv[1:3])"
+    app = start(functools.partial(maker_for, command=[sys.executable, "-c", copy, "evals/demo/changeset.json", "{dir}/changeset.json"]))
+
+    rows = app.get("/api/meetings")[1]["meetings"]
+
+    assert [(r["id"], r["name"], r["title"], r["date"]) for r in rows] == [
+        ("evals/demo", "demo", "Pricing review", "2026-10-01"),
+        ("private/Q3%20%28draft%29%20%232%20caf%C3%A9", "Q3 (draft) #2 café", "Board prep", "2026-10-02"),
+        ("private/my%20meeting", "my meeting", "Board prep", "2026-10-02"),
+    ]
+    for mid in ("private/my%20meeting", "private/Q3%20%28draft%29%20%232%20caf%C3%A9"):
+        assert app.ready(mid, consent=True)["state"] == {"is": "ready", "decided": 0, "total": 5, "applied": False}
+        assert app.get(f"/api/meetings/{mid}")[0] == 200
+    assert (repo / "artifacts/review/private/my meeting/changeset.json").is_file()
+    app.decide("private/my%20meeting", c1="keep_new", c2="keep_new", c3="keep_new", add="keep_new", fill="keep_new")
+    assert app.post("/api/meetings/private/my%20meeting/apply")[0] == 200
+    with urllib.request.urlopen(f"http://127.0.0.1:{app.port}/api/meetings/private/my%20meeting/final.pptx") as r:
+        assert r.headers["Content-Disposition"] == 'attachment; filename="my-meeting-final.pptx"'
+    probes = ["private/x.partial", "private/.hidden", "private/empty", "private/..", "private/%2E%2E", "private/..%2Fmeetings%2Fmy%20meeting",
+              "private/%2Fetc%2Fpasswd", "evals/demo.partial", "evals/%2E%2E%2Fdecks", "nope/demo"]
+    for mid in probes:
+        conn = http.client.HTTPConnection("127.0.0.1", app.port)
+        conn.request("GET", f"/api/meetings/{mid}")
+        assert conn.getresponse().status == 404, mid
+        conn.close()
 
 
 def test_process_executes_and_renders_both_decks(repo: Path, app: Client) -> None:
@@ -199,6 +233,7 @@ def test_process_executes_and_renders_both_decks(repo: Path, app: Client) -> Non
         "maker": SIMULATED,
         "state": {"is": "ready", "decided": 0, "total": 5, "applied": False},
         "fonts": [{"font": "Nonexistent Sans QA", "family": "DejaVu Sans"}],
+        "log": None,
     }
     status, view = app.get("/api/meetings/evals/demo")
     executed = (repo / "artifacts/review/evals/demo/executed.pptx").read_bytes()
@@ -477,13 +512,27 @@ def test_a_missing_source_deck_says_how_to_get_it(repo: Path, app: Client) -> No
     assert state["problems"] == [{"where": "source.path", "message": "cannot read decks/gone.pptx: No such file or directory"}]
 
 
+def test_a_private_meeting_with_its_own_changeset_replays_it_and_names_its_deck(repo: Path, app: Client) -> None:
+    (repo / "private/meetings").mkdir(parents=True)
+    shutil.move(repo / "evals/demo", repo / "private/meetings/board")
+    (repo / "decks/deck.pptx").unlink()
+
+    row = app.ready("private/board")
+
+    assert row["maker"] == {"label": "Replays changeset.json", "simulated": True}
+    assert row["state"]["message"] == (
+        "The engine refused the ChangeSet: 1 problem. The source deck is missing; "
+        "put the deck as it stood before the meeting at private/meetings/board/before.pptx."
+    )
+
+
 def test_a_maker_command_writes_the_changeset_of_a_meeting_without_one(repo: Path, start) -> None:
     (repo / "private/meetings/x").mkdir(parents=True)
     (repo / "private/meetings/x/transcript.md").write_text("# Client sync\n")
     copy = "import shutil,sys;shutil.copyfile(*sys.argv[1:3]);print(sys.argv[3])"
     app = start(functools.partial(maker_for, command=[sys.executable, "-c", copy, "evals/demo/changeset.json", "{dir}/changeset.json", "{meeting}"]))
 
-    row = app.ready("private/x")
+    row = app.ready("private/x", consent=True)
 
     assert row["maker"] == {"label": f"Maker: {sys.executable} -c '{copy}' evals/demo/changeset.json '{{dir}}/changeset.json' '{{meeting}}'", "simulated": False}
     assert row["state"] == {"is": "ready", "decided": 0, "total": 5, "applied": False}
@@ -491,12 +540,30 @@ def test_a_maker_command_writes_the_changeset_of_a_meeting_without_one(repo: Pat
     assert app.row("evals/demo")["maker"] == SIMULATED
 
 
+def test_a_maker_command_runs_only_with_consent_and_a_replay_needs_none(repo: Path, start) -> None:
+    (repo / "private/meetings/x").mkdir(parents=True)
+    (repo / "private/meetings/x/notes.md").write_text("Board prep\n")
+    app = start(functools.partial(maker_for, command=[sys.executable, "-c", "raise SystemExit(9)"]))
+
+    assert app.post("/api/meetings/private/x/process") == (409, {"error": "the maker sends this meeting to an AI service; confirm that your firm allows it first"})
+    assert app.post("/api/meetings/private/x/process", {"again": True, "consent": False})[0] == 409
+    assert app.row("private/x")["state"] == {"is": "new"}
+    assert not (repo / "artifacts/review/private").exists()
+    assert app.ready()["state"]["is"] == "ready"
+
+
 def test_a_maker_command_that_fails_shows_its_output(repo: Path, start) -> None:
     (repo / "private/meetings/x").mkdir(parents=True)
     (repo / "private/meetings/x/transcript.md").write_text("# Client sync\n")
     app = start(functools.partial(maker_for, command=[sys.executable, "-c", "print('no transcript'); raise SystemExit(3)"]))
 
-    assert app.ready("private/x")["state"] == {"is": "failed", "message": "the maker exited with 3: no transcript", "problems": []}
+    row = app.ready("private/x", consent=True)
+
+    assert row["state"] == {"is": "failed", "message": "the maker exited with 3: no transcript", "problems": []}
+    assert row["log"] == "/api/meetings/private/x/maker.log"
+    assert app.get(row["log"]) == (200, b"no transcript\n")
+    assert sorted(p.name for p in (repo / "artifacts/review/private").iterdir()) == ["x"]
+    assert app.post("/api/meetings/private/x/process", {"consent": True})[1]["state"] == {"is": "processing", "step": "making"}
 
 
 def test_requests_from_another_site_are_refused(repo: Path, app: Client) -> None:

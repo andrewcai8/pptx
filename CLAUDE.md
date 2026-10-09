@@ -1,6 +1,13 @@
 # pptx
 
-Tools that check, fix, and audit PowerPoint decks against a consulting house style. The long-term goal is in `docs/PLAN.md`: turn a recorded meeting into deck edits a consultant approves with zero changes. What exists today is the quality layer (check, fix, and audit), the edit engine, and the maker, a skill that turns a meeting into a ChangeSet. The review site and the OneDrive publish step are not built yet.
+Tools that turn a meeting into PowerPoint edits a consultant reviews, and that check, fix, and audit decks against a consulting house style. `docs/PLAN.md` holds the goal, deck edits a consultant approves with zero changes. The whole path from meeting to final deck runs on one Mac today. It has these parts:
+
+- the quality layer, which checks, fixes, and audits a deck
+- the edit engine, which applies a ChangeSet, a JSON list of edits, to a deck
+- the maker, a skill that reads a meeting and writes a ChangeSet
+- the review app, where the consultant decides each change and gets the final deck
+
+Publishing to OneDrive is a stub, so the consultant uploads the final deck by hand. "Run a meeting end to end" below is the procedure.
 
 ## Confidentiality first
 
@@ -23,6 +30,61 @@ uv run --project deckcheck deckcheck doctor
 ```
 
 Run every command from the repo root, because the tools find `standards/house-style.yaml` from there. `doctor` must exit 0. `render` and the audit need `soffice`, `pdftoppm`, and `fc-match` all present. Install the deck's real fonts so renders wrap text the way PowerPoint does. If `fonts.json` shows a font as substituted, install it or a metric-compatible stand-in, such as Carlito for Calibri.
+
+## Run a meeting end to end
+
+This is the main job. A consultant puts a meeting in a folder, Claude proposes the deck edits, and the consultant decides each one in a browser and gets the final deck.
+
+The confidentiality rules above apply to every step. Ask the ask-first question before you start the app with `--maker`. If the answer is no or unsure, stop. The maker sends the meeting, its data, and its deck to Claude. You can start the server for the user, because its output names no meeting. Do not open the app's pages, the files under `artifacts/review/`, or the final deck unless the user said the deck may be shared.
+
+1. Do the Setup above. Then check that Claude Code is installed and logged in. If `claude auth status` does not report you as logged in, run `claude` once and log in.
+
+	```bash
+	git clone https://github.com/andrewcai8/pptx.git
+	cd pptx
+	uv sync --project deckcheck
+	uv run --project deckcheck deckcheck doctor
+	claude auth status
+	```
+
+2. Make a folder for the meeting under `private/meetings/`. Any name works, spaces included. Copy these files into it:
+
+	- `before.pptx`, the deck as it stood before the meeting
+	- `notes.md` with the meeting notes, or `transcript.md` with the transcript. Use a plain-text export from the recording app.
+	- `data/*.csv`, optional, the client files that new numbers come from. The maker reads only CSV. In Excel, save each sheet with **File > Save As > CSV UTF-8**.
+
+	Copy the files out of OneDrive first. Never point the tools at a synced OneDrive or SharePoint folder.
+
+3. Start the review app from the repo root, and leave it running:
+
+	```bash
+	uv run --project deckcheck review serve --maker 'uv run --project deckcheck meeting process {meeting} --out {dir} --shareable'
+	```
+
+	It prints `review: http://127.0.0.1:8765`. Open http://127.0.0.1:8765 in a browser.
+
+4. Click **Process meeting** on the meeting's row. The app asks for consent first: "This sends the meeting notes, data and deck to Claude (Anthropic). Only continue if your firm allows sharing this deck with an AI service." Click **Cancel** to send nothing. Click **OK** to run the maker, which takes a few minutes. If it fails, the row shows why and links to `maker.log`.
+
+5. Click **Open review**. For each change, click **Keep new**, **Keep old**, or **Edit myself**. **Needs you** lists the questions the meeting left open. The app changes nothing for those, so make those edits yourself in PowerPoint afterwards.
+
+6. Click **Apply decisions** once every change is decided. The final deck is `artifacts/review/private/<name>/final.pptx`. **Download** saves a copy named `<name>-final.pptx`.
+
+7. Upload the final deck to OneDrive by hand. **Publish to OneDrive** uploads nothing, because the connection needs IT approval. In OneDrive on the web, open the folder that holds the original deck, upload the final deck under the original file name, and choose **Replace**. OneDrive keeps the earlier version in its version history.
+
+8. Stop the app with Ctrl-C.
+
+`docs/review.md` describes the app in full.
+
+## Known gaps
+
+- The live `claude -p` call is untested on a real logged-in machine. The tests and the browser proof use a fake `claude`.
+- An edit that rewrites text across differently formatted runs can get the formatting wrong.
+- A chart whose data workbook is `.xlsb` loses that workbook's formulas when the engine edits the chart.
+- Deleting a slide that another slide links to leaves a stray part in the deck.
+- PowerPoint may rewrite untouched slides when you save the deck.
+- Publishing to OneDrive is a stub.
+- A highlight on a table cell or a chart point covers the whole table or chart.
+- The golden-scenario script score defers the intent checks.
 
 ## Use
 
@@ -75,7 +137,7 @@ Save these for each meeting:
 - `before.pptx` is the deck as it stood before the meeting.
 - `after.pptx` is the version the consultant actually made after it. It is the best evidence of what the meeting asked for.
 - `notes.md` holds the meeting notes or transcript exactly as the recording app exported them.
-- `data/` holds any client file a new number came from, such as a spreadsheet.
+- `data/` holds any client file a new number came from, as CSV. The maker reads only `data/*.csv`, so export each Excel sheet to CSV.
 
 Then, with the user's permission, help turn the folder into a scenario that `evals/score.py` can read:
 

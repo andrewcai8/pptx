@@ -8,13 +8,13 @@ from dataclasses import asdict, dataclass
 from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from deckcheck.changeset import Invalid, Undecided
 from deckcheck.changeset.model import Decision
-from deckcheck.review.meetings import NAME, ROOTS, Conflict, Failed, Final, New, Processing, Ready, Reviews, Row, State, Unknown, View
+from deckcheck.review.meetings import ROOTS, Conflict, Failed, Final, New, Processing, Ready, Reviews, Row, State, Unknown, View
 
 WEB = Path(__file__).parent / "web"
 TEXT = "; charset=utf-8"
@@ -30,7 +30,7 @@ STATIC = {
 }
 PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 MAX_BODY = 1 << 20
-MEETING = rf"/api/meetings/(?P<mid>(?:{'|'.join(ROOTS)})/{NAME.pattern})"
+MEETING = rf"/api/meetings/(?P<mid>(?:{'|'.join(ROOTS)})/[^/]+)"
 NOT_FOUND = 404, {"error": "not found"}
 HEADERS = {
     "X-Frame-Options": "DENY",
@@ -46,6 +46,7 @@ class Body(BaseModel):
 
 class ProcessBody(Body):
     again: bool = False
+    consent: bool = False
 
 
 class DecisionsBody(Body):
@@ -84,6 +85,7 @@ class App:
             ("POST", re.compile(MEETING + r"/apply"), self.apply),
             ("GET", re.compile(MEETING + r"/render/(?P<side>old|new)/slide-(?P<n>[1-9][0-9]{0,3})\.png"), self.png),
             ("GET", re.compile(MEETING + r"/final\.pptx"), self.final),
+            ("GET", re.compile(MEETING + r"/maker\.log"), lambda body, mid: (200, File(reviews.maker_log(mid), "text/plain" + TEXT))),
         ]
 
     def static(self, body: bytes, file: str) -> Reply:
@@ -92,7 +94,8 @@ class App:
         return 200, File(WEB / file, STATIC[file])
 
     def process(self, body: bytes, mid: str) -> Reply:
-        return 202, row_json(self.reviews.process(mid, ProcessBody.model_validate_json(body).again))
+        ask = ProcessBody.model_validate_json(body)
+        return 202, row_json(self.reviews.process(mid, ask.again, ask.consent))
 
     def meeting(self, body: bytes, mid: str) -> Reply:
         view = self.reviews.view(mid)
@@ -111,7 +114,7 @@ class App:
         return 200, File(self.reviews.slide_png(mid, side, int(n)), "image/png", cache="private, max-age=86400")
 
     def final(self, body: bytes, mid: str) -> Reply:
-        name = mid.split("/", 1)[1]
+        name = re.sub(r"[^A-Za-z0-9_.-]+", "-", unquote(mid.split("/", 1)[1])).strip("-.") or "meeting"
         return 200, File(self.reviews.final_pptx(mid), PPTX, download=f"{name}-final.pptx")
 
     def handle(self, method: str, path: str, body: bytes) -> Reply:
@@ -158,6 +161,7 @@ def row_json(row: Row) -> dict:
         "maker": {"label": row.maker.label, "simulated": row.maker.simulated} if row.maker else None,
         "state": state_json(row.state),
         "fonts": [{"font": font, "family": family} for font, family in row.fonts],
+        "log": f"/api/meetings/{m.id}/maker.log" if row.log else None,
     }
 
 

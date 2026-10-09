@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote, unquote
 
 from pptx import Presentation
 
@@ -22,7 +23,7 @@ from deckcheck.changeset import Invalid, Problem, Review, apply, check, execute,
 from deckcheck.changeset.model import Decision, Edited
 from deckcheck.cli import write_atomic
 from deckcheck.fix import plural
-from deckcheck.review.maker import Maker
+from deckcheck.review.maker import LOG, Maker
 
 Origin = Literal["evals", "private"]
 Step = Literal["making", "executing", "rendering"]
@@ -31,7 +32,8 @@ Render = Callable[[Path, Path], object]
 
 ROOTS: dict[Origin, Path] = {"evals": Path("evals"), "private": Path("private/meetings")}
 WORK = Path("artifacts/review")
-NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*(?<!\.partial|\.discard)")
+TEXTS = ("transcript.md", "notes.md")
+MEETING_FILES = (*TEXTS, "changeset.json")
 DATE = re.compile(r"^Date:\s*(\d{4}-\d{2}-\d{2})")
 CORPUS = "download the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`"
 
@@ -46,7 +48,7 @@ class Meeting:
 
     @property
     def id(self) -> str:
-        return f"{self.origin}/{self.name}"
+        return f"{self.origin}/{quote(self.name, safe='')}"
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,7 @@ class Row:
     maker: Maker | None
     state: State
     fonts: tuple[tuple[str, str], ...]
+    log: bool
 
 
 @dataclass(frozen=True)
@@ -117,24 +120,34 @@ class Locked(Exception):
 
 
 def discover() -> list[Meeting]:
-    return [_meeting(origin, d) for origin, root in ROOTS.items() if root.is_dir() for d in sorted(root.iterdir()) if _holds_meeting(d)]
+    return [_meeting(origin, d) for origin in ROOTS for d in _folders(origin)]
 
 
 def find(mid: str) -> Meeting:
-    origin, _, name = mid.partition("/")
-    if origin in ROOTS and NAME.fullmatch(name) and _holds_meeting(d := ROOTS[origin] / name):
-        return _meeting(origin, d)
+    """An id names a meeting only if it is one that discover lists, so no id reaches outside the meeting roots."""
+    origin, _, key = mid.partition("/")
+    name = unquote(key)
+    for d in _folders(origin) if origin in ROOTS else ():
+        if d.name == name:
+            return _meeting(origin, d)
     raise Unknown(f"no meeting {mid}")
 
 
+def _folders(origin: Origin) -> list[Path]:
+    root = ROOTS[origin]
+    return sorted(d for d in root.iterdir() if _holds_meeting(d)) if root.is_dir() else []
+
+
 def _holds_meeting(d: Path) -> bool:
-    return bool(NAME.fullmatch(d.name)) and ((d / "transcript.md").is_file() or (d / "changeset.json").is_file())
+    # A .partial or .discard name would collide with the app's own work folders under artifacts/review/.
+    hidden = d.name.startswith((".", "_")) or d.name.endswith((".partial", ".discard"))
+    return not hidden and any((d / f).is_file() for f in MEETING_FILES)
 
 
 def _meeting(origin: Origin, d: Path) -> Meeting:
     title = date = None
-    transcript = d / "transcript.md"
-    if transcript.is_file():
+    transcript = next((d / f for f in TEXTS if (d / f).is_file()), None)
+    if transcript:
         with transcript.open(encoding="utf-8", errors="replace") as f:
             for line in itertools.islice(f, 40):
                 if title is None and line.startswith("# "):
@@ -207,6 +220,10 @@ class _Workdir:
         return self.dir / "applied.json"
 
     @property
+    def log(self) -> Path:
+        return self.dir / LOG
+
+    @property
     def renders(self) -> Path:
         return self.dir / "render"
 
@@ -263,14 +280,16 @@ class Reviews:
     def row(self, mid: str) -> Row:
         return self._row(find(mid))
 
-    def process(self, mid: str, again: bool = False) -> Row:
+    def process(self, mid: str, again: bool = False, consent: bool = False) -> Row:
         meeting = find(mid)
         maker = self._maker_for(meeting)
         if maker is None:
             raise Conflict("this meeting has no changeset.json; start the server with --maker to process it")
+        if not (maker.simulated or consent):
+            raise Conflict("the maker sends this meeting to an AI service; confirm that your firm allows it first")
         with self._lock:
             idle = mid not in self._jobs
-            start = idle and (again or not _Workdir.of(meeting).dir.is_dir())
+            start = idle and (again or not _Workdir.of(meeting).changeset.is_file())
             if start:
                 self._failed.pop(mid, None)
                 job = self._jobs[mid] = _Job()
@@ -336,6 +355,9 @@ class Reviews:
     def slide_png(self, mid: str, side: Side, n: int) -> Path:
         return _Workdir.of(find(mid)).render(side) / f"slide-{n}.png"
 
+    def maker_log(self, mid: str) -> Path:
+        return _Workdir.of(find(mid)).log
+
     def final_pptx(self, mid: str) -> Path:
         work = _Workdir.of(find(mid))
         if work.final() is None:
@@ -344,7 +366,7 @@ class Reviews:
 
     def _row(self, meeting: Meeting) -> Row:
         work = _Workdir.of(meeting)
-        return Row(meeting, self._maker_for(meeting), self._state(meeting, work), work.fonts())
+        return Row(meeting, self._maker_for(meeting), self._state(meeting, work), work.fonts(), work.log.is_file())
 
     def _state(self, meeting: Meeting, work: _Workdir) -> State:
         with self._lock:
@@ -399,6 +421,10 @@ class Reviews:
         except Exception as e:
             failed = Failed(str(e) or type(e).__name__)
         finally:
+            if failed and build.log.is_file():
+                with self._meeting_lock(meeting.id):
+                    work.dir.mkdir(parents=True, exist_ok=True)
+                    os.replace(build.log, work.log)
             shutil.rmtree(build.dir, ignore_errors=True)
             with self._lock:
                 del self._jobs[meeting.id]
@@ -436,7 +462,8 @@ def _converge() -> None:
 def _refused(meeting: Meeting, e: Invalid) -> Failed:
     message = f"The engine refused the ChangeSet: {plural(len(e.problems), 'problem', 'problems')}."
     if any(p.where == "source.path" for p in e.problems):
-        message += f" The source deck is missing; {CORPUS}."
+        fix = CORPUS if meeting.origin == "evals" else f"put the deck as it stood before the meeting at {meeting.dir}/before.pptx"
+        message += f" The source deck is missing; {fix}."
     return Failed(message, e.problems)
 
 

@@ -20,14 +20,30 @@ The approve-with-zero-edits rate is the number this project climbs. A deck must 
 - **Provenance.** Every number on a changed slide traces to a client file and cell, or to a URL with a retrieval date. Market data that cannot be cited does not go on a slide.
 - **Intent.** The requested change is present. Example meetings with known expected edits check this.
 
-The first two gates exist today in `deckcheck/`. The `verify-pptx` skill in `.claude/skills/` shows an agent how to run them and capture evidence.
+The first two gates exist today in `deckcheck/`. The `verify-pptx` skill in `.claude/skills/` shows an agent how to run them and capture evidence. The golden scenarios in `evals/` check scope and the required facts by script. They list the intent checks, and no intent checker runs them yet. Provenance has no automated gate yet.
+
+## Status
+
+Steps 2 to 5 of "What the consultant sees" run today on one Mac, from meeting notes the consultant saves by hand. The review app offers one proposed edit per change, not four, and the consultant keeps it, reverts it, or edits it. `CLAUDE.md` has the procedure under "Run a meeting end to end".
+
+- `meeting process` runs the `process-meeting` skill through `claude -p` and writes a ChangeSet. It has run only against a fake `claude`.
+- The edit engine checks a ChangeSet against its deck and writes the edited deck. It never edits the source.
+- The review app shows each change, records the consultant's decisions, and writes the final deck.
+
+Two steps are not built yet. Step 1 needs a hook from the meeting recorder. Step 6, the OneDrive upload, needs IT approval. `CLAUDE.md` lists the known gaps.
 
 ## Repo layout
 
 - `standards/house-style.yaml` holds the company slide rules. `deckcheck` reads it.
-- `deckcheck/` is the Python CLI that checks, diffs, and renders decks.
-- `deckcheck fix` writes a fixed copy of a deck and reports what it could not fix.
+- `deckcheck/` is the Python package. It has these commands:
+  - `deckcheck` checks, fixes, diffs, and renders decks.
+  - `changeset` outlines a deck, and validates, executes, and applies a ChangeSet. `docs/changeset.md` describes the format.
+  - `meeting process` runs the maker on one meeting folder.
+  - `review serve` runs the review app. `docs/review.md` describes it.
 - `.claude/skills/verify-pptx/` holds the verification skill and its feature map.
+- `.claude/skills/process-meeting/` holds the maker skill.
+- `evals/` holds the golden meeting scenarios and the script that scores a deck against them.
+- `private/` and `artifacts/` hold client files and run outputs. Git ignores both.
 - `docs/PLAN.md` is this document.
 
 ## Open decisions

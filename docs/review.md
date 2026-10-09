@@ -14,11 +14,11 @@ uv run --project deckcheck review serve
 
 It prints `review: http://127.0.0.1:8765`. Open that address in a browser. `--port 0` picks a free port and prints it. Stop the server with Ctrl-C. Only one review server can use a repo at a time, because it is the one writer under `artifacts/review/`. A second one exits and says so.
 
-Processing renders slides, so it needs `soffice`, `pdftoppm`, and `fc-match`, the same tools as `deckcheck render`. A golden scenario also needs its corpus deck. Fetch the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`.
+Processing renders slides, so it needs `soffice`, `pdftoppm`, and `fc-match`, the same tools as `deckcheck render`. A golden scenario also needs its corpus deck. Fetch the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`. A private meeting needs its deck at `private/meetings/<name>/before.pptx`.
 
 ## Meetings
 
-The home screen lists each folder under `evals/` and `private/meetings/` that holds a `transcript.md` or a `changeset.json`. The title and date come from the transcript's `# ` heading and its `Date: YYYY-MM-DD` line, or else from the ChangeSet.
+The home screen lists each folder under `evals/` and `private/meetings/` that holds a `transcript.md`, a `notes.md`, or a `changeset.json`. Any folder name works, spaces included. It skips names that start with `.` or `_`, and names that end in `.partial` or `.discard`, which the app uses for its own work. The title and date come from the first `# ` heading and `Date: YYYY-MM-DD` line in `transcript.md`, else `notes.md`, else the ChangeSet. Without a heading, the title is the folder name.
 
 **Process meeting** runs three steps:
 
@@ -51,6 +51,7 @@ Every file the app writes is under `artifacts/review/<evals or private>/<meeting
 | `executed.pptx` | the deck with every change as the maker wrote it |
 | `render/old/`, `render/new/` | slide pictures of the source deck and of `executed.pptx`, with `fonts.json` |
 | `final.pptx`, `applied.json` | the last applied deck and the ChangeSet hash it came from |
+| `maker.log` | the output of the last `--maker` run, kept when it fails |
 
 You can run the engine on the same ChangeSet:
 
@@ -60,9 +61,9 @@ uv run --project deckcheck changeset apply artifacts/review/evals/solar-market-r
 
 ## The maker
 
-The maker writes the ChangeSet a review starts from. A golden scenario keeps its committed `changeset.json`, so its row says **Simulated maker: replays the committed changeset.json**, and processing copies that file.
+The maker writes the ChangeSet a review starts from. A golden scenario keeps its committed `changeset.json`, so its row says **Simulated maker: replays the committed changeset.json**, and processing copies that file. A private meeting that holds its own `changeset.json` replays it the same way, and its row says **Replays changeset.json**.
 
-A meeting without a `changeset.json` needs `--maker`, a command the app runs for each such meeting. The app replaces `{meeting}` with the meeting's folder, `{out}` with the path the ChangeSet must be written to, and `{dir}` with the folder that holds `{out}`. It runs the command without a shell, from the repo root. Its output goes to `maker.log` beside the ChangeSet, and the end of it shows on the home screen when the command fails. Without `--maker`, such a meeting cannot be processed.
+A meeting without a `changeset.json` needs `--maker`, a command the app runs for each such meeting. The app replaces `{meeting}` with the meeting's folder, `{out}` with the path the ChangeSet must be written to, and `{dir}` with the folder that holds `{out}`. It runs the command without a shell, from the repo root. Its output goes to `maker.log` beside the ChangeSet. When the command fails, the end of it shows on the home screen, and the row links to the whole `maker.log`, which the app keeps. Without `--maker`, such a meeting cannot be processed.
 
 To run the real maker, `meeting process`:
 
@@ -70,7 +71,11 @@ To run the real maker, `meeting process`:
 uv run --project deckcheck review serve --maker 'uv run --project deckcheck meeting process {meeting} --out {dir} --shareable'
 ```
 
-`--shareable` is the ask-first answer from `CLAUDE.md`, so pass it only when the meetings may be shared with an AI service under your firm's policy.
+`--shareable` tells `meeting process` that the user answered the ask-first question in `CLAUDE.md`. The app still asks for each meeting. When a meeting without a `changeset.json` goes to the `--maker` command, **Process meeting** and **Process again** first show this confirm:
+
+> This sends the meeting notes, data and deck to Claude (Anthropic). Only continue if your firm allows sharing this deck with an AI service.
+
+Cancel sends nothing. The server refuses to run the maker unless the page sends that consent. A golden scenario, or any meeting that replays its own `changeset.json`, sends nothing to an AI service, so it skips the confirm.
 
 `deckcheck/src/deckcheck/review/maker.py` holds this seam.
 
@@ -82,4 +87,6 @@ uv run --project deckcheck review serve --maker 'uv run --project deckcheck meet
 node deckcheck/scripts/review_proof.mjs artifacts/review-proof
 ```
 
-It processes the insurance, solar, and fmcg golden meetings from the home screen, decides every change through the page, applies, and saves screenshots. For each meeting it runs `changeset apply` on a copy of the committed ChangeSet with the same decisions and checks that both decks have the same bytes. It prints `REVIEW PROOF PASS` or `REVIEW PROOF FAIL` and exits 0 or 1. It starts those three meetings over, so their decisions under `artifacts/review/` are lost.
+It processes the insurance, solar, and fmcg golden meetings from the home screen, decides every change through the page, applies, and saves screenshots. For each meeting it runs `changeset apply` on a copy of the committed ChangeSet with the same decisions and checks that both decks have the same bytes.
+
+It then runs one private meeting through the real `--maker` command. It creates `private/meetings/my meeting/` with a copy of the solar deck as `before.pptx` and a short made-up `notes.md`, and puts a fake `claude` first on the server's `PATH`. It checks that the meeting is listed, that cancelling the consent confirm sends nothing, and that confirming processes it. It checks that a Keep click the engine refuses shows its message, and that Apply matches `changeset apply`. It sends traversal ids and checks each answers 404. Then it deletes the meeting and its review. If `private/meetings/my meeting/` already exists, the proof stops before it starts. It prints `REVIEW PROOF PASS` or `REVIEW PROOF FAIL` and exits 0 or 1. It starts those three meetings over, so their decisions under `artifacts/review/` are lost.
