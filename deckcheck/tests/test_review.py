@@ -6,6 +6,7 @@ import http.client
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -206,7 +207,7 @@ def test_process_executes_and_renders_both_decks(repo: Path, app: Client) -> Non
     }
     assert app.get(view["images"]["old"].replace("{n}", "3")) == (200, b"\x89PNG old 3")
     assert app.get(view["images"]["new"].replace("{n}", "4")) == (200, b"\x89PNG new 4")
-    assert app.get("/api/meetings/evals/demo/render/old/slide-4.png")[0] == 404
+    assert app.get("/api/meetings/evals/demo/render/old/slide-4.png") == (404, {"error": "not found"})
 
 
 def test_processing_a_ready_meeting_again_needs_asking(repo: Path, app: Client) -> None:
@@ -426,6 +427,8 @@ def test_requests_from_another_site_are_refused(repo: Path, app: Client) -> None
     assert app.call("GET", "/api/meetings", headers={"Host": "evil.example"}) == (403, {"error": "unknown host"})
     assert app.call("POST", "/api/meetings/evals/demo/process", {}, headers={"Origin": "http://evil.example"}) == (403, {"error": "foreign origin"})
     assert app.call("POST", "/api/meetings/evals/demo/process", {}, headers={"Content-Type": "text/plain"}) == (415, {"error": "send application/json"})
+    assert app.call("GET", "/api/meetings", headers={"Sec-Fetch-Site": "cross-site"}) == (403, {"error": "cross-site request"})
+    assert app.call("GET", "/api/meetings", headers={"Sec-Fetch-Site": "same-origin"})[0] == 200
     assert app.row("evals/demo")["state"] == {"is": "new"}
     assert app.call("GET", "/api/meetings", headers={"Origin": f"http://localhost:{app.port}", "Host": f"localhost:{app.port}"})[0] == 200
     for path in ("/api/meetings/evals/..%2Fdemo", "/api/meetings/evals/../evals/demo", "/web/../meetings.py", "/web/secret.js", "/web/meetings.py"):
@@ -433,6 +436,36 @@ def test_requests_from_another_site_are_refused(repo: Path, app: Client) -> None
         conn.request("GET", path)
         assert conn.getresponse().status == 404, path
         conn.close()
+
+
+def test_every_response_tells_the_browser_to_keep_it_to_this_page(app: Client) -> None:
+    for path in ("/", "/api/meetings", "/api/meetings/evals/nope"):
+        conn = http.client.HTTPConnection("127.0.0.1", app.port)
+        conn.request("GET", path)
+        response = conn.getresponse()
+        headers = {name: response.getheader(name) for name in ("X-Frame-Options", "X-Content-Type-Options", "Cross-Origin-Resource-Policy", "Content-Security-Policy")}
+        conn.close()
+
+        assert headers == {
+            "X-Frame-Options": "DENY",
+            "X-Content-Type-Options": "nosniff",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
+        }, path
+
+
+@pytest.mark.parametrize("length", ["ten", "-1", "1e3"])
+def test_a_bad_content_length_is_refused(app: Client, length: str) -> None:
+    with socket.create_connection(("127.0.0.1", app.port)) as s:
+        s.sendall(
+            f"POST /api/meetings/evals/demo/process HTTP/1.1\r\nHost: 127.0.0.1:{app.port}\r\n"
+            f"Content-Type: application/json\r\nContent-Length: {length}\r\n\r\n{{}}".encode()
+        )
+        reply = b"".join(iter(lambda: s.recv(65536), b""))
+
+    assert reply.split(b"\r\n", 1)[0] == b"HTTP/1.0 400 Bad Request"
+    assert reply.split(b"\r\n\r\n", 1)[1] == b'{"error": "bad Content-Length"}'
+    assert app.row("evals/demo")["state"] == {"is": "new"}
 
 
 def test_the_log_leaves_out_meeting_names(app: Client, capfd: pytest.CaptureFixture[str]) -> None:

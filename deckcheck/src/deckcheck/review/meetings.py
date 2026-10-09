@@ -309,10 +309,7 @@ class Reviews:
             return final
 
     def slide_png(self, mid: str, side: Side, n: int) -> Path:
-        png = _Workdir.of(self._find(mid)).render(side) / f"slide-{n}.png"
-        if not png.is_file():
-            raise Unknown(f"no slide {n} in the {side} render")
-        return png
+        return _Workdir.of(self._find(mid)).render(side) / f"slide-{n}.png"
 
     def final_pptx(self, mid: str) -> Path:
         work = _Workdir.of(self._find(mid))

@@ -18,6 +18,7 @@ from deckcheck.review.meetings import Conflict, Failed, Final, New, Processing, 
 
 WEB = Path(__file__).parent / "web"
 TEXT = "; charset=utf-8"
+JSON = "application/json" + TEXT
 STATIC = {
     "index.html": "text/html" + TEXT,
     "style.css": "text/css" + TEXT,
@@ -30,6 +31,13 @@ STATIC = {
 PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 MAX_BODY = 1 << 20
 MEETING = r"/api/meetings/(?P<mid>(?:evals|private)/[A-Za-z0-9][A-Za-z0-9_.-]*)"
+NOT_FOUND = 404, {"error": "not found"}
+HEADERS = {
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
+}
 
 
 class Body(BaseModel):
@@ -50,6 +58,14 @@ class File:
     type: str
     download: str | None = None
     cache: str = "no-store"
+
+
+@dataclass(frozen=True)
+class Blob:
+    data: bytes
+    type: str = JSON
+    cache: str = "no-store"
+    download: str | None = None
 
 
 Reply = tuple[int, object]
@@ -104,14 +120,20 @@ class App:
         for verb, pattern, handler in self.routes:
             if verb == method and (m := pattern.fullmatch(path)):
                 try:
-                    return handler(body, **m.groupdict())
+                    status, payload = handler(body, **m.groupdict())
                 except Exception as e:
                     for kind, reply in ERRORS.items():
                         if isinstance(e, kind):
                             return reply(e)
                     print(f"review: {type(e).__name__} on {method} {redacted(path)}", file=sys.stderr)
                     return 500, {"error": f"internal error: {e}"}
-        return 404, {"error": "not found"}
+                if not isinstance(payload, File):
+                    return status, payload
+                try:
+                    return status, Blob(payload.path.read_bytes(), payload.type, payload.cache, payload.download)
+                except OSError:
+                    return NOT_FOUND
+        return NOT_FOUND
 
 
 def redacted(path: str) -> str:
@@ -185,42 +207,51 @@ def serve(reviews: Reviews, port: int = 8765) -> ThreadingHTTPServer:
 
         def _serve(self, method: str) -> None:
             path = urlsplit(self.path).path
-            refused = _guard(method, self.headers, server.server_address[1])
-            if refused:
+            length = _length(self.headers.get("Content-Length"))
+            if refused := _guard(method, self.headers, server.server_address[1]):
                 reply = refused
+            elif length is None:
+                reply = 400, {"error": "bad Content-Length"}
+            elif length > MAX_BODY:
+                reply = 413, {"error": "request body too large"}
             else:
-                length = int(self.headers.get("Content-Length") or 0)
-                if length > MAX_BODY:
-                    reply = 413, {"error": "request body too large"}
-                else:
-                    reply = app.handle(method, path, self.rfile.read(length) if method == "POST" else b"")
+                reply = app.handle(method, path, self.rfile.read(length) if method == "POST" else b"")
             self._send(*reply)
             print(f"{method} {redacted(path)} {reply[0]}", file=sys.stderr, flush=True)
 
         def _send(self, status: int, payload: object) -> None:
-            if isinstance(payload, File):
-                data, kind = payload.path.read_bytes(), payload.type
-            else:
-                data, kind = json.dumps(payload, ensure_ascii=False).encode(), "application/json" + TEXT
+            blob = payload if isinstance(payload, Blob) else Blob(json.dumps(payload, ensure_ascii=False).encode())
             self.send_response(status)
-            self.send_header("Content-Type", kind)
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Cache-Control", payload.cache if isinstance(payload, File) else "no-store")
-            if isinstance(payload, File) and payload.download:
-                self.send_header("Content-Disposition", f'attachment; filename="{payload.download}"')
+            for name, value in HEADERS.items():
+                self.send_header(name, value)
+            self.send_header("Content-Type", blob.type)
+            self.send_header("Content-Length", str(len(blob.data)))
+            self.send_header("Cache-Control", blob.cache)
+            if blob.download:
+                self.send_header("Content-Disposition", f'attachment; filename="{blob.download}"')
             self.end_headers()
-            self.wfile.write(data)
+            self.wfile.write(blob.data)
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True
     return server
 
 
+def _length(header: str | None) -> int | None:
+    try:
+        length = int(header or 0)
+    except ValueError:
+        return None
+    return length if length >= 0 else None
+
+
 def _guard(method: str, headers: Message, port: int) -> Reply | None:
-    """Host stops DNS rebinding; Origin and the JSON content type stop another site's page posting to us."""
+    """Host stops DNS rebinding; Origin, Sec-Fetch-Site and the JSON content type stop another site's page reaching us."""
     hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     if headers.get("Host") not in hosts:
         return 403, {"error": "unknown host"}
+    if headers.get("Sec-Fetch-Site") == "cross-site":
+        return 403, {"error": "cross-site request"}
     origin = headers.get("Origin")
     if origin is not None and origin not in {f"http://{h}" for h in hosts}:
         return 403, {"error": "foreign origin"}
