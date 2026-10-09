@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote, unquote
 
 from pptx import Presentation
 
@@ -31,7 +32,8 @@ Render = Callable[[Path, Path], object]
 
 ROOTS: dict[Origin, Path] = {"evals": Path("evals"), "private": Path("private/meetings")}
 WORK = Path("artifacts/review")
-NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*(?<!\.partial|\.discard)")
+TEXTS = ("transcript.md", "notes.md")
+MEETING_FILES = (*TEXTS, "changeset.json")
 DATE = re.compile(r"^Date:\s*(\d{4}-\d{2}-\d{2})")
 CORPUS = "download the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`"
 
@@ -46,7 +48,7 @@ class Meeting:
 
     @property
     def id(self) -> str:
-        return f"{self.origin}/{self.name}"
+        return f"{self.origin}/{quote(self.name, safe='')}"
 
 
 @dataclass(frozen=True)
@@ -117,24 +119,34 @@ class Locked(Exception):
 
 
 def discover() -> list[Meeting]:
-    return [_meeting(origin, d) for origin, root in ROOTS.items() if root.is_dir() for d in sorted(root.iterdir()) if _holds_meeting(d)]
+    return [_meeting(origin, d) for origin in ROOTS for d in _folders(origin)]
 
 
 def find(mid: str) -> Meeting:
-    origin, _, name = mid.partition("/")
-    if origin in ROOTS and NAME.fullmatch(name) and _holds_meeting(d := ROOTS[origin] / name):
-        return _meeting(origin, d)
+    """An id names a meeting only if it is one that discover lists, so no id reaches outside the meeting roots."""
+    origin, _, key = mid.partition("/")
+    name = unquote(key)
+    for d in _folders(origin) if origin in ROOTS else ():
+        if d.name == name:
+            return _meeting(origin, d)
     raise Unknown(f"no meeting {mid}")
 
 
+def _folders(origin: Origin) -> list[Path]:
+    root = ROOTS[origin]
+    return sorted(d for d in root.iterdir() if _holds_meeting(d)) if root.is_dir() else []
+
+
 def _holds_meeting(d: Path) -> bool:
-    return bool(NAME.fullmatch(d.name)) and ((d / "transcript.md").is_file() or (d / "changeset.json").is_file())
+    # A .partial or .discard name would collide with the app's own work folders under artifacts/review/.
+    hidden = d.name.startswith((".", "_")) or d.name.endswith((".partial", ".discard"))
+    return not hidden and any((d / f).is_file() for f in MEETING_FILES)
 
 
 def _meeting(origin: Origin, d: Path) -> Meeting:
     title = date = None
-    transcript = d / "transcript.md"
-    if transcript.is_file():
+    transcript = next((d / f for f in TEXTS if (d / f).is_file()), None)
+    if transcript:
         with transcript.open(encoding="utf-8", errors="replace") as f:
             for line in itertools.islice(f, 40):
                 if title is None and line.startswith("# "):

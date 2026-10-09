@@ -18,7 +18,7 @@ Processing renders slides, so it needs `soffice`, `pdftoppm`, and `fc-match`, th
 
 ## Meetings
 
-The home screen lists each folder under `evals/` and `private/meetings/` that holds a `transcript.md` or a `changeset.json`. The title and date come from the transcript's `# ` heading and its `Date: YYYY-MM-DD` line, or else from the ChangeSet.
+The home screen lists each folder under `evals/` and `private/meetings/` that holds a `transcript.md`, a `notes.md`, or a `changeset.json`. Any folder name works, spaces included. It skips names that start with `.` or `_`, and names that end in `.partial` or `.discard`, which the app uses for its own work. The title and date come from the first `# ` heading and `Date: YYYY-MM-DD` line in `transcript.md`, else `notes.md`, else the ChangeSet. Without a heading, the title is the folder name.
 
 **Process meeting** runs three steps:
 

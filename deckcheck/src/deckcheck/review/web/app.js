@@ -10,8 +10,8 @@ const root = document.getElementById("app");
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 function parseHash() {
-  const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-  if (parts[0] === "m" && parts.length >= 3) return { mid: `${parts[1]}/${parts[2]}`, slide: parts[3] ?? null };
+  const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  if (parts[0] === "m" && parts.length >= 3) return { mid: `${parts[1]}/${parts[2]}`, slide: parts[3] === undefined ? null : decodeURIComponent(parts[3]) };
   return { mid: null };
 }
 

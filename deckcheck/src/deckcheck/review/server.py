@@ -8,13 +8,13 @@ from dataclasses import asdict, dataclass
 from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from deckcheck.changeset import Invalid, Undecided
 from deckcheck.changeset.model import Decision
-from deckcheck.review.meetings import NAME, ROOTS, Conflict, Failed, Final, New, Processing, Ready, Reviews, Row, State, Unknown, View
+from deckcheck.review.meetings import ROOTS, Conflict, Failed, Final, New, Processing, Ready, Reviews, Row, State, Unknown, View
 
 WEB = Path(__file__).parent / "web"
 TEXT = "; charset=utf-8"
@@ -30,7 +30,7 @@ STATIC = {
 }
 PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 MAX_BODY = 1 << 20
-MEETING = rf"/api/meetings/(?P<mid>(?:{'|'.join(ROOTS)})/{NAME.pattern})"
+MEETING = rf"/api/meetings/(?P<mid>(?:{'|'.join(ROOTS)})/[^/]+)"
 NOT_FOUND = 404, {"error": "not found"}
 HEADERS = {
     "X-Frame-Options": "DENY",
@@ -111,7 +111,7 @@ class App:
         return 200, File(self.reviews.slide_png(mid, side, int(n)), "image/png", cache="private, max-age=86400")
 
     def final(self, body: bytes, mid: str) -> Reply:
-        name = mid.split("/", 1)[1]
+        name = re.sub(r"[^A-Za-z0-9_.-]+", "-", unquote(mid.split("/", 1)[1])).strip("-.") or "meeting"
         return 200, File(self.reviews.final_pptx(mid), PPTX, download=f"{name}-final.pptx")
 
     def handle(self, method: str, path: str, body: bytes) -> Reply:
