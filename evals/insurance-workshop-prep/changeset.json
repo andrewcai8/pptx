@@ -1,0 +1,107 @@
+{
+  "meeting": {"title": "Pre-read review: regulator workshop deck", "date": "2026-09-29"},
+  "source": {
+    "path": "artifacts/verify-pptx/corpus-cache/5dcf6300cfc6c95ab5f9ba184519835380fb60b30b0dea20a47eeb7739543352.pptx",
+    "sha256": "5dcf6300cfc6c95ab5f9ba184519835380fb60b30b0dea20a47eeb7739543352"
+  },
+  "asks": [
+    {
+      "id": "survey-share",
+      "text": "Put the 48% millennial share from the association's member survey in the generations headline and cite the survey.",
+      "refs": [
+        {"t": "00:01:16", "speaker": "Marko Vidmar", "quote": "That fifty is old."},
+        {"t": "00:06:11", "speaker": "Marko Vidmar", "quote": "Client survey, millennials, 2027 projection... 48. So not 45, sorry."},
+        {"t": "00:06:24", "speaker": "Mojca Zupan", "quote": "Then it's 48. Use the file."},
+        {"t": "00:06:30", "speaker": "Katja Mlakar", "quote": "Okay, 48, and I'll point the footnote at your survey file."}
+      ]
+    },
+    {
+      "id": "drop-credentials",
+      "text": "Take out the credentials page.",
+      "refs": [
+        {"t": "00:03:06", "speaker": "Mojca Zupan", "quote": "Take it out."},
+        {"t": "00:03:36", "speaker": "Katja Mlakar", "quote": "Fine, slide two goes."}
+      ]
+    },
+    {
+      "id": "innovation-first",
+      "text": "Lead the three regulator roles with genuine innovation, straight after the roles overview.",
+      "refs": [
+        {"t": "00:03:45", "speaker": "Marko Vidmar", "quote": "Innovation is what they'll react to, they've been asked about sandboxes twice this year."},
+        {"t": "00:04:16", "speaker": "Katja Mlakar", "quote": "So fourteen moves up, straight after eleven."}
+      ]
+    }
+  ],
+  "changes": [
+    {
+      "id": "headline-share",
+      "ask_id": "survey-share",
+      "rationale": "The headline's millennial share moves to the survey's 2027 projection of 48%.",
+      "refs": [{"t": "00:06:24", "speaker": "Mojca Zupan", "quote": "Then it's 48. Use the file."}],
+      "op": {"kind": "replace_text", "slide": 301, "shape": 2, "old": "ca. 50%", "new": "ca. 48%"}
+    },
+    {
+      "id": "survey-footnote",
+      "ask_id": "survey-share",
+      "rationale": "A third footnote cites the member survey as the source of the headline figure.",
+      "refs": [{"t": "00:06:30", "speaker": "Katja Mlakar", "quote": "Okay, 48, and I'll point the footnote at your survey file."}],
+      "op": {"kind": "insert_paragraph", "slide": 301, "shape": 293, "after": 1, "text": "3. Insurers' Association member survey 2026, 2027 projection"}
+    },
+    {
+      "id": "delete-credentials",
+      "ask_id": "drop-credentials",
+      "rationale": "The credentials page reads like a sales page in front of the supervisor.",
+      "refs": [{"t": "00:03:06", "speaker": "Mojca Zupan", "quote": "It reads like a sales page in front of a supervisor, and I don't want that."}],
+      "op": {"kind": "delete_slide", "slide": 326}
+    },
+    {
+      "id": "innovation-after-overview",
+      "ask_id": "innovation-first",
+      "rationale": "Genuine innovation moves to straight after the roles overview so the roles open with it.",
+      "refs": [{"t": "00:04:16", "speaker": "Katja Mlakar", "quote": "So fourteen moves up, straight after eleven."}],
+      "op": {"kind": "move_slide", "slide": 322, "after": 305}
+    }
+  ],
+  "flags": [
+    {
+      "id": "which-regulator-slide",
+      "question": "Which regulator slide should be punchier (10 the obstacles map, 16 the Singapore example, or 18 the closing call to cooperate), and in what direction?",
+      "slides": [327, 319, 313],
+      "refs": [
+        {"t": "00:08:05", "speaker": "Marko Vidmar", "quote": "The regulator slide, can we make it punchier?"},
+        {"t": "00:08:20", "speaker": "Katja Mlakar", "quote": "Which one do you mean?"},
+        {"t": "00:08:38", "speaker": "Marko Vidmar", "quote": "You know the one. The regulator one. Make it land harder."}
+      ]
+    }
+  ],
+  "held": [
+    {
+      "id": "oversight-office",
+      "text": "The Data Protection Oversight Office is not named anywhere in the deck until it accepts the invitation.",
+      "refs": [{"t": "00:07:03", "speaker": "Mojca Zupan", "quote": "I don't want their name anywhere in our document before they've agreed to come, that would be awkward for everyone."}]
+    },
+    {
+      "id": "role-numbers",
+      "text": "The role numbers and the overview graphic stay as they are after the innovation page moves.",
+      "slides": [305, 321, 323, 322],
+      "refs": [
+        {"t": "00:04:41", "speaker": "Mojca Zupan", "quote": "No, leave the numbers."},
+        {"t": "00:05:07", "speaker": "Katja Mlakar", "quote": "Okay, we leave them."}
+      ]
+    },
+    {
+      "id": "sandbox-page",
+      "text": "The sandbox page keeps the FCA's wording.",
+      "slides": [314],
+      "refs": [
+        {"t": "00:07:47", "speaker": "Marko Vidmar", "quote": "The sandbox one is fine."},
+        {"t": "00:07:55", "speaker": "Mojca Zupan", "quote": "Dry is what the supervisor expects."}
+      ]
+    },
+    {
+      "id": "workshop-lunch",
+      "text": "Lunch at the workshop is the hotel's problem and stays out of the deck.",
+      "refs": [{"t": "00:07:31", "speaker": "Mojca Zupan", "quote": "That's the hotel's problem this time, not ours."}]
+    }
+  ]
+}

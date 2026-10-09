@@ -1,0 +1,55 @@
+{
+  "meeting": {"title": "Working session: HQ re-opening pack before the ExCo pre-read", "date": "2026-04-14"},
+  "source": {
+    "path": "artifacts/verify-pptx/corpus-cache/689bc16e857e35774999de835f755d3c1c4c31cc0e83ebd8129faf3e0e5a0052.pptx",
+    "sha256": "689bc16e857e35774999de835f755d3c1c4c31cc0e83ebd8129faf3e0e5a0052"
+  },
+  "asks": [
+    {
+      "id": "bounded-flexibility",
+      "text": "Reword the flexibility principle so teams choose their own office days within the site cap.",
+      "refs": [
+        {"t": "00:01:40", "speaker": "Daniel Okafor", "quote": "\"Flexibility to teams.\" And that's not where we are."},
+        {"t": "00:03:52", "speaker": "Daniel Okafor", "quote": "Then \"Teams choose their own office days within the site cap\"."},
+        {"t": "00:04:05", "speaker": "Sam Reyes", "quote": "I'll put it in place of the flexibility bullet."}
+      ]
+    }
+  ],
+  "changes": [
+    {
+      "id": "flexibility-bullet",
+      "ask_id": "bounded-flexibility",
+      "rationale": "The flexibility bullet becomes the bounded choice Daniel settled on, in the same place in the list.",
+      "refs": [{"t": "00:04:05", "speaker": "Sam Reyes", "quote": "\"Teams choose their own office days within the site cap.\" I'll put it in place of the flexibility bullet."}],
+      "op": {"kind": "replace_text", "slide": 10586, "shape": 13, "old": "Flexibility to teams", "new": "Teams choose their own office days within the site cap"}
+    }
+  ],
+  "flags": [],
+  "held": [
+    {
+      "id": "timing-slide",
+      "text": "The timing slide stays as it is until the province announces its workplace guidance.",
+      "slides": [11290],
+      "refs": [{"t": "00:06:24", "speaker": "Daniel Okafor", "quote": "Then leave seven as it is until the province announces."}]
+    },
+    {
+      "id": "calgary-callout",
+      "text": "Calling out Calgary's later opening is parked until Daniel has seen real estate.",
+      "slides": [11275],
+      "refs": [{"t": "00:07:40", "speaker": "Daniel Okafor", "quote": "Park it till next week, I'm seeing real estate on Monday."}]
+    },
+    {
+      "id": "pre-read-logistics",
+      "text": "Daniel sends the pre-read through Martine's assistant; that is logistics, not deck content.",
+      "refs": [{"t": "00:07:02", "speaker": "Daniel Okafor", "quote": "It should come from me."}]
+    },
+    {
+      "id": "site-cap-number",
+      "text": "The Mississauga daily cap stays off the slide because it differs by site and will move.",
+      "refs": [
+        {"t": "00:02:36", "speaker": "Daniel Okafor", "quote": "But don't put the number on the slide."},
+        {"t": "00:02:54", "speaker": "Claire Fontaine", "quote": "Agreed, no number."}
+      ]
+    }
+  ]
+}

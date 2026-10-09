@@ -1,0 +1,123 @@
+{
+  "meeting": {"title": "Roadshow refresh: C&I solar investment case", "date": "2026-10-06"},
+  "source": {
+    "path": "artifacts/verify-pptx/corpus-cache/73f4dbf7e901d9122c2555306698eee64c968c218b0e3795380d91fe38ca642f.pptx",
+    "sha256": "73f4dbf7e901d9122c2555306698eee64c968c218b0e3795380d91fe38ca642f"
+  },
+  "asks": [
+    {
+      "id": "market-figures",
+      "text": "Use the 2022 market size of $410m and the 2022-27 CAGR of 37% from Priya's sheet everywhere they appear on the market slide, chart data included.",
+      "refs": [
+        {"t": "00:00:58", "speaker": "Grace Adeyemi", "quote": "I'd want the market numbers in the deck to be the ones from Priya's sheet, not our old estimate."},
+        {"t": "00:02:05", "speaker": "Grace Adeyemi", "quote": "If one of them still says 380, an analyst will spot it straight away."},
+        {"t": "00:03:00", "speaker": "Daniel Mercer", "quote": "Yes, do the chart data too, otherwise the bar heights won't match the labels."},
+        {"t": "00:05:46", "speaker": "Grace Adeyemi", "quote": "Use the exact number from the sheet. 410."},
+        {"t": "00:06:06", "speaker": "Daniel Mercer", "quote": "410 then, wherever it shows up, and 37% for the growth."}
+      ]
+    },
+    {
+      "id": "contents-cagr",
+      "text": "Make the CAGR on the contents page match slide 10.",
+      "refs": [
+        {"t": "00:04:47", "speaker": "Grace Adeyemi", "quote": "Then that has to match. I don't want slide 2 saying 39 and slide 10 saying 37, that's worse than leaving both."},
+        {"t": "00:04:58", "speaker": "Sofia Brandt", "quote": "Yep, I'll change it to 37 there."}
+      ]
+    }
+  ],
+  "changes": [
+    {
+      "id": "title-market-size",
+      "ask_id": "market-figures",
+      "rationale": "The title's 2022 market size moves to the $410m in Priya's sheet.",
+      "refs": [{"t": "00:05:46", "speaker": "Grace Adeyemi", "quote": "Use the exact number from the sheet. 410."}],
+      "op": {"kind": "replace_text", "slide": 2147478638, "shape": 3, "old": "c.$380m", "new": "c.$410m"}
+    },
+    {
+      "id": "title-cagr",
+      "ask_id": "market-figures",
+      "rationale": "The title's CAGR moves to the 37% in Priya's sheet.",
+      "refs": [{"t": "00:01:38", "speaker": "Sofia Brandt", "quote": "The sheet has the CAGR at 37."}],
+      "op": {"kind": "replace_text", "slide": 2147478638, "shape": 3, "old": "39%", "new": "37%"}
+    },
+    {
+      "id": "header-market-size",
+      "ask_id": "market-figures",
+      "rationale": "The header's starting market size moves to $410m while the $2bn end point stays.",
+      "refs": [{"t": "00:06:14", "speaker": "Sofia Brandt", "quote": "And 2027 stays at $2bn, so the rest of the header doesn't change."}],
+      "op": {"kind": "replace_text", "slide": 2147478638, "shape": 56, "old": "$380m market", "new": "$410m market"}
+    },
+    {
+      "id": "table-market-size",
+      "ask_id": "market-figures",
+      "rationale": "The table's 2022 market-size cell moves to $410m so no figure on the slide still says 380.",
+      "refs": [{"t": "00:02:05", "speaker": "Grace Adeyemi", "quote": "If one of them still says 380, an analyst will spot it straight away."}],
+      "op": {"kind": "set_cell", "slide": 2147478638, "shape": 154, "row": 1, "col": 4, "old": "$380m", "new": "$410m"}
+    },
+    {
+      "id": "chart-2022-bar",
+      "ask_id": "market-figures",
+      "rationale": "The 2022 bar's chart data and workbook move to 410 so the bar matches its label.",
+      "refs": [{"t": "00:03:00", "speaker": "Daniel Mercer", "quote": "Yes, do the chart data too, otherwise the bar heights won't match the labels."}],
+      "op": {"kind": "set_chart_value", "slide": 2147478638, "shape": 8, "series": 0, "point": 0, "old": 380, "new": 410}
+    },
+    {
+      "id": "cagr-label",
+      "ask_id": "market-figures",
+      "rationale": "The CAGR label over the chart moves to +37%.",
+      "refs": [{"t": "00:06:06", "speaker": "Daniel Mercer", "quote": "410 then, wherever it shows up, and 37% for the growth."}],
+      "op": {"kind": "replace_text", "slide": 2147478638, "shape": 69, "old": "+39%", "new": "+37%"}
+    },
+    {
+      "id": "contents-cagr",
+      "ask_id": "contents-cagr",
+      "rationale": "The contents page quotes the CAGR, so it moves to 37% to match slide 10.",
+      "refs": [{"t": "00:04:58", "speaker": "Sofia Brandt", "quote": "Yep, I'll change it to 37 there."}],
+      "op": {"kind": "replace_text", "slide": 2147480153, "shape": 8, "old": "39% CAGR", "new": "37% CAGR"}
+    }
+  ],
+  "flags": [
+    {
+      "id": "which-tariff",
+      "question": "Which of Priya's two 2022 tariffs, the PPA tariff ($0.07) or the grid tariff ($0.11), should replace the $0.08 in slide 10's table?",
+      "slides": [2147478638],
+      "refs": [
+        {"t": "00:05:06", "speaker": "Grace Adeyemi", "quote": "Oh, and use the new tariff while you're in there."},
+        {"t": "00:05:12", "speaker": "Sofia Brandt", "quote": "Priya's sheet has two tariffs though, there's a PPA one and a grid one, so I'm not sure which..."},
+        {"t": "00:05:27", "speaker": "Grace Adeyemi", "quote": "Whatever Priya has, she'll know."},
+        {"t": "00:05:35", "speaker": "Daniel Mercer", "quote": "We'll check with Priya."}
+      ]
+    }
+  ],
+  "held": [
+    {
+      "id": "full-potential",
+      "text": "Slide 9's $11bn full-potential figure stays until it is rerun on next quarter's IEA outlook.",
+      "slides": [2147478560],
+      "refs": [
+        {"t": "00:03:19", "speaker": "Grace Adeyemi", "quote": "I'll be honest, the eleven billion feels aggressive to me."},
+        {"t": "00:04:10", "speaker": "Grace Adeyemi", "quote": "Leave 9 for now and we'll redo it after the outlook."}
+      ]
+    },
+    {
+      "id": "cover-date",
+      "text": "The cover keeps March 2023, the date the work was done.",
+      "slides": [275],
+      "refs": [
+        {"t": "00:06:31", "speaker": "Daniel Mercer", "quote": "We usually leave the cover as the date the work was done."},
+        {"t": "00:06:43", "speaker": "Grace Adeyemi", "quote": "Okay, leave it then."}
+      ]
+    },
+    {
+      "id": "rounded-400",
+      "text": "The market size is not rounded to $400m; Grace withdrew that for the exact 410.",
+      "slides": [2147478638],
+      "refs": [{"t": "00:05:46", "speaker": "Grace Adeyemi", "quote": "Actually, no, I've changed my mind on that."}]
+    },
+    {
+      "id": "london-venue",
+      "text": "The London venue moving to the Fenwick is for Grace's events team, not the deck.",
+      "refs": [{"t": "00:00:39", "speaker": "Grace Adeyemi", "quote": "No, that's all ours."}]
+    }
+  ]
+}
