@@ -147,14 +147,19 @@ def _changeset_meeting(path: Path) -> dict[str, str]:
 
 
 def cascade(changes: Sequence[Mapping], batch: Mapping[str, Decision]) -> dict[str, Decision]:
+    """Dropping an added slide sets its pending fills to keep_old; restoring it reopens its keep_old fills.
+
+    Any other fill decision stands, so apply reports a kept fill of a dropped slide under dropped."""
+    now = {c["id"]: c.get("decision", "pending") for c in changes}
     out = dict(batch)
     for c in changes:
         op = c["op"]
         if op["kind"] != "fill_placeholder" or c["id"] in batch or op["slide"] not in batch:
             continue
-        if batch[op["slide"]] == "keep_old":
+        add = op["slide"]
+        if batch[add] == "keep_old" and now[c["id"]] == "pending":
             out[c["id"]] = "keep_old"
-        elif c.get("decision") == "keep_old":
+        elif now[add] == "keep_old" and batch[add] != "keep_old" and now[c["id"]] == "keep_old":
             out[c["id"]] = "pending"
     return out
 

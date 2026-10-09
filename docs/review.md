@@ -35,7 +35,7 @@ The left rail shows the new deck. A changed slide carries a count, and a check o
 - A slide whose changes are all text shows the new slide large. Point at a highlight to see the change, its transcript quotes, and the maker's reason. Click to keep the note open.
 - A slide with a table, chart, or slide-level change shows the old and new slides side by side and lists every change on it.
 
-Each change takes **Keep new**, **Keep old**, or **Edit myself**. An edit must meet the same rules as the maker's text, and the app shows the engine's message when it does not. Dropping an added slide drops what fills it.
+Each change takes **Keep new**, **Keep old**, or **Edit myself**. An edit must meet the same rules as the maker's text, and the app shows the engine's message when it does not. Dropping an added slide drops what fills it. The fills you had not decided turn to **Keep old**, and restoring the slide asks about them again. A fill you had decided keeps your decision.
 
 **Apply** runs once every change is decided. It writes the final deck and offers it for download. The deck is byte for byte what `changeset apply` writes from the same ChangeSet. Changing a decision afterwards marks the final deck out of date until you apply again.
 

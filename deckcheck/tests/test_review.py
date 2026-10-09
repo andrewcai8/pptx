@@ -245,20 +245,36 @@ def test_a_decision_the_engine_refuses_leaves_the_file_alone(repo: Path, app: Cl
     assert sorted(p.name for p in working.parent.iterdir()) == ["changeset.json", "executed.pptx", "render"]
 
 
-def test_dropping_an_added_slide_drops_its_fills_and_restoring_it_asks_again(repo: Path, app: Client) -> None:
+def test_dropping_an_added_slide_settles_only_its_undecided_fills(repo: Path, app: Client) -> None:
     app.ready()
+    edited = {"edited": "Raise list prices\nHold discounts"}
 
     assert app.decide(add="keep_old")[1]["decisions"] == {**PENDING, "add": "keep_old", "fill": "keep_old"}
     assert app.decide(add="keep_new")[1]["decisions"] == {**PENDING, "add": "keep_new", "fill": "pending"}
-    app.decide(fill="keep_new")
-    assert app.decide(add="pending")[1]["decisions"] == {**PENDING, "fill": "keep_new"}
+    app.decide(fill=edited)
+    assert app.decide(add="keep_old")[1]["decisions"] == {**PENDING, "add": "keep_old", "fill": edited}
+    assert app.decide(add="keep_new")[1]["decisions"] == {**PENDING, "add": "keep_new", "fill": edited}
+    app.decide(fill="keep_old")
+    assert app.decide(add="keep_new")[1]["decisions"] == {**PENDING, "add": "keep_new", "fill": "keep_old"}
 
 
-def test_cascade_leaves_a_fill_the_batch_decides_itself() -> None:
-    changes = [{"id": "add", "op": ADD}, {"id": "fill", "op": {**FILL, "slide": "add"}, "decision": "keep_old"}]
+def test_apply_reports_a_kept_fill_of_a_dropped_slide_as_dropped(repo: Path, app: Client) -> None:
+    app.ready()
+    app.decide(c1="keep_new", c2="keep_new", c3="keep_new", fill="keep_new")
+    app.decide(add="keep_old")
 
-    assert cascade(changes, {"add": "keep_old", "fill": "keep_new"}) == {"add": "keep_old", "fill": "keep_new"}
-    assert cascade(changes, {"add": "keep_new"}) == {"add": "keep_new", "fill": "pending"}
+    status, final = app.post("/api/meetings/evals/demo/apply")
+
+    assert status == 200
+    assert (final["kept_new"], final["kept_old"], final["dropped"]) == (["c1", "c2", "c3"], ["add"], [["fill", "add"]])
+
+
+def test_cascade_judges_a_restore_against_the_decision_on_file() -> None:
+    fill = {"id": "fill", "op": {**FILL, "slide": "add"}, "decision": "keep_old"}
+
+    assert cascade([{"id": "add", "op": ADD}, fill], {"add": "keep_old", "fill": "keep_new"}) == {"add": "keep_old", "fill": "keep_new"}
+    assert cascade([{"id": "add", "op": ADD, "decision": "keep_old"}, fill], {"add": "keep_new"}) == {"add": "keep_new", "fill": "pending"}
+    assert cascade([{"id": "add", "op": ADD, "decision": "keep_new"}, fill], {"add": "keep_new"}) == {"add": "keep_new"}
 
 
 def test_apply_writes_the_bytes_the_changeset_cli_writes(repo: Path, app: Client) -> None:
