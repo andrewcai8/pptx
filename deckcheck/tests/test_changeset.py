@@ -568,6 +568,12 @@ def bad_json(deck: Path) -> Path:
     return path
 
 
+def unquoted_label(deck: Path) -> bytes:
+    """Slide 258 with its label's 9 outside the format's quotes, where PowerPoint reads it as a date code."""
+    with zipfile.ZipFile(deck) as z:
+        return z.read("ppt/slides/slide3.xml").replace(b"datetime'''+''''9''''%'''", b"datetime'+'9'%'")
+
+
 def date_field(deck: Path) -> Path:
     """The deck with a date field on slide 258 whose format is longer than a message should print."""
     prs = Presentation(str(deck))
@@ -657,6 +663,10 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
         (lambda d: changeset(d, [change("c1", REVENUE)], lists={"flags": [FLAG, FLAG]}), "f1 id: flags[0] and flags[1] share this id"),
         (lambda d: changeset(d, [change("c1", REVENUE)], lists={"held": [HELD, HELD]}), "h1 id: held[0] and held[1] share this id"),
         (
+            lambda d: changeset(rezip(d, "ppt/slides/slide3.xml", unquoted_label(d)), [change("c1", {**LABEL_OP, "new": "+7%"})]),
+            "c1 op.new: the change touches a \"datetime'+'9'%'\" field, which only PowerPoint fills in",
+        ),
+        (
             lambda d: changeset(date_field(d), [change("c1", {**LABEL_OP, "shape": 4, "old": "2025", "new": "2026"})]),
             "c1 op.new: the change touches a " + repr("datetimeyyyy" + "'" * 27 + "…") + " field, which only PowerPoint fills in",
         ),
@@ -705,6 +715,7 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
         "duplicate-ask-ids",
         "duplicate-flag-ids",
         "duplicate-held-ids",
+        "format-character-outside-quotes",
         "long-field-format",
         "line-feed-in-the-source-quote",
         "line-feed-in-a-cell",
