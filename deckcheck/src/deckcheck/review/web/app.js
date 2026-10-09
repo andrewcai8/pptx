@@ -107,7 +107,12 @@ function meetingRow(m) {
       h("div", { class: "meeting-meta" }, m.date ?? "No date", " · ", m.origin === "evals" ? "Golden scenario" : "Private meeting"),
       h("div", { class: "chips" }, makerChip(m.maker), fontsChip(m.fonts)),
     ),
-    h("div", { class: "meeting-side" }, stateBlock(m)),
+    h(
+      "div",
+      { class: "meeting-side" },
+      stateBlock(m),
+      m.log && m.state.is !== "processing" && h("p", { class: "log" }, h("a", { href: m.log, target: "_blank", rel: "noopener", "data-act": "log" }, "Open maker.log")),
+    ),
   );
 }
 

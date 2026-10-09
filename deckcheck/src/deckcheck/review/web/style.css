@@ -245,6 +245,11 @@ button.quiet {
   flex-basis: 100%;
 }
 
+.meeting-side .log {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
 .meeting-side .count {
   color: var(--muted);
 }

@@ -169,6 +169,7 @@ def test_meetings_list_each_meeting_dir_with_its_maker(repo: Path, app: Client) 
                     "maker": SIMULATED,
                     "state": {"is": "new"},
                     "fonts": [],
+                    "log": None,
                 },
                 {
                     "id": "private/x",
@@ -179,6 +180,7 @@ def test_meetings_list_each_meeting_dir_with_its_maker(repo: Path, app: Client) 
                     "maker": None,
                     "state": {"is": "new"},
                     "fonts": [],
+                    "log": None,
                 },
             ]
         },
@@ -231,6 +233,7 @@ def test_process_executes_and_renders_both_decks(repo: Path, app: Client) -> Non
         "maker": SIMULATED,
         "state": {"is": "ready", "decided": 0, "total": 5, "applied": False},
         "fonts": [{"font": "Nonexistent Sans QA", "family": "DejaVu Sans"}],
+        "log": None,
     }
     status, view = app.get("/api/meetings/evals/demo")
     executed = (repo / "artifacts/review/evals/demo/executed.pptx").read_bytes()
@@ -509,6 +512,20 @@ def test_a_missing_source_deck_says_how_to_get_it(repo: Path, app: Client) -> No
     assert state["problems"] == [{"where": "source.path", "message": "cannot read decks/gone.pptx: No such file or directory"}]
 
 
+def test_a_private_meeting_with_its_own_changeset_replays_it_and_names_its_deck(repo: Path, app: Client) -> None:
+    (repo / "private/meetings").mkdir(parents=True)
+    shutil.move(repo / "evals/demo", repo / "private/meetings/board")
+    (repo / "decks/deck.pptx").unlink()
+
+    row = app.ready("private/board")
+
+    assert row["maker"] == {"label": "Replays changeset.json", "simulated": True}
+    assert row["state"]["message"] == (
+        "The engine refused the ChangeSet: 1 problem. The source deck is missing; "
+        "put the deck as it stood before the meeting at private/meetings/board/before.pptx."
+    )
+
+
 def test_a_maker_command_writes_the_changeset_of_a_meeting_without_one(repo: Path, start) -> None:
     (repo / "private/meetings/x").mkdir(parents=True)
     (repo / "private/meetings/x/transcript.md").write_text("# Client sync\n")
@@ -528,7 +545,13 @@ def test_a_maker_command_that_fails_shows_its_output(repo: Path, start) -> None:
     (repo / "private/meetings/x/transcript.md").write_text("# Client sync\n")
     app = start(functools.partial(maker_for, command=[sys.executable, "-c", "print('no transcript'); raise SystemExit(3)"]))
 
-    assert app.ready("private/x")["state"] == {"is": "failed", "message": "the maker exited with 3: no transcript", "problems": []}
+    row = app.ready("private/x")
+
+    assert row["state"] == {"is": "failed", "message": "the maker exited with 3: no transcript", "problems": []}
+    assert row["log"] == "/api/meetings/private/x/maker.log"
+    assert app.get(row["log"]) == (200, b"no transcript\n")
+    assert sorted(p.name for p in (repo / "artifacts/review/private").iterdir()) == ["x"]
+    assert app.post("/api/meetings/private/x/process")[1]["state"] == {"is": "processing", "step": "making"}
 
 
 def test_requests_from_another_site_are_refused(repo: Path, app: Client) -> None:

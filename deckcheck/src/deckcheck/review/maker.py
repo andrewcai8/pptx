@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 TIMEOUT = 30 * 60
 TAIL = 2000
 FIELD = re.compile(r"\{(meeting|out|dir)\}")
+LOG = "maker.log"
 
 
 class MakerFailed(Exception):
@@ -29,9 +30,9 @@ class Maker(Protocol):
 
 
 @dataclass(frozen=True)
-class Golden:
+class Replay:
+    label: str
     simulated: ClassVar[bool] = True
-    label: ClassVar[str] = "Simulated maker: replays the committed changeset.json"
 
     def make(self, meeting: Meeting, out: Path) -> None:
         shutil.copyfile(meeting.dir / "changeset.json", out)
@@ -49,7 +50,7 @@ class Command:
     def make(self, meeting: Meeting, out: Path) -> None:
         values = {"meeting": str(meeting.dir), "out": str(out), "dir": str(out.parent)}
         argv = [FIELD.sub(lambda m: values[m[1]], arg) for arg in self.argv]
-        log = out.with_name("maker.log")
+        log = out.with_name(LOG)
         with log.open("wb") as f:
             try:
                 code = subprocess.run(argv, stdout=f, stderr=subprocess.STDOUT, timeout=TIMEOUT, check=False).returncode
@@ -64,5 +65,5 @@ class Command:
 
 def maker_for(meeting: Meeting, command: Sequence[str] | None = None) -> Maker | None:
     if (meeting.dir / "changeset.json").is_file():
-        return Golden()
+        return Replay("Simulated maker: replays the committed changeset.json" if meeting.origin == "evals" else "Replays changeset.json")
     return Command(tuple(command)) if command else None

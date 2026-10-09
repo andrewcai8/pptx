@@ -14,7 +14,7 @@ uv run --project deckcheck review serve
 
 It prints `review: http://127.0.0.1:8765`. Open that address in a browser. `--port 0` picks a free port and prints it. Stop the server with Ctrl-C. Only one review server can use a repo at a time, because it is the one writer under `artifacts/review/`. A second one exits and says so.
 
-Processing renders slides, so it needs `soffice`, `pdftoppm`, and `fc-match`, the same tools as `deckcheck render`. A golden scenario also needs its corpus deck. Fetch the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`.
+Processing renders slides, so it needs `soffice`, `pdftoppm`, and `fc-match`, the same tools as `deckcheck render`. A golden scenario also needs its corpus deck. Fetch the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`. A private meeting needs its deck at `private/meetings/<name>/before.pptx`.
 
 ## Meetings
 
@@ -51,6 +51,7 @@ Every file the app writes is under `artifacts/review/<evals or private>/<meeting
 | `executed.pptx` | the deck with every change as the maker wrote it |
 | `render/old/`, `render/new/` | slide pictures of the source deck and of `executed.pptx`, with `fonts.json` |
 | `final.pptx`, `applied.json` | the last applied deck and the ChangeSet hash it came from |
+| `maker.log` | the output of the last `--maker` run, kept when it fails |
 
 You can run the engine on the same ChangeSet:
 
@@ -60,9 +61,9 @@ uv run --project deckcheck changeset apply artifacts/review/evals/solar-market-r
 
 ## The maker
 
-The maker writes the ChangeSet a review starts from. A golden scenario keeps its committed `changeset.json`, so its row says **Simulated maker: replays the committed changeset.json**, and processing copies that file.
+The maker writes the ChangeSet a review starts from. A golden scenario keeps its committed `changeset.json`, so its row says **Simulated maker: replays the committed changeset.json**, and processing copies that file. A private meeting that holds its own `changeset.json` replays it the same way, and its row says **Replays changeset.json**.
 
-A meeting without a `changeset.json` needs `--maker`, a command the app runs for each such meeting. The app replaces `{meeting}` with the meeting's folder, `{out}` with the path the ChangeSet must be written to, and `{dir}` with the folder that holds `{out}`. It runs the command without a shell, from the repo root. Its output goes to `maker.log` beside the ChangeSet, and the end of it shows on the home screen when the command fails. Without `--maker`, such a meeting cannot be processed.
+A meeting without a `changeset.json` needs `--maker`, a command the app runs for each such meeting. The app replaces `{meeting}` with the meeting's folder, `{out}` with the path the ChangeSet must be written to, and `{dir}` with the folder that holds `{out}`. It runs the command without a shell, from the repo root. Its output goes to `maker.log` beside the ChangeSet. When the command fails, the end of it shows on the home screen, and the row links to the whole `maker.log`, which the app keeps. Without `--maker`, such a meeting cannot be processed.
 
 To run the real maker, `meeting process`:
 

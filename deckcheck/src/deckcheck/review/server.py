@@ -84,6 +84,7 @@ class App:
             ("POST", re.compile(MEETING + r"/apply"), self.apply),
             ("GET", re.compile(MEETING + r"/render/(?P<side>old|new)/slide-(?P<n>[1-9][0-9]{0,3})\.png"), self.png),
             ("GET", re.compile(MEETING + r"/final\.pptx"), self.final),
+            ("GET", re.compile(MEETING + r"/maker\.log"), lambda body, mid: (200, File(reviews.maker_log(mid), "text/plain" + TEXT))),
         ]
 
     def static(self, body: bytes, file: str) -> Reply:
@@ -158,6 +159,7 @@ def row_json(row: Row) -> dict:
         "maker": {"label": row.maker.label, "simulated": row.maker.simulated} if row.maker else None,
         "state": state_json(row.state),
         "fonts": [{"font": font, "family": family} for font, family in row.fonts],
+        "log": f"/api/meetings/{m.id}/maker.log" if row.log else None,
     }
 
 

@@ -23,7 +23,7 @@ from deckcheck.changeset import Invalid, Problem, Review, apply, check, execute,
 from deckcheck.changeset.model import Decision, Edited
 from deckcheck.cli import write_atomic
 from deckcheck.fix import plural
-from deckcheck.review.maker import Maker
+from deckcheck.review.maker import LOG, Maker
 
 Origin = Literal["evals", "private"]
 Step = Literal["making", "executing", "rendering"]
@@ -95,6 +95,7 @@ class Row:
     maker: Maker | None
     state: State
     fonts: tuple[tuple[str, str], ...]
+    log: bool
 
 
 @dataclass(frozen=True)
@@ -219,6 +220,10 @@ class _Workdir:
         return self.dir / "applied.json"
 
     @property
+    def log(self) -> Path:
+        return self.dir / LOG
+
+    @property
     def renders(self) -> Path:
         return self.dir / "render"
 
@@ -282,7 +287,7 @@ class Reviews:
             raise Conflict("this meeting has no changeset.json; start the server with --maker to process it")
         with self._lock:
             idle = mid not in self._jobs
-            start = idle and (again or not _Workdir.of(meeting).dir.is_dir())
+            start = idle and (again or not _Workdir.of(meeting).changeset.is_file())
             if start:
                 self._failed.pop(mid, None)
                 job = self._jobs[mid] = _Job()
@@ -348,6 +353,9 @@ class Reviews:
     def slide_png(self, mid: str, side: Side, n: int) -> Path:
         return _Workdir.of(find(mid)).render(side) / f"slide-{n}.png"
 
+    def maker_log(self, mid: str) -> Path:
+        return _Workdir.of(find(mid)).log
+
     def final_pptx(self, mid: str) -> Path:
         work = _Workdir.of(find(mid))
         if work.final() is None:
@@ -356,7 +364,7 @@ class Reviews:
 
     def _row(self, meeting: Meeting) -> Row:
         work = _Workdir.of(meeting)
-        return Row(meeting, self._maker_for(meeting), self._state(meeting, work), work.fonts())
+        return Row(meeting, self._maker_for(meeting), self._state(meeting, work), work.fonts(), work.log.is_file())
 
     def _state(self, meeting: Meeting, work: _Workdir) -> State:
         with self._lock:
@@ -411,6 +419,10 @@ class Reviews:
         except Exception as e:
             failed = Failed(str(e) or type(e).__name__)
         finally:
+            if failed and build.log.is_file():
+                with self._meeting_lock(meeting.id):
+                    work.dir.mkdir(parents=True, exist_ok=True)
+                    os.replace(build.log, work.log)
             shutil.rmtree(build.dir, ignore_errors=True)
             with self._lock:
                 del self._jobs[meeting.id]
@@ -448,7 +460,8 @@ def _converge() -> None:
 def _refused(meeting: Meeting, e: Invalid) -> Failed:
     message = f"The engine refused the ChangeSet: {plural(len(e.problems), 'problem', 'problems')}."
     if any(p.where == "source.path" for p in e.problems):
-        message += f" The source deck is missing; {CORPUS}."
+        fix = CORPUS if meeting.origin == "evals" else f"put the deck as it stood before the meeting at {meeting.dir}/before.pptx"
+        message += f" The source deck is missing; {fix}."
     return Failed(message, e.problems)
 
 
