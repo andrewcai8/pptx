@@ -399,8 +399,12 @@ def _locate_fill(pkg: Package, deck: slides.Deck, ctx: Context, op: FillPlacehol
 def _slide(deck: slides.Deck, slide_id: int, field: str) -> slides.SourceSlide:
     slide = deck.slide(slide_id)
     if slide is None:
-        raise Miss(field, f"no slide {slide_id}; slide ids: {_list(f'{s.id} (slide {s.index})' for s in deck.slides)}")
+        raise Miss(field, _no_slide(deck, slide_id))
     return slide
+
+
+def _no_slide(deck: slides.Deck, slide_id: int) -> str:
+    return f"no slide {slide_id}; slide ids: {_list(f'{s.id} (slide {s.index})' for s in deck.slides)}"
 
 
 def _shape(pkg: Package, slide: slides.SourceSlide, shape_id: int) -> etree._Element:
@@ -453,11 +457,16 @@ def _clip(s: str, n: int = 120) -> str:
 def _conflicts(cs: ChangeSet, deck: slides.Deck, targets: Mapping[str, Target]) -> list[Problem]:
     """Judged over every change whatever its decision, so any subset a reviewer keeps is conflict-free."""
     problems: list[Problem] = []
-    first: dict[str, int] = {}
-    for i, c in enumerate(cs.changes):
-        if c.id in first:
-            problems.append(Problem(f"{c.id} id", f"changes[{first[c.id]}] and changes[{i}] share this id"))
-        first.setdefault(c.id, i)
+    for kind, items in (("changes", cs.changes), ("asks", cs.asks), ("flags", cs.flags), ("held", cs.held)):
+        first: dict[str, int] = {}
+        for i, item in enumerate(items):
+            if item.id in first:
+                problems.append(Problem(f"{item.id} id", f"{kind}[{first[item.id]}] and {kind}[{i}] share this id"))
+            first.setdefault(item.id, i)
+    for item in (*cs.flags, *cs.held):
+        for slide_id in item.slides:
+            if deck.slide(slide_id) is None:
+                problems.append(Problem(f"{item.id} slides", _no_slide(deck, slide_id)))
     asks = [a.id for a in cs.asks]
     for c in cs.changes:
         if c.ask_id not in asks:

@@ -22,6 +22,9 @@ from deckcheck.changeset.model import SCHEMA_DIR, schemas
 
 TITLE_AND_CONTENT, TITLE_ONLY = 1, 5
 REF = {"t": "00:01:00", "speaker": "Ana Ruiz", "quote": "Use the new figures."}
+ASK = {"id": "a1", "text": "Refresh the figures.", "refs": [REF]}
+FLAG = {"id": "f1", "question": "Which year do the prices start?", "slides": [256], "refs": [REF]}
+HELD = {"id": "h1", "text": "Keep the outlook wording.", "slides": [256], "refs": [REF]}
 LABEL = (
     '<a:fld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" id="{00000000-0000-0000-0000-000000000001}"'
     " type=\"datetime'''+''''9''''%'''\"><a:rPr lang=\"en-US\" b=\"1\"/><a:t>+9%</a:t></a:fld>"
@@ -89,12 +92,13 @@ def change(cid: str, op: dict, decision: str | dict | None = None, **extra) -> d
     return c
 
 
-def changeset(deck: Path, changes: list[dict], name: str = "changeset.json", **source) -> Path:
+def changeset(deck: Path, changes: list[dict], name: str = "changeset.json", lists: dict | None = None, **source) -> Path:
     doc = {
         "meeting": {"title": "Pricing review", "date": "2026-10-01"},
         "source": {"path": str(deck), "sha256": sha(deck), **source},
-        "asks": [{"id": "a1", "text": "Refresh the figures.", "refs": [REF]}],
+        "asks": [ASK],
         "changes": changes,
+        **(lists or {}),
     }
     path = deck.parent / name
     path.write_text(json.dumps(doc, indent=2))
@@ -436,6 +440,20 @@ def bad_json(deck: Path) -> Path:
             "'insert_paragraph', 'set_cell', 'set_chart_value', 'add_slide', 'fill_placeholder', 'delete_slide', 'move_slide'",
         ),
         (lambda d: changeset(d, [change("c1", REVENUE), change("c2", {**FILL, "slide": "c1"})]), "c2 op.slide: c1 is a replace_text change, not an add_slide"),
+        (
+            lambda d: changeset(d, [change("c1", REVENUE)], lists={"flags": [{**FLAG, "slides": [256, 999]}]}),
+            "f1 slides: no slide 999; slide ids: 256 (slide 1), 257 (slide 2), 258 (slide 3)",
+        ),
+        (
+            lambda d: changeset(d, [change("c1", REVENUE)], lists={"held": [{**HELD, "slides": [998]}]}),
+            "h1 slides: no slide 998; slide ids: 256 (slide 1), 257 (slide 2), 258 (slide 3)",
+        ),
+        (
+            lambda d: changeset(d, [change("c1", REVENUE)], lists={"asks": [ASK, {**ASK, "text": "Again."}]}),
+            "a1 id: asks[0] and asks[1] share this id",
+        ),
+        (lambda d: changeset(d, [change("c1", REVENUE)], lists={"flags": [FLAG, FLAG]}), "f1 id: flags[0] and flags[1] share this id"),
+        (lambda d: changeset(d, [change("c1", REVENUE)], lists={"held": [HELD, HELD]}), "h1 id: held[0] and held[1] share this id"),
     ],
     ids=[
         "unknown-slide",
@@ -458,6 +476,11 @@ def bad_json(deck: Path) -> Path:
         "malformed-json",
         "unknown-op-kind",
         "fill-names-a-non-add",
+        "flag-names-a-missing-slide",
+        "held-names-a-missing-slide",
+        "duplicate-ask-ids",
+        "duplicate-flag-ids",
+        "duplicate-held-ids",
     ],
 )
 def test_a_bad_changeset_names_each_problem_and_exits_1(deck: Path, capsys: pytest.CaptureFixture[str], write, problem) -> None:
