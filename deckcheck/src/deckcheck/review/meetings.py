@@ -7,7 +7,6 @@ import json
 import os
 import re
 import shutil
-import tempfile
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -17,7 +16,7 @@ from typing import Literal
 
 from pptx.oxml.ns import qn
 
-from deckcheck.changeset import Invalid, Problem, Review, apply, execute, load, review, slides
+from deckcheck.changeset import Invalid, Problem, Review, apply, check, execute, load, parse, review, slides
 from deckcheck.changeset.model import Decision, Edited
 from deckcheck.cli import write_atomic
 from deckcheck.fix import plural
@@ -285,7 +284,9 @@ class Reviews:
                 if c["id"] in updates:
                     _set_decision(c, updates[c["id"]])
             if changes != before:
-                _write_checked(work.changeset, raw)
+                text = json.dumps(raw, indent=2, ensure_ascii=False) + "\n"
+                _check(text, work.changeset)
+                write_atomic(work.changeset, text.encode())
             return {c["id"]: _decision(c) for c in changes}, work.final()
 
     def apply(self, mid: str) -> Final:
@@ -429,16 +430,13 @@ def _set_decision(change: dict, decision: Decision) -> None:
         change["decision"] = decision
 
 
-def _write_checked(path: Path, raw: dict) -> None:
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".part")
+def _check(text: str, path: Path) -> None:
+    cs = parse(text)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(json.dumps(raw, indent=2, ensure_ascii=False) + "\n")
-        load(Path(tmp))
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+        source = Path(cs.source.path).read_bytes()
+    except OSError as e:
+        raise Invalid([Problem("source.path", f"cannot read {cs.source.path}: {e.strerror}")]) from e
+    check(cs, source, path)
 
 
 def _sha(data: bytes) -> str:

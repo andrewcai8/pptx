@@ -218,7 +218,14 @@ def test_processing_a_ready_meeting_again_needs_asking(repo: Path, app: Client) 
     assert app.settle("evals/demo")["state"] == {"is": "ready", "decided": 0, "total": 5, "applied": False}
 
 
-def test_a_decision_is_written_to_the_working_changeset_only(repo: Path, app: Client) -> None:
+@pytest.fixture
+def umask_022() -> Iterator[None]:
+    old = os.umask(0o022)
+    yield
+    os.umask(old)
+
+
+def test_a_decision_is_written_to_the_working_changeset_only(repo: Path, app: Client, umask_022: None) -> None:
     committed = (repo / "evals/demo/changeset.json").read_bytes()
     app.ready()
 
@@ -226,8 +233,10 @@ def test_a_decision_is_written_to_the_working_changeset_only(repo: Path, app: Cl
         200,
         {"decisions": {**PENDING, "c1": "keep_old", "c2": {"edited": "Costs fall 3%"}}, "final": None},
     )
-    working = json.loads((repo / "artifacts/review/evals/demo/changeset.json").read_text())
+    path = repo / "artifacts/review/evals/demo/changeset.json"
+    working = json.loads(path.read_text())
     assert [c.get("decision") for c in working["changes"]] == ["keep_old", {"edited": "Costs fall 3%"}, None, None, None]
+    assert oct(path.stat().st_mode & 0o777) == "0o644"
     assert (repo / "evals/demo/changeset.json").read_bytes() == committed
     assert app.decide(c1="pending")[1]["decisions"]["c1"] == "pending"
     assert app.get("/api/meetings/evals/demo")[1]["review"]["changes"][1]["decision"] == {"edited": "Costs fall 3%"}
