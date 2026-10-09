@@ -541,7 +541,7 @@ def _locate_cell(pkg: Package, deck: slides.Deck, op: SetCell) -> CellAt:
     if op.col >= len(cells):
         raise Miss("op.col", f"row {op.row} has {len(cells)} cells, numbered 0 to {len(cells) - 1}")
     tc = cells[op.col]
-    if tc.get("hMerge") in ("1", "true") or tc.get("vMerge") in ("1", "true"):
+    if text.merged(tc):
         raise Miss("op.col", f"row {op.row} col {op.col} is merged into a neighbouring cell; set that cell")
     if any("\n" in text.paragraph_text(p) for p in text.cell_paragraphs(tc)):
         raise Miss("op", f'row {op.row} col {op.col} holds a line feed ("\\n") inside a paragraph, so "\\n" cannot mark where its paragraphs split')

@@ -244,6 +244,10 @@ def cell_paragraphs(tc: etree._Element) -> list[etree._Element]:
     return body.findall(qn("a:p")) if body is not None else []
 
 
+def merged(tc: etree._Element) -> bool:
+    return tc.get("hMerge") in ("1", "true") or tc.get("vMerge") in ("1", "true")
+
+
 def cell_text(tc: etree._Element) -> str:
     return "\n".join(paragraph_text(p) for p in cell_paragraphs(tc))
 

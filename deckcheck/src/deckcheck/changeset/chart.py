@@ -47,26 +47,44 @@ def number_text(value: float) -> str:
     return str(int(value)) if value.is_integer() and abs(value) < 1e15 else repr(value)
 
 
-def locate_point(pkg: Package, slide_part: str, frame: etree._Element, series: int, point: int) -> Point:
+def chart_part(pkg: Package, slide_part: str, frame: etree._Element) -> str | None:
     ref = frame.find(f".//{{{C_NS}}}chart")
-    chart = pkg.related(slide_part, ref.get(R_ID)) if ref is not None else None
+    return pkg.related(slide_part, ref.get(R_ID)) if ref is not None else None
+
+
+def series_of(space: etree._Element) -> list[etree._Element]:
+    return list(space.iter(f"{{{C_NS}}}ser"))
+
+
+def cached_points(num_ref: etree._Element) -> dict[int, etree._Element]:
+    return {int(pt.get("idx")): pt for pt in num_ref.iterfind(f"{{{C_NS}}}numCache/{{{C_NS}}}pt")}
+
+
+def cached_value(pt: etree._Element) -> float | None:
+    try:
+        return float(pt.findtext(f"{{{C_NS}}}v"))
+    except (TypeError, ValueError):
+        return None
+
+
+def locate_point(pkg: Package, slide_part: str, frame: etree._Element, series: int, point: int) -> Point:
+    chart = chart_part(pkg, slide_part, frame)
     if chart is None:
         raise ChartError("the shape is not a chart")
     space = pkg.xml(chart)
-    sers = list(space.iter(f"{{{C_NS}}}ser"))
+    sers = series_of(space)
     if series >= len(sers):
         raise ChartError(f"the chart has {len(sers)} series, numbered 0 to {len(sers) - 1}")
     num_ref = sers[series].find(f"{{{C_NS}}}val/{{{C_NS}}}numRef")
     if num_ref is None:
         raise ChartError(f"series {series} has no numeric values (c:val/c:numRef)")
-    pts = {int(pt.get("idx")): pt for pt in num_ref.iterfind(f"{{{C_NS}}}numCache/{{{C_NS}}}pt")}
+    pts = cached_points(num_ref)
     if point not in pts:
         raise ChartError(f"series {series} has no point {point}; its points are {', '.join(map(str, sorted(pts)))}")
     cache = pts[point].find(f"{{{C_NS}}}v")
-    try:
-        value = float(cache.text)
-    except (TypeError, ValueError):
-        raise ChartError(f"series {series} point {point} caches {cache.text!r}, not a number") from None
+    value = cached_value(pts[point])
+    if value is None:
+        raise ChartError(f"series {series} point {point} caches {pts[point].findtext(f'{{{C_NS}}}v')!r}, not a number")
     cell = _cell(num_ref.findtext(f"{{{C_NS}}}f") or "", point)
     rid, workbook = _workbook(pkg, chart, space)
     try:
