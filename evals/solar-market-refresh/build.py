@@ -133,6 +133,12 @@ def chart_rebuilt_with_named_series(d: DeckEdit) -> None:
     _rebuild_chart(d, (410, 2000, 11000), ("2022", "2027", "Potential"), name="Market size ($m)")
 
 
+@variant(base=good, intent=("c1", "keeps its bars in their source order"))
+def chart_bars_swapped(d: DeckEdit) -> None:
+    """Slide 10's chart is rebuilt with the 2027 and full-potential bars swapped, so the bar under 2027 draws 11000."""
+    _rebuild_chart(d, (410, 11000, 2000), ("2022", "2027", "Potential"))
+
+
 @variant(base=good, fails={("lost", 10)})
 def chart_2027_bar_overwritten_with_copy_off_slide(d: DeckEdit) -> None:
     """The 2027 bar is overwritten with 410, and a correct copy of the chart is parked past the slide's right edge."""

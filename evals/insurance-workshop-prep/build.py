@@ -333,3 +333,10 @@ def footnote_2_kept_in_hidden_box(d: DeckEdit) -> None:
 def curve_graphic_hidden(d: DeckEdit) -> None:
     """The census curve graphic stays in place but is hidden, so the slide shows no curve."""
     shape(d, "Object 12")._element[0][0].set("hidden", "1")
+
+
+@variant(intent=("c1", "parked at or past the slide's edge"))
+def footnote_2_kept_just_below_slide(d: DeckEdit) -> None:
+    """Footnote 2 is overwritten with the member survey, and its old text sits in a top-anchored box whose top is 0.01in above the slide's bottom edge."""
+    height = d.slide(5).part.package.presentation_part.presentation.slide_height
+    survey_over_footnote_2(d, top=height - Inches(0.01))
