@@ -1,9 +1,3 @@
-"""The ChangeSet wire format, shared by the maker that writes it, this engine, and the review app.
-
-The models are the one definition of the format. `schemas()` emits the JSON Schemas committed next to this file,
-which the other pieces derive their types from.
-"""
-
 from __future__ import annotations
 
 import json

@@ -74,8 +74,8 @@ def test_decisions_replay_each_fixture_onto_its_source_byte_for_byte(name: str, 
     run(["apply", decided(name, "keep_new", tmp_path / "new.json"), "--out", new], capsys)
     run(["apply", tmp_path / "new.json", "--out", again], capsys)
 
-    assert old.read_bytes() == source.read_bytes()
     # Equal bytes for an edited deck hold for one zlib build: untouched members are recompressed.
+    assert old.read_bytes() == source.read_bytes()
     assert new.read_bytes() == executed.read_bytes() == again.read_bytes()
     assert (sha(source), sha(executed)) == (source_sha, executed_sha)
 

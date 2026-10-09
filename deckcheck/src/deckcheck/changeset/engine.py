@@ -5,6 +5,7 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import IntEnum
 from pathlib import Path
 from typing import ClassVar, Literal
 
@@ -77,8 +78,6 @@ FIELD_NOTE = "a think-cell label: its field format is rewritten too, so a refres
 
 @dataclass(frozen=True)
 class Item:
-    """One change as checked against the source deck. Everything here is read from the source, not the maker."""
-
     change: Change
     target: Target
     slide: int | str
@@ -94,8 +93,6 @@ class Item:
 
 @dataclass(frozen=True)
 class Claim:
-    """Something only one change may write, keyed for comparison, and how a second claimant's problem reads."""
-
     key: tuple
     field: str
     taken: str
@@ -103,8 +100,6 @@ class Claim:
 
 @dataclass
 class Build:
-    """The package _build writes into, and what the slide writes collect for the final slide list."""
-
     pkg: Package
     deck: slides.Deck
     rids: dict[int, str]
@@ -113,12 +108,14 @@ class Build:
     tails: dict[etree._Element, etree._Element]
 
 
-class Target(ABC):
-    """What one op writes, found on the pristine source deck by locate, the one dispatch on the op. Each kind
-    writes itself in its phase, describes itself for check, and names the slide it touches and what it claims,
-    so a kind cannot be located and then silently skipped."""
+class Phase(IntEnum):
+    TEXT = 0
+    SLIDES = 1
+    FILLS = 2
 
-    phase: ClassVar[int] = 1
+
+class Target(ABC):
+    phase: ClassVar[Phase] = Phase.SLIDES
 
     @abstractmethod
     def write(self, build: Build) -> None: ...
@@ -131,12 +128,10 @@ class Target(ABC):
 
     @property
     def touches(self) -> slides.SourceSlide | None:
-        """The source slide this writes on or moves, which no change may delete."""
         return None
 
     @property
     def follows(self) -> slides.SourceSlide | None:
-        """The source slide this places a slide after, which no change may delete."""
         return None
 
     def claim(self) -> Claim | None:
@@ -166,11 +161,9 @@ class TextAt(OnShape):
     old: str
     new: str
     splice: text.Splice
-    phase: ClassVar[int] = 0
+    phase: ClassVar[Phase] = Phase.TEXT
 
     def rank(self) -> tuple[int, int]:
-        # Quotes in one paragraph never overlap, so their starts order them. Splice offsets do not: two abutting
-        # quotes can both trim to an insertion at their shared edge, and the later quote's must be written first.
         return self.phase, -self.at
 
     def write(self, build: Build) -> None:
@@ -267,13 +260,11 @@ class NewSlide(Target):
 
 @dataclass(frozen=True)
 class PlaceholderAt(Target):
-    """A fill writes on a slide an earlier phase adds, so it writes last."""
-
     add: NewSlide
     add_id: str
     placeholder: slides.Placeholder
     paragraphs: tuple[Paragraph, ...]
-    phase: ClassVar[int] = 2
+    phase: ClassVar[Phase] = Phase.FILLS
 
     def write(self, build: Build) -> None:
         sp = next(s for s in slides.shapes(slides.shape_tree(build.pkg.xml(self.add.part))) if slides.shape_id(s) == self.placeholder.id)
@@ -358,9 +349,6 @@ class Applied:
 
 @dataclass(frozen=True)
 class Context:
-    """What locating one op needs beyond the deck: every change's op and each add_slide's ordinal among all
-    add_slide changes, so an added slide has the same id and part whichever adds a reviewer keeps."""
-
     ops: Mapping[str, Op]
     ordinals: Mapping[str, int]
 
@@ -473,8 +461,6 @@ def _decision_problems(pkg: Package, deck: slides.Deck, ctx: Context, change: Ch
 
 
 def locate(pkg: Package, deck: slides.Deck, ctx: Context, cid: str, op: Op) -> Target:
-    """Find what `op` writes on a pristine package, or raise Miss naming the field at fault. check and _build
-    both call this, so a ChangeSet that checks cannot fail to build."""
     match op:
         case ReplaceText():
             return _locate_text(pkg, deck, op)
@@ -631,7 +617,6 @@ def _shape(pkg: Package, slide: slides.SourceSlide, shape_id: int, kind: ShapeKi
 
 
 def _describe(shape: etree._Element, kind: ShapeKind) -> str | None:
-    """How a bad shape id's message lists `shape` as a candidate, or None when an op of `kind` cannot address it."""
     name = f"{slides.shape_id(shape)} {slides.shape_name(shape)!r}"
     match kind:
         case "table":
@@ -672,7 +657,6 @@ def _list(items) -> str:
 
 
 def _references(cs: ChangeSet, deck: slides.Deck) -> list[Problem]:
-    """Ids that repeat, and ids that name nothing: an ask_id, or a flag's or held item's slides."""
     problems: list[Problem] = []
     for kind, items in (("changes", cs.changes), ("asks", cs.asks), ("flags", cs.flags), ("held", cs.held)):
         first: dict[str, int] = {}
@@ -692,7 +676,6 @@ def _references(cs: ChangeSet, deck: slides.Deck) -> list[Problem]:
 
 
 def _conflicts(located: Sequence[tuple[Change, Target]]) -> list[Problem]:
-    """Judged over every change whatever its decision, so any subset a reviewer keeps is conflict-free."""
     deleted: dict[int, str] = {}
     for c, t in located:
         if isinstance(t, SlideAt):
@@ -764,8 +747,6 @@ def apply(checked: Checked) -> Applied:
 
 
 def _build(checked: Checked, ops: Sequence[tuple[str, Op]]) -> bytes:
-    """The one write path: a pure function of the source bytes and the ops. Every target is located on the
-    pristine trees before anything is written, so no write shifts another change's address."""
     pkg = Package(checked.source)
     deck = slides.read_deck(pkg)
     ctx = Context.of(checked.changeset)

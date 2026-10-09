@@ -63,13 +63,10 @@ def _canonical(xml: etree._Element) -> bytes:
 
 
 class PartError(ValueError):
-    """The package, or a part it names, cannot be read: not a zip, missing, or not XML."""
+    pass
 
 
 class Package:
-    """An OPC zip (a deck, or a workbook inside one) held in memory. Parts parse on first use and are
-    written only when their canonical XML changed, so reading a part never changes the output."""
-
     def __init__(self, data: bytes) -> None:
         self.source = data
         try:
@@ -120,7 +117,6 @@ class Package:
         self._override(part, content_type)
 
     def rels(self, part: str) -> etree._Element:
-        """The part's relationships; an empty, unstored element when it has none, so a read never adds a part."""
         name = rels_name(part)
         return self.xml(name) if self.has(name) else _no_rels()
 

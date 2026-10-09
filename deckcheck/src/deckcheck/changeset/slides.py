@@ -65,8 +65,6 @@ class Layout:
 
 @dataclass(frozen=True)
 class Deck:
-    """The source deck's slides and the layouts of the masters its slides use."""
-
     presentation: str
     slides: tuple[SourceSlide, ...]
     layouts: tuple[Layout, ...]
@@ -181,8 +179,6 @@ def _placeholder(ph: Placeholder) -> etree._Element:
 
 
 def final_order(source: Sequence[int], deleted: Collection[int], placements: Sequence[tuple[int, int | None]]) -> list[int]:
-    """Source order minus deletions, then each placed slide (added or moved) after its anchor, wherever the
-    anchor ends up. Several slides placed after one anchor follow it in ChangeSet order."""
     placed = {item for item, _ in placements}
     order = [s for s in source if s not in deleted and s not in placed]
     tail: dict[int | None, int] = {}
@@ -201,9 +197,7 @@ def final_order(source: Sequence[int], deleted: Collection[int], placements: Seq
     return order
 
 
-def write_order(pkg: Package, deck: Deck, order: Sequence[tuple[int, str]], joins: Mapping[int, int | None]) -> None:
-    """Rewrite the slide list to `order`, unrelate the slides it drops and remove them from custom shows and
-    sections. A placed slide joins its anchor's section."""
+def write_order(pkg: Package, deck: Deck, order: Sequence[tuple[int, str]], anchors: Mapping[int, int | None]) -> None:
     root = pkg.xml(deck.presentation)
     lst = root.find(qn("p:sldIdLst"))
     existing = {int(s.get("id")): s for s in lst}
@@ -224,10 +218,10 @@ def write_order(pkg: Package, deck: Deck, order: Sequence[tuple[int, str]], join
     for sld in root.iterfind(f"{qn('p:custShowLst')}/{qn('p:custShow')}/{qn('p:sldLst')}/{qn('p:sld')}"):
         if sld.get(R_ID) not in kept:
             sld.getparent().remove(sld)
-    _sections(root, [sid for sid, _ in order], joins)
+    _sections(root, [sid for sid, _ in order], anchors)
 
 
-def _sections(root: etree._Element, order: Sequence[int], joins: Mapping[int, int | None]) -> None:
+def _sections(root: etree._Element, order: Sequence[int], anchors: Mapping[int, int | None]) -> None:
     lst = next((e[0] for e in root.iterfind(f"{qn('p:extLst')}/{qn('p:ext')}") if e.get("uri") == SECTIONS and len(e)), None)
     if lst is None:
         return
@@ -237,8 +231,8 @@ def _sections(root: etree._Element, order: Sequence[int], joins: Mapping[int, in
     home = {int(s.get("id")): sec for sec in sections for s in sec.iterfind(f"{{{P14}}}sldIdLst/{{{P14}}}sldId")}
     assigned: dict[int, etree._Element] = {}
     for sid in order:
-        if sid in joins:
-            anchor = joins[sid]
+        if sid in anchors:
+            anchor = anchors[sid]
             assigned[sid] = assigned.get(anchor, sections[0]) if anchor is not None else sections[0]
         else:
             assigned[sid] = home.get(sid, sections[0])

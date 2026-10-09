@@ -35,8 +35,6 @@ class Cell:
 
 @dataclass(frozen=True)
 class Point:
-    """One chart point: its cached value in the chart part and its cell in the embedded workbook."""
-
     chart: str
     cache: etree._Element
     value: float
@@ -127,7 +125,6 @@ XLSX_HELD = {"s": "holds text", "str": "holds text", "inlineStr": "holds text", 
 
 
 def _check_cell(blob: bytes, part: str, cell: Cell) -> None:
-    """One rule for both workbook formats: the cell exists and holds a number, so writing one keeps it true."""
     if part.endswith(".xlsb"):
         values = _xlsb_values(blob)
         if cell.sheet not in values:
@@ -194,7 +191,6 @@ def _xlsb_values(blob: bytes) -> dict[str, dict[tuple[int, int], object]]:
 
 
 def set_point(pkg: Package, point: Point, value: float) -> None:
-    """locate_point proved the cell holds a number, so it has a <v> and no type that contradicts one."""
     point.cache.text = number_text(value)
     part = pkg.related(point.chart, point.workbook_rid)
     if part.endswith(".xlsb"):

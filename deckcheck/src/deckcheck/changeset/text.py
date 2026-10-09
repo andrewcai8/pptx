@@ -16,8 +16,6 @@ LINE_BREAK = "\v"
 
 @dataclass(frozen=True)
 class Atom:
-    """One content child of a paragraph and the characters it holds in the paragraph's text."""
-
     el: etree._Element
     lo: int
     hi: int
@@ -29,9 +27,6 @@ class Atom:
 
 @dataclass(frozen=True)
 class Splice:
-    """The smallest changing range of a quote and its new text, in the paragraph's source coordinates, so new
-    characters land in the run that held the characters they replace and keep its formatting."""
-
     start: int
     end: int
     new: str
@@ -68,12 +63,8 @@ def occurrences(text: str, quote: str) -> list[int]:
 
 
 # think-cell writes a label as a datetime field whose custom format is the label's characters, each quoted
-# with '' padding. Measured on the corpus: in 1568 of 1568 datetime fields every format character is quoted and
-# the quoted characters spell the field text. A field that does not is a real date or a slide number, which no
-# edit may rewrite.
+# with '' padding. PowerPoint reads any unquoted format character as a date code.
 def decode(kind: str) -> str | None:
-    """The text a datetime field's format spells, or None when a character sits outside the quotes, where
-    PowerPoint reads it as a date code."""
     if not kind.startswith("datetime"):
         return None
     out, quoted = [], False
@@ -124,8 +115,6 @@ def plan_splice(p: etree._Element, at: int, old: str, new: str) -> Splice:
 
 @dataclass(frozen=True)
 class Write:
-    """What one atom gets: its characters [a, b) replaced by `piece`."""
-
     atom: Atom
     a: int
     b: int
@@ -133,9 +122,6 @@ class Write:
 
 
 def _writes(xs: Sequence[Atom], s: Splice) -> list[Write]:
-    """The atoms a splice writes. An insertion goes into the run or literal field holding the character before
-    it; a replacement into every atom it touches, with the new text in the first. plan_splice checks these
-    writes and write_splice makes them, so the two cannot disagree."""
     if s.start == s.end:
         target = _insertion_target(xs, s.start)
         return [Write(target, s.start - target.lo, s.start - target.lo, s.new)] if target and s.new else []
@@ -174,9 +160,6 @@ def write_splice(p: etree._Element, s: Splice) -> None:
 
 
 def retype(kind: str, a: int, b: int, piece: str) -> str:
-    """Rewrite a literal datetime field's format so its characters spell the new text, keeping the quote
-    skeleton: substitute in place when the length holds, else insert or delete next to a neighbour. A field
-    with no characters has no quote to write into, so its new characters get one of their own."""
     head, body = kind[:8], kind[8:]
     pos = [i for i, c in enumerate(body) if c != "'"]
     if not pos:
@@ -228,7 +211,6 @@ def _runs(text: str, props: etree._Element | None) -> list[etree._Element]:
 
 
 def new_paragraph(anchor: etree._Element, text: str) -> etree._Element:
-    """A paragraph styled like `anchor`: its paragraph properties and its first run's properties."""
     p = OxmlElement("a:p")
     ppr = anchor.find(qn("a:pPr"))
     if ppr is not None:

@@ -254,8 +254,8 @@ def test_decisions_replay_onto_the_source_byte_for_byte(deck: Path, tmp_path: Pa
     run(["apply", changeset(deck, decided("keep_new"), "new.json"), "--out", new], capsys)
     run(["apply", changeset(deck, decided("keep_new"), "new.json"), "--out", again], capsys)
 
-    assert old.read_bytes() == deck.read_bytes()
     # Equal bytes for an edited deck hold for one zlib build: untouched members are recompressed.
+    assert old.read_bytes() == deck.read_bytes()
     assert new.read_bytes() == executed.read_bytes() == again.read_bytes()
     assert (sha(deck), sha(executed)) == (source_sha, executed_sha)
     assert executed.read_bytes() != deck.read_bytes()
@@ -569,13 +569,11 @@ def bad_json(deck: Path) -> Path:
 
 
 def unquoted_label(deck: Path) -> bytes:
-    """Slide 258 with its label's 9 outside the format's quotes, where PowerPoint reads it as a date code."""
     with zipfile.ZipFile(deck) as z:
         return z.read("ppt/slides/slide3.xml").replace(b"datetime'''+''''9''''%'''", b"datetime'+'9'%'")
 
 
 def date_field(deck: Path) -> Path:
-    """The deck with a date field on slide 258 whose format is longer than a message should print."""
     prs = Presentation(str(deck))
     p = prs.slides[2].shapes.add_textbox(Inches(4), Inches(2), Inches(2), Inches(1)).text_frame.paragraphs[0]
     p._p.append(parse_xml(LABEL.replace("'''+''''9''''%'''", "yyyy" + "''''" * 70).replace("+9%", "2025")))
@@ -584,8 +582,6 @@ def date_field(deck: Path) -> Path:
 
 
 def first_text(deck: Path, shape_id: int, text: str) -> Path:
-    """The deck with the first a:t of shape `shape_id` on slide 256 set to `text`, such as one holding a literal
-    line feed, which some decks have."""
     prs = Presentation(str(deck))
     shape = next(s for s in prs.slides[0].shapes if s.shape_id == shape_id)
     shape._element.find(f".//{qn('a:t')}").text = text
@@ -594,7 +590,6 @@ def first_text(deck: Path, shape_id: int, text: str) -> Path:
 
 
 def rezip(deck: Path, part: str, body: bytes | None) -> Path:
-    """The deck with `part` replaced by `body`, or left out when `body` is None."""
     data = deck.read_bytes()
     with zipfile.ZipFile(io.BytesIO(data)) as src, zipfile.ZipFile(deck, "w") as dst:
         for info in src.infolist():
