@@ -46,6 +46,7 @@ class Body(BaseModel):
 
 class ProcessBody(Body):
     again: bool = False
+    consent: bool = False
 
 
 class DecisionsBody(Body):
@@ -93,7 +94,8 @@ class App:
         return 200, File(WEB / file, STATIC[file])
 
     def process(self, body: bytes, mid: str) -> Reply:
-        return 202, row_json(self.reviews.process(mid, ProcessBody.model_validate_json(body).again))
+        ask = ProcessBody.model_validate_json(body)
+        return 202, row_json(self.reviews.process(mid, ask.again, ask.consent))
 
     def meeting(self, body: bytes, mid: str) -> Reply:
         view = self.reviews.view(mid)

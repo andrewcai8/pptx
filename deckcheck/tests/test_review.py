@@ -113,8 +113,8 @@ class Client:
             time.sleep(0.02)
         return row
 
-    def ready(self, mid: str = "evals/demo") -> dict:
-        assert self.post(f"/api/meetings/{mid}/process")[0] == 202
+    def ready(self, mid: str = "evals/demo", **body: object) -> dict:
+        assert self.post(f"/api/meetings/{mid}/process", body)[0] == 202
         return self.settle(mid)
 
     def decide(self, mid: str = "evals/demo", **decisions: object) -> tuple[int, object]:
@@ -207,7 +207,7 @@ def test_any_folder_name_is_listed_under_an_id_that_maps_back_to_it(repo: Path, 
         ("private/my%20meeting", "my meeting", "Board prep", "2026-10-02"),
     ]
     for mid in ("private/my%20meeting", "private/Q3%20%28draft%29%20%232%20caf%C3%A9"):
-        assert app.ready(mid)["state"] == {"is": "ready", "decided": 0, "total": 5, "applied": False}
+        assert app.ready(mid, consent=True)["state"] == {"is": "ready", "decided": 0, "total": 5, "applied": False}
         assert app.get(f"/api/meetings/{mid}")[0] == 200
     assert (repo / "artifacts/review/private/my meeting/changeset.json").is_file()
     app.decide("private/my%20meeting", c1="keep_new", c2="keep_new", c3="keep_new", add="keep_new", fill="keep_new")
@@ -532,7 +532,7 @@ def test_a_maker_command_writes_the_changeset_of_a_meeting_without_one(repo: Pat
     copy = "import shutil,sys;shutil.copyfile(*sys.argv[1:3]);print(sys.argv[3])"
     app = start(functools.partial(maker_for, command=[sys.executable, "-c", copy, "evals/demo/changeset.json", "{dir}/changeset.json", "{meeting}"]))
 
-    row = app.ready("private/x")
+    row = app.ready("private/x", consent=True)
 
     assert row["maker"] == {"label": f"Maker: {sys.executable} -c '{copy}' evals/demo/changeset.json '{{dir}}/changeset.json' '{{meeting}}'", "simulated": False}
     assert row["state"] == {"is": "ready", "decided": 0, "total": 5, "applied": False}
@@ -540,18 +540,30 @@ def test_a_maker_command_writes_the_changeset_of_a_meeting_without_one(repo: Pat
     assert app.row("evals/demo")["maker"] == SIMULATED
 
 
+def test_a_maker_command_runs_only_with_consent_and_a_replay_needs_none(repo: Path, start) -> None:
+    (repo / "private/meetings/x").mkdir(parents=True)
+    (repo / "private/meetings/x/notes.md").write_text("Board prep\n")
+    app = start(functools.partial(maker_for, command=[sys.executable, "-c", "raise SystemExit(9)"]))
+
+    assert app.post("/api/meetings/private/x/process") == (409, {"error": "the maker sends this meeting to an AI service; confirm that your firm allows it first"})
+    assert app.post("/api/meetings/private/x/process", {"again": True, "consent": False})[0] == 409
+    assert app.row("private/x")["state"] == {"is": "new"}
+    assert not (repo / "artifacts/review/private").exists()
+    assert app.ready()["state"]["is"] == "ready"
+
+
 def test_a_maker_command_that_fails_shows_its_output(repo: Path, start) -> None:
     (repo / "private/meetings/x").mkdir(parents=True)
     (repo / "private/meetings/x/transcript.md").write_text("# Client sync\n")
     app = start(functools.partial(maker_for, command=[sys.executable, "-c", "print('no transcript'); raise SystemExit(3)"]))
 
-    row = app.ready("private/x")
+    row = app.ready("private/x", consent=True)
 
     assert row["state"] == {"is": "failed", "message": "the maker exited with 3: no transcript", "problems": []}
     assert row["log"] == "/api/meetings/private/x/maker.log"
     assert app.get(row["log"]) == (200, b"no transcript\n")
     assert sorted(p.name for p in (repo / "artifacts/review/private").iterdir()) == ["x"]
-    assert app.post("/api/meetings/private/x/process")[1]["state"] == {"is": "processing", "step": "making"}
+    assert app.post("/api/meetings/private/x/process", {"consent": True})[1]["state"] == {"is": "processing", "step": "making"}
 
 
 def test_requests_from_another_site_are_refused(repo: Path, app: Client) -> None:

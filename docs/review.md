@@ -71,7 +71,11 @@ To run the real maker, `meeting process`:
 uv run --project deckcheck review serve --maker 'uv run --project deckcheck meeting process {meeting} --out {dir} --shareable'
 ```
 
-`--shareable` is the ask-first answer from `CLAUDE.md`, so pass it only when the meetings may be shared with an AI service under your firm's policy.
+`--shareable` tells `meeting process` that the user answered the ask-first question in `CLAUDE.md`. The app still asks for each meeting. When a meeting without a `changeset.json` goes to the `--maker` command, **Process meeting** and **Process again** first show this confirm:
+
+> This sends the meeting notes, data and deck to Claude (Anthropic). Only continue if your firm allows sharing this deck with an AI service.
+
+Cancel sends nothing. The server refuses to run the maker unless the page sends that consent. A golden scenario, or any meeting that replays its own `changeset.json`, sends nothing to an AI service, so it skips the confirm.
 
 `deckcheck/src/deckcheck/review/maker.py` holds this seam.
 

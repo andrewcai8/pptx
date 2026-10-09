@@ -280,11 +280,13 @@ class Reviews:
     def row(self, mid: str) -> Row:
         return self._row(find(mid))
 
-    def process(self, mid: str, again: bool = False) -> Row:
+    def process(self, mid: str, again: bool = False, consent: bool = False) -> Row:
         meeting = find(mid)
         maker = self._maker_for(meeting)
         if maker is None:
             raise Conflict("this meeting has no changeset.json; start the server with --maker to process it")
+        if not (maker.simulated or consent):
+            raise Conflict("the maker sends this meeting to an AI service; confirm that your firm allows it first")
         with self._lock:
             idle = mid not in self._jobs
             start = idle and (again or not _Workdir.of(meeting).changeset.is_file())

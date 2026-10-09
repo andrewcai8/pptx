@@ -4,6 +4,8 @@ import { cancelEdit, hideBubble, placeBubble, plainView, refs, showBubble, struc
 import { call, img, meetingUrl, mount, post, render, state, ui } from "./store.js";
 
 const STEPS = { making: "Making changes", executing: "Writing the deck", rendering: "Rendering slides, about 40 s" };
+const AGAIN = "Process this meeting again? Your decisions on it are discarded.";
+const CONSENT = "This sends the meeting notes, data and deck to Claude (Anthropic). Only continue if your firm allows sharing this deck with an AI service.";
 
 const root = document.getElementById("app");
 
@@ -70,8 +72,10 @@ async function refreshMeetings() {
 }
 
 async function processMeeting(m, again) {
-  if (again && !confirm("Process this meeting again? Your decisions on it are discarded.")) return;
-  const { status, body } = await call("POST", `${meetingUrl(m.id)}/process`, again ? { again: true } : {});
+  const consent = m.maker?.simulated === false;
+  const asks = [again && AGAIN, consent && CONSENT].filter(Boolean);
+  if (asks.length > 0 && !confirm(asks.join("\n\n"))) return;
+  const { status, body } = await call("POST", `${meetingUrl(m.id)}/process`, { ...(again && { again }), ...(consent && { consent }) });
   state.notice = status === 202 ? null : body.error ?? `The review server answered ${status}.`;
   if (status === 202) {
     state.mine.add(m.id);
