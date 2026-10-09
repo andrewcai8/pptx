@@ -177,7 +177,9 @@ def test_meetings_list_each_meeting_dir_with_its_maker(repo: Path, app: Client) 
         },
     )
     assert app.post("/api/meetings/private/x/process") == (409, {"error": "this meeting needs the maker, which is not built yet"})
-    assert app.get("/api/meetings/evals/__pycache__")[0] == 404
+    assert app.get("/api/meetings/evals/__pycache__") == (404, {"error": "not found"})
+    assert app.get("/api/meetings/evals/notes") == (404, {"error": "no meeting evals/notes"})
+    assert app.get("/api/meetings/evals/demo.partial") == (404, {"error": "not found"})
 
 
 def test_process_executes_and_renders_both_decks(repo: Path, app: Client) -> None:

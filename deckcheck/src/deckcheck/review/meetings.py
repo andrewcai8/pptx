@@ -30,7 +30,7 @@ Render = Callable[[Path, Path], object]
 
 ROOTS: dict[Origin, Path] = {"evals": Path("evals"), "private": Path("private/meetings")}
 WORK = Path("artifacts/review")
-NAME = re.compile(r"^(?!.*\.(?:partial|discard)$)[A-Za-z0-9][A-Za-z0-9_.-]*$")
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*(?<!\.partial|\.discard)")
 DATE = re.compile(r"^Date:\s*(\d{4}-\d{2}-\d{2})")
 CORPUS = "download the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`"
 
@@ -111,14 +111,18 @@ class Conflict(Exception):
 
 
 def discover() -> list[Meeting]:
-    found = []
-    for origin, root in ROOTS.items():
-        if not root.is_dir():
-            continue
-        for d in sorted(root.iterdir()):
-            if d.is_dir() and NAME.match(d.name) and ((d / "transcript.md").is_file() or (d / "changeset.json").is_file()):
-                found.append(_meeting(origin, d))
-    return found
+    return [_meeting(origin, d) for origin, root in ROOTS.items() if root.is_dir() for d in sorted(root.iterdir()) if _holds_meeting(d)]
+
+
+def find(mid: str) -> Meeting:
+    origin, _, name = mid.partition("/")
+    if origin in ROOTS and NAME.fullmatch(name) and _holds_meeting(d := ROOTS[origin] / name):
+        return _meeting(origin, d)
+    raise Unknown(f"no meeting {mid}")
+
+
+def _holds_meeting(d: Path) -> bool:
+    return bool(NAME.fullmatch(d.name)) and ((d / "transcript.md").is_file() or (d / "changeset.json").is_file())
 
 
 def _meeting(origin: Origin, d: Path) -> Meeting:
@@ -245,10 +249,10 @@ class Reviews:
         return [self._row(m) for m in discover()]
 
     def row(self, mid: str) -> Row:
-        return self._row(self._find(mid))
+        return self._row(find(mid))
 
     def process(self, mid: str, again: bool = False) -> Row:
-        meeting = self._find(mid)
+        meeting = find(mid)
         maker = self._maker_for(meeting)
         if maker is None:
             raise Conflict("this meeting needs the maker, which is not built yet")
@@ -262,9 +266,12 @@ class Reviews:
             threading.Thread(target=self._run, args=(meeting, maker, job), daemon=True).start()
         return self._row(meeting)
 
-    def view(self, mid: str) -> View:
-        meeting = self._find(mid)
-        work = self._ready(meeting)
+    def view(self, mid: str) -> View | Row:
+        meeting = find(mid)
+        row = self._row(meeting)
+        if not isinstance(row.state, Ready):
+            return row
+        work = _Workdir.of(meeting)
         with self._meeting_lock(mid):
             self._idle(mid)
             checked = load(work.changeset)
@@ -272,10 +279,10 @@ class Reviews:
             final = work.final()
             stamp = _sha(f"{doc.executed.sha256} {work.renders.stat().st_mtime_ns}".encode())[:12]
         deck = Presentation(io.BytesIO(checked.source))
-        return View(self._row(meeting), doc, (deck.slide_width, deck.slide_height), stamp, final)
+        return View(row, doc, (deck.slide_width, deck.slide_height), stamp, final)
 
     def decide(self, mid: str, decisions: Mapping[str, Decision]) -> tuple[dict[str, Decision], Final | None]:
-        work = self._ready(self._find(mid))
+        work = self._ready(find(mid))
         with self._meeting_lock(mid):
             self._idle(mid)
             raw = json.loads(work.changeset.read_text(encoding="utf-8-sig"))
@@ -295,7 +302,7 @@ class Reviews:
             return {c["id"]: _decision(c) for c in changes}, work.final()
 
     def apply(self, mid: str) -> Final:
-        work = self._ready(self._find(mid))
+        work = self._ready(find(mid))
         with self._meeting_lock(mid):
             self._idle(mid)
             loaded = work.changeset.read_bytes()
@@ -315,19 +322,13 @@ class Reviews:
             return final
 
     def slide_png(self, mid: str, side: Side, n: int) -> Path:
-        return _Workdir.of(self._find(mid)).render(side) / f"slide-{n}.png"
+        return _Workdir.of(find(mid)).render(side) / f"slide-{n}.png"
 
     def final_pptx(self, mid: str) -> Path:
-        work = _Workdir.of(self._find(mid))
+        work = _Workdir.of(find(mid))
         if work.final() is None:
             raise Unknown("no final deck for the current decisions; apply them first")
         return work.final_pptx
-
-    def _find(self, mid: str) -> Meeting:
-        for m in discover():
-            if m.id == mid:
-                return m
-        raise Unknown(f"no meeting {mid}")
 
     def _row(self, meeting: Meeting) -> Row:
         work = _Workdir.of(meeting)

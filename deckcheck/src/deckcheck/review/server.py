@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from deckcheck.changeset import Invalid, Undecided
 from deckcheck.changeset.model import Decision
-from deckcheck.review.meetings import Conflict, Failed, Final, New, Processing, Ready, Reviews, Row, State, Unknown, View
+from deckcheck.review.meetings import NAME, ROOTS, Conflict, Failed, Final, New, Processing, Ready, Reviews, Row, State, Unknown, View
 
 WEB = Path(__file__).parent / "web"
 TEXT = "; charset=utf-8"
@@ -30,7 +30,7 @@ STATIC = {
 }
 PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 MAX_BODY = 1 << 20
-MEETING = r"/api/meetings/(?P<mid>(?:evals|private)/[A-Za-z0-9][A-Za-z0-9_.-]*)"
+MEETING = rf"/api/meetings/(?P<mid>(?:{'|'.join(ROOTS)})/{NAME.pattern})"
 NOT_FOUND = 404, {"error": "not found"}
 HEADERS = {
     "X-Frame-Options": "DENY",
@@ -95,10 +95,8 @@ class App:
         return 202, row_json(self.reviews.process(mid, ProcessBody.model_validate_json(body).again))
 
     def meeting(self, body: bytes, mid: str) -> Reply:
-        row = self.reviews.row(mid)
-        if not isinstance(row.state, Ready):
-            return 409, row_json(row)
-        return 200, view_json(self.reviews.view(mid))
+        view = self.reviews.view(mid)
+        return (200, view_json(view)) if isinstance(view, View) else (409, row_json(view))
 
     def decide(self, body: bytes, mid: str) -> Reply:
         decisions, final = self.reviews.decide(mid, DecisionsBody.model_validate_json(body).decisions)
