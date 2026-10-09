@@ -297,6 +297,22 @@ def test_a_think_cell_label_rewrites_its_field_format_with_its_text(deck: Path, 
     assert (field.findtext(qn("a:t")), field.get("type")[8:].replace("'", "")) == ("+10%", "+10%")
 
 
+def test_text_typed_into_an_empty_think_cell_label_is_quoted_in_its_field_format(
+    deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prs = Presentation(str(deck))
+    p = prs.slides[2].shapes.add_textbox(Inches(4), Inches(2), Inches(2), Inches(1)).text_frame.paragraphs[0]
+    p._p.append(parse_xml(LABEL.replace("'''+''''9''''%'''", "''''").replace("+9%", "")))
+    p.add_run().text = " p.a."
+    prs.save(str(deck))
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, [change("c1", {**LABEL_OP, "shape": 4, "old": " p.a.", "new": "5% p.a."})]), "--out", out], capsys)
+
+    slide = next(s for s in Presentation(str(out)).slides if s.slide_id == 258)
+    label = next(s for s in slide.shapes if s.shape_id == 4).text_frame.paragraphs[0]
+    assert (label.text, label._p.find(qn("a:fld")).get("type")) == ("5% p.a.", "datetime'''''5%'")
+
+
 def test_a_chart_edit_writes_the_cache_and_the_embedded_xlsx(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     out = tmp_path / "executed.pptx"
     run(["execute", changeset(deck, [change("c1", POINT)]), "--out", out], capsys)
@@ -372,6 +388,10 @@ def bad_json(deck: Path) -> Path:
         (lambda d: changeset(d, [change("c1", REVENUE, before="12%")]), "c1 before: the engine reads this from the source deck; remove it"),
         (lambda d: changeset(d, [change("c1", DELETE, {"edited": "Costs"})]), "c1 decision: delete_slide admits keep_new or keep_old only"),
         (lambda d: changeset(d, [change("c1", POINT, {"edited": "lots"})]), "c1 decision: edited value 'lots' is not a number"),
+        (
+            lambda d: changeset(d, [change("c1", {**LABEL_OP, "new": "+9'%"})]),
+            "c1 op.new: a field's text cannot take an apostrophe, which its format uses for quoting",
+        ),
         (bad_json, "changeset: not JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"),
         (
             lambda d: changeset(d, [change("c1", {"kind": "recolor", "slide": 256})]),
@@ -394,6 +414,7 @@ def bad_json(deck: Path) -> Path:
         "maker-written-before",
         "edited-delete",
         "non-numeric-chart-edit",
+        "apostrophe-inserted-into-a-field",
         "malformed-json",
         "unknown-op-kind",
         "fill-names-a-non-add",

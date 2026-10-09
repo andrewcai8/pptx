@@ -64,11 +64,27 @@ def occurrences(text: str, quote: str) -> list[int]:
 
 
 # think-cell writes a label as a datetime field whose custom format is the label's characters, each quoted
-# with '' padding. Measured on the corpus: in 1568 of 1568 datetime fields the format's non-quote characters
-# spell the field text. A field that does not is a real date or a slide number, which no edit may rewrite.
+# with '' padding. Measured on the corpus: in 1568 of 1568 datetime fields every format character is quoted and
+# the quoted characters spell the field text. A field that does not is a real date or a slide number, which no
+# edit may rewrite.
+def decode(kind: str) -> str | None:
+    """The text a datetime field's format spells, or None when a character sits outside the quotes, where
+    PowerPoint reads it as a date code."""
+    if not kind.startswith("datetime"):
+        return None
+    out, quoted = [], False
+    for c in kind[8:]:
+        if c == "'":
+            quoted = not quoted
+        elif quoted:
+            out.append(c)
+        else:
+            return None
+    return None if quoted else "".join(out)
+
+
 def is_literal_field(el: etree._Element) -> bool:
-    kind = el.get("type", "")
-    return el.tag == A_FLD and kind.startswith("datetime") and kind[8:].replace("'", "") == (el.findtext(A_T) or "")
+    return el.tag == A_FLD and decode(el.get("type", "")) == (el.findtext(A_T) or "")
 
 
 def trim(old: str, new: str) -> tuple[int, int, str]:
@@ -86,20 +102,41 @@ def plan_splice(p: etree._Element, at: int, old: str, new: str) -> Splice:
     s = Splice(at + a, at + b, core)
     if LINE_BREAK in core or (LINE_BREAK in old[a:b]):
         raise SpliceError("adding or removing a line break (\\v) is not supported; keep the line breaks where they are")
-    if s.start == s.end:
-        if core and atoms(p) and _insertion_target(atoms(p), s.start) is None:
-            raise SpliceError(f"no run holds character {s.start} to write into; quote text from a run")
-        return s
-    touched = [x for x in atoms(p) if x.lo < s.end and x.hi > s.start]
-    fields = [x for x in touched if x.el.tag == A_FLD]
-    for x in fields:
-        if not is_literal_field(x.el):
-            raise SpliceError(f"the change touches a {x.el.get('type', 'field')!r} field, which only PowerPoint fills in")
-    if fields and len(touched) > 1:
+    xs = atoms(p)
+    writes = _writes(xs, s)
+    if s.start == s.end and core and xs and not writes:
+        raise SpliceError(f"no run holds character {s.start} to write into; quote text from a run")
+    fields = [w.atom.el for w in writes if w.atom.el.tag == A_FLD]
+    for el in fields:
+        if not is_literal_field(el):
+            raise SpliceError(f"the change touches a {el.get('type', 'field')!r} field, which only PowerPoint fills in")
+    if fields and len(writes) > 1:
         raise SpliceError("the change crosses the edge of a field; change the field's text or the run's text, not both")
-    if fields and "'" in core:
-        raise SpliceError("a field's text cannot take an apostrophe, which its format uses for quoting")
+    for w in writes:
+        if w.atom.el.tag == A_FLD:
+            _field_type(w.atom.el, w)
     return s
+
+
+@dataclass(frozen=True)
+class Write:
+    """What one atom gets: its characters [a, b) replaced by `piece`."""
+
+    atom: Atom
+    a: int
+    b: int
+    piece: str
+
+
+def _writes(xs: Sequence[Atom], s: Splice) -> list[Write]:
+    """The atoms a splice writes. An insertion goes into the run or literal field holding the character before
+    it; a replacement into every atom it touches, with the new text in the first. plan_splice checks these
+    writes and write_splice makes them, so the two cannot disagree."""
+    if s.start == s.end:
+        target = _insertion_target(xs, s.start)
+        return [Write(target, s.start - target.lo, s.start - target.lo, s.new)] if target and s.new else []
+    touched = [x for x in xs if x.lo < s.end and x.hi > s.start]
+    return [Write(x, max(s.start - x.lo, 0), min(s.end, x.hi) - x.lo, s.new if i == 0 else "") for i, x in enumerate(touched)]
 
 
 def _insertion_target(xs: Sequence[Atom], at: int) -> Atom | None:
@@ -108,38 +145,38 @@ def _insertion_target(xs: Sequence[Atom], at: int) -> Atom | None:
     return before or next((x for x in writable if x.lo == at), None)
 
 
+def _field_type(el: etree._Element, w: Write) -> str:
+    if "'" in w.piece:
+        raise SpliceError("a field's text cannot take an apostrophe, which its format uses for quoting")
+    old = el.findtext(A_T) or ""
+    kind = retype(el.get("type"), w.a, w.b, w.piece)
+    if decode(kind) != old[: w.a] + w.piece + old[w.b :]:
+        raise SpliceError(f"the field's format {kind!r} would not spell its new text; change the label in think-cell")
+    return kind
+
+
 def write_splice(p: etree._Element, s: Splice) -> None:
-    xs = atoms(p)
-    if s.start == s.end:
-        if not s.new:
-            return
-        target = _insertion_target(xs, s.start)
-        if target is None:
-            _new_run(p, s.new)
-        else:
-            _write(target.el, s.start - target.lo, s.start - target.lo, s.new)
-        return
-    touched = [x for x in xs if x.lo < s.end and x.hi > s.start]
-    for i, x in enumerate(touched):
-        _write(x.el, max(s.start - x.lo, 0), min(s.end, x.hi) - x.lo, s.new if i == 0 else "")
-    for x in touched:
-        if x.is_run and not (x.el.findtext(A_T) or "") and len(p.findall(A_R)) > 1:
-            p.remove(x.el)
-
-
-def _write(el: etree._Element, a: int, b: int, piece: str) -> None:
-    t = el.find(A_T)
-    old = t.text or ""
-    t.text = old[:a] + piece + old[b:]
-    if el.tag == A_FLD:
-        el.set("type", retype(el.get("type"), a, b, piece))
+    writes = _writes(atoms(p), s)
+    if not writes and s.new:
+        _new_run(p, s.new)
+    for w in writes:
+        t = w.atom.el.find(A_T)
+        if w.atom.el.tag == A_FLD:
+            w.atom.el.set("type", _field_type(w.atom.el, w))
+        t.text = (t.text or "")[: w.a] + w.piece + (t.text or "")[w.b :]
+    for w in writes:
+        if w.atom.is_run and not (w.atom.el.findtext(A_T) or "") and len(p.findall(A_R)) > 1:
+            p.remove(w.atom.el)
 
 
 def retype(kind: str, a: int, b: int, piece: str) -> str:
     """Rewrite a literal datetime field's format so its characters spell the new text, keeping the quote
-    skeleton: substitute in place when the length holds, else insert or delete next to a neighbour."""
+    skeleton: substitute in place when the length holds, else insert or delete next to a neighbour. A field
+    with no characters has no quote to write into, so its new characters get one of their own."""
     head, body = kind[:8], kind[8:]
     pos = [i for i, c in enumerate(body) if c != "'"]
+    if not pos:
+        return f"{kind}'{piece}'"
     if b - a == len(piece):
         chars = list(body)
         for k, c in enumerate(piece):
@@ -148,7 +185,7 @@ def retype(kind: str, a: int, b: int, piece: str) -> str:
     if a < b:
         lo, hi = pos[a], pos[b - 1] + 1
         return head + body[:lo] + piece + "".join(c for c in body[lo:hi] if c == "'") + body[hi:]
-    at = pos[a - 1] + 1 if a > 0 else (pos[0] if pos else len(body))
+    at = pos[a - 1] + 1 if a > 0 else pos[0]
     return head + body[:at] + piece + body[at:]
 
 
