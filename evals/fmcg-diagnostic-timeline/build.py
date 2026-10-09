@@ -201,6 +201,12 @@ def step_title_with_consultants(d: DeckEdit) -> None:
 
 
 @variant()
+def kickoff_date_with_consultants(d: DeckEdit) -> None:
+    """Diagnostic slide says "Kick-off on 19 Oct with the consultants"; a date three words before the noun counts nobody."""
+    add_diagnostic(d, bullets=BULLETS + ("Kick-off on 19 Oct with the consultants",))
+
+
+@variant()
 def duration_in_wks(d: DeckEdit) -> None:
     """Diagnostic slide states the duration only as "Duration 6 wks", the usual short form of 6 weeks."""
     add_diagnostic(d, title="STEP 1: Diagnose, ready for the 2 December steering committee", bullets=("Duration 6 wks, from kick-off on 19 October to readout", *BULLETS[1:]))

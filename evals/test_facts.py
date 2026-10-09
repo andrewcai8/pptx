@@ -113,6 +113,7 @@ from facts import match, parse
         ("text", "# consultants", "December 2 consultants present", None),
         ("text", "# consultants", "Today 2 consultants join", "2 consultants"),
         ("text", "# consultants", "2 very senior consultants", None),
+        ("text", "# consultants", "Kick-off on 19 Oct with the consultants", None),
         ("text", "# staff", "with 3 Nordvik staff", "3 nordvik staff"),
         ("text", "# fte", "about 4 FTE", "4 fte"),
         ("text", "team ... tbc", "Team: TBC with Lars", "team: tbc"),
