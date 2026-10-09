@@ -24,7 +24,7 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 |---|---|
 | 0 | done |
 | 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. A ChangeSet that is not JSON is listed as `changeset: not JSON`. A source deck that is missing or cannot be read is listed under `source.path`, and one with another hash under `source.sha256`. Nothing is written. |
-| 2 | the ChangeSet file is missing, is a folder, cannot be read, or is not UTF-8 text, the deck given to `outline` or named as the source is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
+| 2 | the ChangeSet file is missing, is a folder, cannot be read, or is not UTF-8 text, the deck given to `outline` or named as the source is not a deck, an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output, or `outline --json` is the deck |
 
 ## The ChangeSet
 

@@ -196,6 +196,19 @@ def test_outline_of_a_file_that_is_not_a_deck_exits_2(tmp_path: Path, capsys: py
     assert run(["outline", notes], capsys) == (2, "", f"error: cannot read deck {notes}: File is not a zip file\n")
 
 
+@pytest.mark.parametrize("json_path", ["deck.pptx", "./deck.pptx", "link.pptx"])
+def test_outline_refuses_to_write_its_json_over_the_deck(deck: Path, capsys: pytest.CaptureFixture[str], json_path: str) -> None:
+    Path("link.pptx").symlink_to("deck.pptx")
+    before = sha(deck)
+
+    assert run(["outline", deck, "--json", json_path], capsys) == (
+        2,
+        "",
+        f"error: --json {json_path.removeprefix('./')} is the deck; the engine never writes over it\n",
+    )
+    assert sha(deck) == before
+
+
 def test_a_hidden_shape_and_a_merged_cell_are_marked(deck: Path, capsys: pytest.CaptureFixture[str]) -> None:
     prs = Presentation(str(deck))
     frame = next(s for s in prs.slides[0].shapes if s.has_table)

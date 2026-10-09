@@ -60,6 +60,8 @@ def print_invalid(path: Path, problems: Sequence[Problem]) -> int:
 
 
 def cmd_outline(deck: Path, json_path: Path | None) -> int:
+    if json_path and _same(json_path, deck):
+        raise DeckError(f"--json {json_path} is the deck; the engine never writes over it")
     found = outline.read(deck.read_bytes(), str(deck))
     print(outline.render(found), end="")
     if json_path:
