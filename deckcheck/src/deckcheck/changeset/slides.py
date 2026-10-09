@@ -8,7 +8,7 @@ from lxml import etree
 from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
 
-from deckcheck.package import Package
+from deckcheck.package import Package, PartError
 
 RT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 RT_DOCUMENT, RT_SLIDE = f"{RT}/officeDocument", f"{RT}/slide"
@@ -83,7 +83,7 @@ def read_deck(pkg: Package) -> Deck:
     )
     masters: list[str] = []
     for s in slides:
-        master = _related_by_type(pkg, _related_by_type(pkg, s.part, RT_LAYOUT), RT_MASTER)
+        master = related_by_type(pkg, related_by_type(pkg, s.part, RT_LAYOUT), RT_MASTER)
         if master not in masters:
             masters.append(master)
     layouts = tuple(_layout(pkg, part, m) for m in masters for part in _master_layouts(pkg, m))
@@ -91,8 +91,10 @@ def read_deck(pkg: Package) -> Deck:
     return Deck(pres, slides, layouts, max(numbers, default=0))
 
 
-def _related_by_type(pkg: Package, part: str, reltype: str) -> str:
-    rid = next(r.get("Id") for r in pkg.rels(part) if r.get("Type") == reltype)
+def related_by_type(pkg: Package, part: str, reltype: str) -> str:
+    rid = next((r.get("Id") for r in pkg.rels(part) if r.get("Type") == reltype), None)
+    if rid is None:
+        raise PartError(f"{part} has no {reltype.rsplit('/', 1)[-1]} relationship")
     return pkg.related(part, rid)
 
 
