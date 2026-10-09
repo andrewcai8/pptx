@@ -1,0 +1,584 @@
+{
+  "$defs": {
+    "Ask": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "minItems": 1,
+          "title": "Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "refs"
+      ],
+      "title": "Ask",
+      "type": "object"
+    },
+    "Box": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "integer"
+        },
+        "y": {
+          "title": "Y",
+          "type": "integer"
+        },
+        "w": {
+          "title": "W",
+          "type": "integer"
+        },
+        "h": {
+          "title": "H",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "title": "Box",
+      "type": "object"
+    },
+    "Edited": {
+      "additionalProperties": false,
+      "properties": {
+        "edited": {
+          "title": "Edited",
+          "type": "string"
+        }
+      },
+      "required": [
+        "edited"
+      ],
+      "title": "Edited",
+      "type": "object"
+    },
+    "Executed": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "Executed",
+      "type": "object"
+    },
+    "Flag": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "slides": {
+          "default": [],
+          "items": {
+            "description": "p:sldId/@id of a source slide",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Slides",
+          "type": "array"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "minItems": 1,
+          "title": "Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "question",
+        "refs"
+      ],
+      "title": "Flag",
+      "type": "object"
+    },
+    "Held": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "slides": {
+          "default": [],
+          "items": {
+            "description": "p:sldId/@id of a source slide",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Slides",
+          "type": "array"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "minItems": 1,
+          "title": "Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "refs"
+      ],
+      "title": "Held",
+      "type": "object"
+    },
+    "Meeting": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "date"
+      ],
+      "title": "Meeting",
+      "type": "object"
+    },
+    "Ref": {
+      "additionalProperties": false,
+      "properties": {
+        "t": {
+          "description": "HH:MM:SS of the transcript turn",
+          "pattern": "^\\d{2}:\\d{2}:\\d{2}$",
+          "title": "T",
+          "type": "string"
+        },
+        "speaker": {
+          "minLength": 1,
+          "title": "Speaker",
+          "type": "string"
+        },
+        "quote": {
+          "description": "copied verbatim from the transcript",
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "speaker",
+        "quote"
+      ],
+      "title": "Ref",
+      "type": "object"
+    },
+    "ReviewChange": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "ask_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Ask Id",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "structural": {
+          "title": "Structural",
+          "type": "boolean"
+        },
+        "slide": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "a source slide id, or the id of the add_slide change that adds it",
+          "title": "Slide"
+        },
+        "source_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Index"
+        },
+        "executed_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Executed Index"
+        },
+        "shape": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewShape"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "read from the source deck, never from the maker",
+          "title": "Before"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "replace_text: [start, end) of the quote in `before`, in code points",
+          "title": "Span"
+        },
+        "depends_on": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Depends On"
+        },
+        "admits": {
+          "items": {
+            "enum": [
+              "keep_new",
+              "keep_old",
+              "edited"
+            ],
+            "type": "string"
+          },
+          "title": "Admits",
+          "type": "array"
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "enum": [
+                "pending",
+                "keep_new",
+                "keep_old"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Edited"
+            }
+          ],
+          "title": "Decision"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "title": "Refs",
+          "type": "array"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "ask_id",
+        "kind",
+        "structural",
+        "slide",
+        "source_index",
+        "executed_index",
+        "shape",
+        "before",
+        "after",
+        "span",
+        "depends_on",
+        "admits",
+        "decision",
+        "rationale",
+        "refs",
+        "notes"
+      ],
+      "title": "ReviewChange",
+      "type": "object"
+    },
+    "ReviewShape": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "p:cNvPr/@id, unique on its slide, found inside groups too",
+          "minimum": 0,
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Box"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "EMU on the slide, group transforms applied"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "box"
+      ],
+      "title": "ReviewShape",
+      "type": "object"
+    },
+    "ReviewSlide": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "a source slide id, or the id of the add_slide change that adds it",
+          "title": "Key"
+        },
+        "source_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "1-based in the source deck; null for an added slide",
+          "title": "Source Index"
+        },
+        "executed_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "1-based in the executed deck; null for a deleted slide",
+          "title": "Executed Index"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "source_index",
+        "executed_index",
+        "title"
+      ],
+      "title": "ReviewSlide",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "the source deck, relative to the repo root",
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "Source",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "$ref": "#/$defs/Source"
+    },
+    "executed": {
+      "$ref": "#/$defs/Executed"
+    },
+    "meeting": {
+      "$ref": "#/$defs/Meeting"
+    },
+    "asks": {
+      "items": {
+        "$ref": "#/$defs/Ask"
+      },
+      "title": "Asks",
+      "type": "array"
+    },
+    "flags": {
+      "items": {
+        "$ref": "#/$defs/Flag"
+      },
+      "title": "Flags",
+      "type": "array"
+    },
+    "held": {
+      "items": {
+        "$ref": "#/$defs/Held"
+      },
+      "title": "Held",
+      "type": "array"
+    },
+    "slides": {
+      "items": {
+        "$ref": "#/$defs/ReviewSlide"
+      },
+      "title": "Slides",
+      "type": "array"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/ReviewChange"
+      },
+      "title": "Changes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "source",
+    "executed",
+    "meeting",
+    "asks",
+    "flags",
+    "held",
+    "slides",
+    "changes"
+  ],
+  "title": "Review",
+  "type": "object"
+}

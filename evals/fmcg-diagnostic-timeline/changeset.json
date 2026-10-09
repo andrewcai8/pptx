@@ -1,0 +1,94 @@
+{
+  "meeting": {"title": "Working session: Future of FMCG proposal, scoping the diagnostic", "date": "2026-10-14"},
+  "source": {
+    "path": "artifacts/verify-pptx/corpus-cache/c312ec6c4c653912b3b19e8f16fc1877710e4ddccd7caa832ac4dd72ef07f9ab.pptx",
+    "sha256": "c312ec6c4c653912b3b19e8f16fc1877710e4ddccd7caa832ac4dd72ef07f9ab"
+  },
+  "asks": [
+    {
+      "id": "unpack-diagnose",
+      "text": "Add a text page straight after Next steps that unpacks STEP 1 Diagnose: 6 weeks, all 10 levers, the benchmark and heatmap, and the 2 December steering-committee readout.",
+      "refs": [
+        {"t": "00:01:13", "speaker": "Nadia Brennan", "quote": "What if we add a page that just, uh, unpacks step 1?"},
+        {"t": "00:02:23", "speaker": "Nadia Brennan", "quote": "All 10 levers, yes."},
+        {"t": "00:04:03", "speaker": "Ingrid Halvorsen", "quote": "Make it 6 weeks."},
+        {"t": "00:05:06", "speaker": "Ingrid Halvorsen", "quote": "And the readout at the steering committee, the 2nd of December, I'd want that date on there."},
+        {"t": "00:06:02", "speaker": "Ingrid Halvorsen", "quote": "Fair enough. After 13 then."}
+      ]
+    }
+  ],
+  "changes": [
+    {
+      "id": "diagnostic-slide",
+      "ask_id": "unpack-diagnose",
+      "rationale": "A title-and-text page straight after Next steps unpacks STEP 1 without touching the arrow.",
+      "refs": [
+        {"t": "00:01:32", "speaker": "Ingrid Halvorsen", "quote": "Please don't touch the arrow itself, our CEO has quoted it twice in town halls."},
+        {"t": "00:05:48", "speaker": "Nadia Brennan", "quote": "I'd put it straight after next steps."}
+      ],
+      "op": {"kind": "add_slide", "layout": "D. Title and Text", "after": 1002}
+    },
+    {
+      "id": "diagnostic-title",
+      "ask_id": "unpack-diagnose",
+      "rationale": "The title names the Diagnose step, its 6 weeks and the 2 December readout.",
+      "refs": [
+        {"t": "00:04:03", "speaker": "Ingrid Halvorsen", "quote": "Make it 6 weeks. We can't hold them longer than that."},
+        {"t": "00:05:06", "speaker": "Ingrid Halvorsen", "quote": "And the readout at the steering committee, the 2nd of December, I'd want that date on there."}
+      ],
+      "op": {
+        "kind": "fill_placeholder",
+        "slide": "diagnostic-slide",
+        "shape": 2,
+        "paragraphs": [{"text": "STEP 1: Diagnose in 6 weeks, ready for the 2 December steering committee"}]
+      }
+    },
+    {
+      "id": "diagnostic-bullets",
+      "ask_id": "unpack-diagnose",
+      "rationale": "The bullets hold only the duration, the levers, the deliverables and the readout.",
+      "refs": [
+        {"t": "00:02:23", "speaker": "Nadia Brennan", "quote": "All 10 levers, yes. Otherwise it sounds like we're just going to have a look around."},
+        {"t": "00:05:06", "speaker": "Ingrid Halvorsen", "quote": "The heatmap is good."},
+        {"t": "00:05:25", "speaker": "Ingrid Halvorsen", "quote": "Don't put anything for it, not even a placeholder."}
+      ],
+      "op": {
+        "kind": "fill_placeholder",
+        "slide": "diagnostic-slide",
+        "shape": 6,
+        "paragraphs": [
+          {"text": "6 weeks from kick-off on 19 October to readout", "level": 1},
+          {"text": "All 10 levers assessed against peers, across both pages of the imperatives house", "level": 1},
+          {"text": "Deliverables: peer benchmark and a heatmap of where you are ahead, behind or at risk on each lever", "level": 1},
+          {"text": "Readout at the steering committee on 2 December", "level": 1}
+        ]
+      }
+    }
+  ],
+  "flags": [],
+  "held": [
+    {
+      "id": "contacts-page",
+      "text": "The authors' contacts page belongs to marketing and stays as it is for this version.",
+      "slides": [1077],
+      "refs": [{"t": "00:03:26", "speaker": "Nadia Brennan", "quote": "I'll ask them whether we can add a line, but not for this version."}]
+    },
+    {
+      "id": "next-steps-arrow",
+      "text": "The Diagnose, Plan, Execute arrow on Next steps stays untouched.",
+      "slides": [1002],
+      "refs": [{"t": "00:01:32", "speaker": "Ingrid Halvorsen", "quote": "Please don't touch the arrow itself, our CEO has quoted it twice in town halls."}]
+    },
+    {
+      "id": "study-companies",
+      "text": "The list of companies in the study goes to the client by email, not into the deck.",
+      "slides": [1076],
+      "refs": [{"t": "00:06:30", "speaker": "Nadia Brennan", "quote": "We won't change the page for it though."}]
+    },
+    {
+      "id": "team-size",
+      "text": "Team size is a separate budget conversation and gets nothing on the slide, not even a placeholder.",
+      "refs": [{"t": "00:05:25", "speaker": "Ingrid Halvorsen", "quote": "No, I'll take that with Lars separately, it's a budget conversation."}]
+    }
+  ]
+}

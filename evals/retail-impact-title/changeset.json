@@ -1,0 +1,54 @@
+{
+  "meeting": {"title": "Board pre-read review: Transforming retail through advanced analytics & AI", "date": "2026-10-12"},
+  "source": {
+    "path": "artifacts/verify-pptx/corpus-cache/05240a7c5d236fd9b5934219ca978fa44c1fb6be54945b52980677a6a568f951.pptx",
+    "sha256": "05240a7c5d236fd9b5934219ca978fa44c1fb6be54945b52980677a6a568f951"
+  },
+  "asks": [
+    {
+      "id": "action-title",
+      "text": "Give slide 15 an action title that states the Starbucks result with the engagement and revenue figures already on the slide.",
+      "refs": [
+        {"t": "00:01:34", "speaker": "Ines Duarte", "quote": "This slide just says we did well, it should tell them what happened."},
+        {"t": "00:02:51", "speaker": "Ines Duarte", "quote": "Drop tripled. Use the 150 for engagement. And can we get the revenue in too?"},
+        {"t": "00:06:40", "speaker": "Ines Duarte", "quote": "Maybe Starbucks in it, so they know whose number it is."}
+      ]
+    }
+  ],
+  "changes": [
+    {
+      "id": "slide-15-title",
+      "ask_id": "action-title",
+      "rationale": "The topic title becomes a result the board can repeat, naming Starbucks and both figures on the slide.",
+      "refs": [
+        {"t": "00:03:04", "speaker": "Arjun Bose", "quote": "The plus 100 million in year one, yeah. That's on the same slide, so it's not a new number either."},
+        {"t": "00:06:54", "speaker": "Ines Duarte", "quote": "And not tripled anywhere, please, I don't want my word coming back to bite me."}
+      ],
+      "op": {"kind": "replace_text", "slide": 735, "shape": 2, "old": "Significant impact was achieved", "new": "Starbucks personalization lifted marketing engagement 150% and added $100M net incremental revenue in year 1"}
+    }
+  ],
+  "flags": [],
+  "held": [
+    {
+      "id": "slide-14-title",
+      "text": "Slide 14's title waits until the client has settled what the propensity table shows.",
+      "slides": [734],
+      "refs": [
+        {"t": "00:05:23", "speaker": "Ines Duarte", "quote": "But I don't want to touch it this week."},
+        {"t": "00:05:41", "speaker": "Lena Marsh", "quote": "So we don't touch fourteen this round."}
+      ]
+    },
+    {
+      "id": "own-data-scoping",
+      "text": "Running the email-offer analysis on the client's own data is scoped separately after the board.",
+      "slides": [732],
+      "refs": [{"t": "00:04:39", "speaker": "Lena Marsh", "quote": "Let's scope it separately after the board, I'll send you a note."}]
+    },
+    {
+      "id": "four-dot-bullets",
+      "text": "The four-dot bullets on slide 6 are deliberate continuation marks from the original.",
+      "slides": [748],
+      "refs": [{"t": "00:06:01", "speaker": "Arjun Bose", "quote": "No, that's in the original. It's meant to say the list carries on."}]
+    }
+  ]
+}

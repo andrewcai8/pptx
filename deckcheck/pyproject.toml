@@ -4,12 +4,16 @@ version = "0.1.0"
 description = "Verify generated PowerPoint decks against the house style before a human sees them"
 requires-python = ">=3.12"
 dependencies = [
+    "openpyxl>=3.1.5",
+    "pydantic>=2.14.0",
     "python-pptx>=1.0.2",
+    "pyxlsb>=1.0.10",
     "pyyaml>=6.0",
 ]
 
 [project.scripts]
 deckcheck = "deckcheck.cli:main"
+changeset = "deckcheck.changeset.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

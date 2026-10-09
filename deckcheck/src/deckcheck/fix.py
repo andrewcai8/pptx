@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import math
 import re
-import zipfile
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,6 +12,7 @@ from lxml import etree
 from pptx.oxml.text import CT_RegularTextRun, CT_TextField, CT_TextLineBreak
 
 from deckcheck.model import Deck, DeckError, Paragraph, Shape, Slide, Violation, open_presentation, read_deck
+from deckcheck.package import repack
 from deckcheck.rules import RuleSet, run_rules, slide_fonts, small_runs
 
 MAX_PASSES = 3
@@ -128,7 +127,7 @@ def fix_deck(data: bytes, rules: RuleSet, path: str) -> FixResult:
         for s, before in zip(prs.slides, at_open, strict=True)
         if _canonical(s) != before
     }
-    out = _repack(data, written) if written else data
+    out = repack(data, written) if written else data
     return FixResult(out, sha, hashlib.sha256(out).hexdigest(), passes, tuple(outcomes))
 
 
@@ -142,18 +141,6 @@ def _check_read_is_pure(prs, at_open: list[bytes], path: str) -> None:
             raise DeckError(
                 f"reading {path} changed slide {index}, so fix cannot tell its own edits apart; nothing written"
             )
-
-
-# python-pptx's save re-serialises every part and drops what it does not model, such as a relationship
-# whose target is missing, so the output is the input's zip with only the written slide parts replaced.
-def _repack(data: bytes, parts: dict[str, bytes]) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(io.BytesIO(data)) as src, zipfile.ZipFile(buf, "w") as dst:
-        for info in src.infolist():
-            entry = zipfile.ZipInfo(info.filename, info.date_time)
-            entry.compress_type, entry.external_attr = info.compress_type, info.external_attr
-            dst.writestr(entry, parts[info.filename] if info.filename in parts else src.read(info))
-    return buf.getvalue()
 
 
 def plural(n: int, one: str, many: str) -> str:
