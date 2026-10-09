@@ -71,7 +71,7 @@ def sha(path: Path) -> str:
 
 
 def test_outline_lists_every_id_and_text_a_changeset_can_address(deck: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert run(["outline", deck, "--json", "outline.json"], capsys) == (
+    assert run(["outline", deck], capsys) == (
         0,
         f'deck "deck.pptx" sha256 {sha(deck)}\n'
         + LAYOUTS
@@ -98,6 +98,11 @@ def test_outline_lists_every_id_and_text_a_changeset_can_address(deck: Path, cap
         '    p0 "Next steps"\n'
         '  shape 3 "TextBox 2" text\n'
         '    p0 "+9%"\n',
+        "",
+    )
+    assert run(["outline", deck, "--json", "outline.json"], capsys) == (
+        0,
+        f"OUTLINE deck.pptx -> outline.json: 3 slides, sha256 {sha(deck)}\n",
         "",
     )
     assert json.loads(Path("outline.json").read_text()) == {
@@ -216,7 +221,8 @@ def test_a_hidden_shape_and_a_merged_cell_are_marked(deck: Path, capsys: pytest.
     frame.table.cell(1, 1)._tc.set("hMerge", "1")
     prs.save(str(deck))
 
-    code, out, _ = run(["outline", deck, "--json", "outline.json"], capsys)
+    code, out, _ = run(["outline", deck], capsys)
+    run(["outline", deck, "--json", "outline.json"], capsys)
 
     assert (code, out.split("slide 2 ")[0].split("  shape 4 ")[1]) == (
         0,
