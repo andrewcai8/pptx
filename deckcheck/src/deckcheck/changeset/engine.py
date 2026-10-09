@@ -228,9 +228,14 @@ def _where(loc: tuple, raw: object) -> str:
 
 
 def _message(err: Mapping) -> str:
-    field = err["loc"][-1] if err["loc"] else ""
+    loc = err["loc"]
+    field = loc[-1] if loc else ""
     if err["type"] == "extra_forbidden":
-        return DERIVED.get(str(field), "unknown field; remove it")
+        if len(loc) == 3 and loc[0] == "changes" and field in DERIVED:
+            return DERIVED[field]
+        if len(loc) == 5 and loc[0] == "changes" and loc[2] == "op":
+            return f"{loc[3]} has no field {field!r}"
+        return "unknown field; remove it"
     if "decision" in err["loc"]:
         return DECISION_FORMAT
     if err["type"] == "missing":
