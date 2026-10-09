@@ -385,8 +385,11 @@ def parse(raw_text: str) -> ChangeSet:
     try:
         return ChangeSet.model_validate_json(raw_text)
     except ValidationError as e:
+        errors = e.errors()
         problems: dict[str, Problem] = {}
-        for err in e.errors():
+        for err in errors:
+            if any(len(o["loc"]) > len(err["loc"]) and o["loc"][: len(err["loc"])] == err["loc"] for o in errors):
+                continue
             where = _where(err["loc"], raw)
             problems.setdefault(where, Problem(where, _message(err)))
         raise Invalid(list(problems.values())) from e

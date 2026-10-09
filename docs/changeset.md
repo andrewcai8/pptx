@@ -51,6 +51,8 @@ A slide is named by its slide id (`p:sldId/@id`) and a shape by its id on that s
 | `delete_slide` | deletes slide `slide` | structural |
 | `move_slide` | moves slide `slide` after source slide `after`, or first when `after` is null | structural |
 
+The text a change writes is `new`, `text`, a fill's paragraphs, or an `edited` decision. It may hold a tab, which the deck keeps as a tab. It may not hold any other control character, such as `\f`, `\r`, or `\x1f`, and a change with one is refused with the character and its index. A line feed and a line break keep their rules. `\n` splits paragraphs in `set_cell` and in an edited `fill_placeholder` and is refused elsewhere, and `\v` is a line break. So a review app turns a pasted `\r\n` into `\n` before it writes a decision.
+
 A chart point's workbook cell must hold a plain number. A blank cell, a formula, text, a true/false value, an error, or a date is refused. Paragraph indexes count every paragraph in the shape, blank ones included. Text reads the way python-pptx's `paragraph.text` reads it, with a line break as `\v`. A slide placed after another follows it wherever that slide ends up. Several slides placed after one slide follow it in ChangeSet order.
 
 The engine reads each change's old text from the source deck and decides from the op whether it is text-only or structural. A maker never writes either. A field such as `before` is refused.

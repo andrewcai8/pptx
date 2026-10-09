@@ -5,7 +5,8 @@ import re
 from pathlib import Path
 from typing import Annotated, ClassVar, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
+from pydantic_core import PydanticCustomError
 
 DecisionKind = Literal["keep_new", "keep_old", "edited"]
 SLIDE_DECISIONS: tuple[DecisionKind, ...] = ("keep_new", "keep_old")
@@ -23,6 +24,21 @@ Index = Annotated[int, Field(ge=0)]
 NonEmpty = Annotated[str, Field(min_length=1)]
 Number = Annotated[float, Field(allow_inf_nan=False)]
 NUMBER_TEXT = re.compile(r"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$")
+CONTROL = re.compile(r"[\x00-\x08\x0c-\x1f\x7f-\x9f\ufffe\uffff]")
+
+
+def _no_control(value: str) -> str:
+    if found := CONTROL.search(value):
+        raise PydanticCustomError(
+            "control_character",
+            "holds the control character {char} at index {index}, which a deck cannot hold; remove it",
+            {"char": repr(found.group()), "index": found.start()},
+        )
+    return value
+
+
+# Tab is kept; "\n" and "\v" mean a paragraph and a line break, so each op decides where they may go.
+DeckText = Annotated[str, AfterValidator(_no_control)]
 
 
 class Ref(Wire):
@@ -96,7 +112,7 @@ class ReplaceText(Op):
     slide: SlideId
     shape: ShapeId
     old: NonEmpty
-    new: str
+    new: DeckText
     paragraph: Index | None = Field(
         default=None, description="index among all a:p of the shape, blank ones included; only to tell apart a quote that repeats"
     )
@@ -114,7 +130,7 @@ class InsertParagraph(Op):
     slide: SlideId
     shape: ShapeId
     after: Index
-    text: NonEmpty
+    text: Annotated[NonEmpty, AfterValidator(_no_control)]
 
     def edit(self, text: str) -> Op:
         return self._edited(text, text=text)
@@ -130,7 +146,7 @@ class SetCell(Op):
     row: Index
     col: Index
     old: str
-    new: str
+    new: DeckText
 
     def edit(self, text: str) -> Op:
         return self._edited(text, new=text)
@@ -163,7 +179,7 @@ class AddSlide(Op):
 
 
 class Paragraph(Wire):
-    text: str
+    text: DeckText
     level: Annotated[int, Field(ge=0, le=8)] = 0
 
 
@@ -179,7 +195,7 @@ class FillPlaceholder(Op):
     def edit(self, text: str) -> Op:
         levels = [p.level for p in self.paragraphs]
         lines = text.split("\n")
-        return self._edited(text, paragraphs=tuple(Paragraph(text=t, level=levels[min(i, len(levels) - 1)]) for i, t in enumerate(lines)))
+        return self._edited(text, paragraphs=tuple({"text": t, "level": levels[min(i, len(levels) - 1)]} for i, t in enumerate(lines)))
 
 
 class DeleteSlide(Op):
