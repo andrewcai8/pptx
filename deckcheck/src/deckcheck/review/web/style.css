@@ -712,9 +712,7 @@ button.on {
 
 .two-up {
   position: sticky;
-  top: -16px;
-  padding-top: 16px;
-  margin-top: -16px;
+  top: 0;
   background: var(--page);
   display: grid;
   grid-template-columns: 1fr 1fr;
