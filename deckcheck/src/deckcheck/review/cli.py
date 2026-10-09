@@ -19,7 +19,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("serve", help="serve the app on 127.0.0.1")
     run.add_argument("--port", type=int, default=8765, help="0 picks a free port")
-    run.add_argument("--maker", help="a command that writes a ChangeSet, with {meeting} and {out} replaced for each meeting")
+    run.add_argument(
+        "--maker",
+        help="a command that writes a ChangeSet for a meeting without a committed changeset.json; "
+        "{meeting}, {out} and {dir} become the meeting folder, the ChangeSet path and the folder that holds it",
+    )
     args = parser.parse_args(argv)
     if not (Path("deckcheck/pyproject.toml").is_file() and Path("evals").is_dir()):
         print("review: run this from the repo root, the folder that holds deckcheck/ and evals/", file=sys.stderr)

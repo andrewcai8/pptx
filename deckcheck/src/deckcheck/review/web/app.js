@@ -108,7 +108,7 @@ function meetingRow(m) {
 }
 
 function makerChip(maker) {
-  if (!maker) return h("span", { class: "chip muted" }, "Needs the maker, which is not built yet");
+  if (!maker) return h("span", { class: "chip muted" }, "No maker: start the server with --maker to process it");
   return h("span", { class: `chip ${maker.simulated ? "simulated" : ""}`, title: maker.label }, maker.label);
 }
 

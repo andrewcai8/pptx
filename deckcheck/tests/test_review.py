@@ -183,7 +183,7 @@ def test_meetings_list_each_meeting_dir_with_its_maker(repo: Path, app: Client) 
             ]
         },
     )
-    assert app.post("/api/meetings/private/x/process") == (409, {"error": "this meeting needs the maker, which is not built yet"})
+    assert app.post("/api/meetings/private/x/process") == (409, {"error": "this meeting has no changeset.json; start the server with --maker to process it"})
     assert app.get("/api/meetings/evals/__pycache__") == (404, {"error": "not found"})
     assert app.get("/api/meetings/evals/notes") == (404, {"error": "no meeting evals/notes"})
     assert app.get("/api/meetings/evals/demo.partial") == (404, {"error": "not found"})
@@ -463,20 +463,26 @@ def test_a_missing_source_deck_says_how_to_get_it(repo: Path, app: Client) -> No
     assert state["problems"] == [{"where": "source.path", "message": "cannot read decks/gone.pptx: No such file or directory"}]
 
 
-def test_a_maker_command_writes_the_changeset(repo: Path, start) -> None:
-    copy = "import shutil,sys;shutil.copyfile(*sys.argv[1:])"
-    app = start(functools.partial(maker_for, command=[sys.executable, "-c", copy, "{meeting}/changeset.json", "{out}"]))
+def test_a_maker_command_writes_the_changeset_of_a_meeting_without_one(repo: Path, start) -> None:
+    (repo / "private/meetings/x").mkdir(parents=True)
+    (repo / "private/meetings/x/transcript.md").write_text("# Client sync\n")
+    copy = "import shutil,sys;shutil.copyfile(*sys.argv[1:3]);print(sys.argv[3])"
+    app = start(functools.partial(maker_for, command=[sys.executable, "-c", copy, "evals/demo/changeset.json", "{dir}/changeset.json", "{meeting}"]))
 
-    row = app.ready()
+    row = app.ready("private/x")
 
-    assert row["maker"] == {"label": f"Maker: {sys.executable} -c '{copy}' '{{meeting}}/changeset.json' '{{out}}'", "simulated": False}
+    assert row["maker"] == {"label": f"Maker: {sys.executable} -c '{copy}' evals/demo/changeset.json '{{dir}}/changeset.json' '{{meeting}}'", "simulated": False}
     assert row["state"] == {"is": "ready", "decided": 0, "total": 5, "applied": False}
+    assert (repo / "artifacts/review/private/x/maker.log").read_text() == "private/meetings/x\n"
+    assert app.row("evals/demo")["maker"] == SIMULATED
 
 
 def test_a_maker_command_that_fails_shows_its_output(repo: Path, start) -> None:
+    (repo / "private/meetings/x").mkdir(parents=True)
+    (repo / "private/meetings/x/transcript.md").write_text("# Client sync\n")
     app = start(functools.partial(maker_for, command=[sys.executable, "-c", "print('no transcript'); raise SystemExit(3)"]))
 
-    assert app.ready()["state"] == {"is": "failed", "message": "the maker exited with 3: no transcript", "problems": []}
+    assert app.ready("private/x")["state"] == {"is": "failed", "message": "the maker exited with 3: no transcript", "problems": []}
 
 
 def test_requests_from_another_site_are_refused(repo: Path, app: Client) -> None:

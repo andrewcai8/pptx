@@ -267,7 +267,7 @@ class Reviews:
         meeting = find(mid)
         maker = self._maker_for(meeting)
         if maker is None:
-            raise Conflict("this meeting needs the maker, which is not built yet")
+            raise Conflict("this meeting has no changeset.json; start the server with --maker to process it")
         with self._lock:
             idle = mid not in self._jobs
             start = idle and (again or not _Workdir.of(meeting).dir.is_dir())

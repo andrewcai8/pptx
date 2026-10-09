@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shlex
 import shutil
 import subprocess
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
 
 TIMEOUT = 30 * 60
 TAIL = 2000
+FIELD = re.compile(r"\{(meeting|out|dir)\}")
 
 
 class MakerFailed(Exception):
@@ -45,7 +47,8 @@ class Command:
         return f"Maker: {shlex.join(self.argv)}"
 
     def make(self, meeting: Meeting, out: Path) -> None:
-        argv = [a.replace("{meeting}", str(meeting.dir)).replace("{out}", str(out)) for a in self.argv]
+        values = {"meeting": str(meeting.dir), "out": str(out), "dir": str(out.parent)}
+        argv = [FIELD.sub(lambda m: values[m[1]], arg) for arg in self.argv]
         log = out.with_name("maker.log")
         with log.open("wb") as f:
             try:
@@ -60,8 +63,6 @@ class Command:
 
 
 def maker_for(meeting: Meeting, command: Sequence[str] | None = None) -> Maker | None:
-    if command:
-        return Command(tuple(command))
     if (meeting.dir / "changeset.json").is_file():
         return Golden()
-    return None
+    return Command(tuple(command)) if command else None

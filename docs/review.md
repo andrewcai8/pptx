@@ -60,13 +60,17 @@ uv run --project deckcheck changeset apply artifacts/review/evals/solar-market-r
 
 ## The maker
 
-A golden scenario has no maker yet. Its row says **Simulated maker: replays the committed changeset.json**, and processing copies that file. A meeting without a `changeset.json` cannot be processed until the maker exists.
+The maker writes the ChangeSet a review starts from. A golden scenario keeps its committed `changeset.json`, so its row says **Simulated maker: replays the committed changeset.json**, and processing copies that file.
 
-`--maker` runs a command as the maker for every meeting. The app replaces `{meeting}` with the meeting's folder and `{out}` with the path the ChangeSet must be written to. It runs the command without a shell, from the repo root. Its output goes to `maker.log` beside the ChangeSet, and the end of it shows on the home screen when the command fails.
+A meeting without a `changeset.json` needs `--maker`, a command the app runs for each such meeting. The app replaces `{meeting}` with the meeting's folder, `{out}` with the path the ChangeSet must be written to, and `{dir}` with the folder that holds `{out}`. It runs the command without a shell, from the repo root. Its output goes to `maker.log` beside the ChangeSet, and the end of it shows on the home screen when the command fails. Without `--maker`, such a meeting cannot be processed.
+
+To run the real maker, `meeting process`:
 
 ```bash
-uv run --project deckcheck review serve --maker 'my-maker {meeting} --out {out}'
+uv run --project deckcheck review serve --maker 'uv run --project deckcheck meeting process {meeting} --out {dir} --shareable'
 ```
+
+`--shareable` is the ask-first answer from `CLAUDE.md`, so pass it only when the meetings may be shared with an AI service under your firm's policy.
 
 `deckcheck/src/deckcheck/review/maker.py` holds this seam.
 
