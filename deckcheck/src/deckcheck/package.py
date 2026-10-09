@@ -120,14 +120,11 @@ class Package:
         self._override(part, content_type)
 
     def rels(self, part: str) -> etree._Element:
+        """The part's relationships; an empty, unstored element when it has none, so a read never adds a part."""
         name = rels_name(part)
-        if not self.has(name):
-            self.put_xml(name, etree.Element(f"{{{RELS_NS}}}Relationships", nsmap={None: RELS_NS}), "")
-        return self.xml(name)
+        return self.xml(name) if self.has(name) else _no_rels()
 
     def rel(self, part: str, rid: str) -> etree._Element | None:
-        if not self.has(rels_name(part)):
-            return None
         return next((r for r in self.rels(part) if r.get("Id") == rid), None)
 
     def related(self, part: str, rid: str) -> str | None:
@@ -137,6 +134,8 @@ class Package:
         return resolve(part, rel.get("Target"))
 
     def relate(self, part: str, reltype: str, target: str) -> str:
+        if not self.has(rels_name(part)):
+            self.put_xml(rels_name(part), _no_rels(), "")
         rels = self.rels(part)
         numbers = [int(r.get("Id")[3:]) for r in rels if r.get("Id", "").startswith("rId") and r.get("Id")[3:].isdigit()]
         rid = f"rId{max(numbers, default=0) + 1}"
@@ -198,6 +197,10 @@ class Package:
     def _current_rels(self, part: str) -> etree._Element | None:
         name = rels_name(part) if part else ROOT_RELS
         return self.xml(name) if self.has(name) else None
+
+
+def _no_rels() -> etree._Element:
+    return etree.Element(f"{{{RELS_NS}}}Relationships", nsmap={None: RELS_NS})
 
 
 def _reachable(rels_of: Callable[[str], etree._Element | None]) -> set[str]:

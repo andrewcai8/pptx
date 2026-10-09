@@ -19,6 +19,7 @@ from pptx.util import Inches, Pt
 
 from deckcheck.changeset.cli import main
 from deckcheck.changeset.model import SCHEMA_DIR, schemas
+from deckcheck.package import Package
 
 TITLE_AND_CONTENT, TITLE_ONLY = 1, 5
 REF = {"t": "00:01:00", "speaker": "Ana Ruiz", "quote": "Use the new figures."}
@@ -143,6 +144,13 @@ def test_committed_schemas_match_the_models() -> None:
         assert (SCHEMA_DIR / name).read_text() == text, (
             f"{name} is stale; run uv run --project deckcheck python -m deckcheck.changeset.model"
         )
+
+
+def test_reading_the_rels_of_a_part_that_has_none_adds_no_part(deck: Path) -> None:
+    data = deck.read_bytes()
+    pkg = Package(data)
+
+    assert (len(pkg.rels("ppt/slides/slide9.xml")), pkg.has("ppt/slides/_rels/slide9.xml.rels"), pkg.to_bytes() is data) == (0, False, True)
 
 
 def test_validate_lists_each_change_with_its_source_text(deck: Path, capsys: pytest.CaptureFixture[str]) -> None:
