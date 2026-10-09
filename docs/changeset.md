@@ -15,7 +15,7 @@ uv run --project deckcheck changeset execute private/meeting/changeset.json --ou
 uv run --project deckcheck changeset apply private/meeting/changeset.json --out private/meeting/final.pptx
 ```
 
-- `outline` lists what a ChangeSet can address. It prints the deck's path and sha256, the layouts `add_slide` accepts with their text placeholders, and each slide's index, id, layout, and title. Under each slide it lists every shape by id, name, and kind, with numbered paragraphs (`p0`), table cells (`r1c4`, or `merged`), or chart series and points. Every text is a JSON string literal read the way the engine reads it, so it can be pasted into `old`. `--json` also writes the same outline as JSON.
+- `outline` lists what a ChangeSet can address. It prints the deck's path and sha256, the layouts `add_slide` accepts with their text placeholders, and each slide's index, id, layout, and title. Under each slide it lists every shape by id, name, and kind, with numbered paragraphs (`p0`), table cells (`r1c4`, or `merged`), or chart series and points. Every text is a JSON string literal read the way the engine reads it, so it can be pasted into `old`. `--json` writes the same outline as JSON to a file instead, and prints one line with the slide count and sha256. A long deck's outline runs to tens of thousands of characters, more than an agent's console shows.
 - `validate` checks every change against the source deck and prints one line per change with the text it replaces.
 - `execute` writes the deck with every change as the maker wrote it. `--review` also writes the review view, described below.
 - `apply` writes the final deck from a fresh copy of the source. It replays the changes marked `keep_new` or `edited` and leaves out the ones marked `keep_old`. It refuses to run while any decision is pending.
@@ -24,7 +24,7 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 |---|---|
 | 0 | done |
 | 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. A ChangeSet that is not JSON is listed as `changeset: not JSON`. A source deck that is missing or cannot be read is listed under `source.path`, and one with another hash under `source.sha256`. Nothing is written. |
-| 2 | the ChangeSet file is missing, is a folder, cannot be read, or is not UTF-8 text, the deck given to `outline` or named as the source is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
+| 2 | the ChangeSet file is missing, is a folder, cannot be read, or is not UTF-8 text, the deck given to `outline` or named as the source is not a deck, an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output, or `outline --json` is the deck |
 
 ## The ChangeSet
 
@@ -36,7 +36,7 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 - `changes`, each with an `id`, the `ask_id` it serves, a one-sentence `rationale`, `refs`, an `op`, and a `decision`.
 - `flags`, questions the maker could not settle, and `held`, things discussed and deliberately left alone. Each names its slides and refs. Neither touches the deck.
 
-A ref is `{"t": "00:05:46", "speaker": "Grace Adeyemi", "quote": "..."}`, with the quote copied verbatim from the transcript.
+A ref is `{"t": "00:41:07", "speaker": "Ana Ruiz", "quote": "..."}`, with the quote copied verbatim from the transcript.
 
 A slide is named by its slide id (`p:sldId/@id`) and a shape by its id on that slide (`p:cNvPr/@id`), including shapes inside groups. These ids survive edits, deletions, and moves, so they mean the same thing in every deck the engine writes.
 
@@ -75,34 +75,46 @@ The engine checks every change against every other whatever the decisions, so an
 uv run --project deckcheck meeting process private/meetings/q3 --out private/meetings/q3/run1 --shareable
 ```
 
-It reads `transcript.md`, or else `notes.md`, and any `data/*.csv` in the meeting folder. The deck is `before.pptx` there unless `--deck` names another. `--out` must sit inside `artifacts/` or `private/`. `--shareable` answers the ask-first question in `CLAUDE.md`, and the command refuses to start without it. Before the run it checks `claude auth status --json`, and afterwards it writes Claude's JSON result to `claude.json` in the working folder. For the example above it runs this, from the repo root:
+`--out` must sit inside `artifacts/` or `private/`. `--shareable` answers the ask-first question in `CLAUDE.md`, and the command refuses to start without it. Before the run it checks `claude auth status --json`.
+
+The run sees only a staged copy of what it needs. The command replaces `<out>/stage/` on every run and copies these into it:
+
+- `transcript.md`, or `notes.md` when the folder has no transcript
+- every `data/*.csv`
+- the deck, as `before.pptx`. It is `before.pptx` in the meeting folder unless `--deck` names another.
+- the skill, at `.claude/skills/process-meeting/SKILL.md`, and this file, at `docs/changeset.md`
+- `deckcheck`, a link to the engine, so `uv run --project deckcheck` works there
+
+Nothing else in the meeting folder is staged, so `after.pptx`, `expected.yaml`, `changeset.json`, `build.py`, and other meetings stay out of reach. The command then runs this from `<out>/stage/`:
 
 ```bash
-claude -p '<prompt>' --tools Read,Write,Edit,Bash --permission-mode dontAsk \
-  --allowedTools 'Read(./private/meetings/q3/**)' 'Read(./.claude/skills/process-meeting/**)' 'Read(./docs/changeset.md)' \
-    'Read(./private/meetings/q3/run1/**)' 'Write(./private/meetings/q3/run1/**)' 'Edit(./private/meetings/q3/run1/**)' \
-    'Bash(uv run --project deckcheck changeset outline private/meetings/q3/before.pptx --json private/meetings/q3/run1/outline.json)' \
-    'Bash(uv run --project deckcheck changeset validate private/meetings/q3/run1/changeset.json)' \
-    'Bash(uv run --project deckcheck changeset execute private/meetings/q3/run1/changeset.json --out private/meetings/q3/run1/executed.pptx --review private/meetings/q3/run1/review.json)' \
-    'Bash(uv run --project deckcheck deckcheck check private/meetings/q3/run1/executed.pptx --out private/meetings/q3/run1/check)' \
+claude -p '<prompt>' --tools Read,Write,Grep,Glob,Bash --restricted --strict-mcp-config --permission-mode dontAsk \
+  --allowedTools 'Edit(./**)' \
+    'Bash(uv run --project deckcheck changeset outline before.pptx --json outline.json)' \
+    'Bash(uv run --project deckcheck changeset validate changeset.json)' \
+    'Bash(uv run --project deckcheck changeset execute changeset.json --out executed.pptx --review review.json)' \
+    'Bash(uv run --project deckcheck deckcheck check executed.pptx --out check)' \
   --output-format json --no-session-persistence
 ```
 
-- `--tools` leaves Claude no tool that reaches the network.
-- `--permission-mode dontAsk` denies every tool call that no `--allowedTools` rule allows, so a headless run never waits on a prompt.
-- The `Write` and `Edit` rules confine writes to the working folder. The `Bash` rules allow exactly the four commands the skill runs, and the prompt lists the same four.
-- The prompt names the meeting, the deck, the data files, the working folder, and the ChangeSet path. It also says the user passed `--shareable` and that open questions go in `flags`.
+- `--tools` gives Claude five built-in tools and no tool that reaches the network.
+- `--restricted` keeps Read, Write, Grep, and Glob inside `<out>/stage/`, and a file reached through a link that leads out of it counts as outside. It also ignores the user, project, and local settings files, so their permission rules and hooks do not load. Managed settings, which an organization's admin sets, still apply.
+- `--strict-mcp-config` loads no MCP server, because the command passes no `--mcp-config`.
+- `--permission-mode dontAsk` denies every call that no rule allows, so a headless run never waits on a prompt. `Edit(./**)` lets Write create files in `<out>/stage/`. The `Bash` rules allow the four commands as written, which the prompt and the skill name. Claude Code also accepts them followed by `2>&1` or by a redirect into a file in `<out>/stage/`, and it runs plain read-only commands such as `ls` on files there without a rule. Any other command, a variable, or a path outside `<out>/stage/` is denied.
+- The commands name only files inside `<out>/stage/`, so a meeting or `--out` path with spaces does not change them.
+
+Afterwards the command writes Claude's JSON result to `<out>/claude.json` and copies `<out>/stage/changeset.json` to `<out>/changeset.json`, naming the deck by its path from the repo root, as every other command expects. `outline.json`, `executed.pptx`, `review.json`, and `check/` stay in `<out>/stage/`.
 
 | exit | meaning |
 |---|---|
 | 0 | the ChangeSet is valid, and the command prints what `changeset validate` prints |
-| 1 | Claude wrote no ChangeSet, or it is invalid or names another deck |
-| 2 | bad input, such as a missing transcript, a missing deck, `--out` outside `artifacts/` and `private/`, or no `--shareable` |
+| 1 | Claude wrote no ChangeSet, or it is invalid or names another deck than `before.pptx` |
+| 2 | bad input, such as a missing transcript, a missing deck, `--out` outside `artifacts/` and `private/`, a meeting or deck inside `<out>/stage/`, or no `--shareable` |
 | 3 | the `claude` CLI is missing or not logged in, and the command prints ``claude CLI not found or not logged in; run `claude` once to log in`` |
 
-The flags were checked against `claude --help` for Claude Code 2.1.293, and `deckcheck/tests/test_meeting.py` pins the argv. No live `claude -p` run has tested them.
+These flags ran through Claude Code 2.1.293 against a local stand-in for the API. It allowed the four commands and denied each read, write, and command that reached outside `<out>/stage/`, including one that a user settings rule allowed. `deckcheck/tests/test_meeting.py` pins the argv and the staged files. No live `claude -p` run against Claude has tested them.
 
-## Known limits
+## Known gaps
 
 - A chart whose workbook is `.xlsb` gets a new `.xlsx` workbook that holds the old workbook's values only. Formulas, defined names, cell styles, and date formats in that workbook are lost, and a text cell that begins with `=` becomes a formula. The solar deck's six charts are the only `.xlsb` charts in the corpus.
 - `delete_slide` leaves a slide's part in the package when another slide links to it, for example through a click action that jumps to it. The part drops out of the slide list, and the link still points at it. No corpus deck has such a link, and it is not known whether PowerPoint asks to repair the file. Agenda decks often have them.

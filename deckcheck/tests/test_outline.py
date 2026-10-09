@@ -71,7 +71,7 @@ def sha(path: Path) -> str:
 
 
 def test_outline_lists_every_id_and_text_a_changeset_can_address(deck: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert run(["outline", deck, "--json", "outline.json"], capsys) == (
+    assert run(["outline", deck], capsys) == (
         0,
         f'deck "deck.pptx" sha256 {sha(deck)}\n'
         + LAYOUTS
@@ -98,6 +98,11 @@ def test_outline_lists_every_id_and_text_a_changeset_can_address(deck: Path, cap
         '    p0 "Next steps"\n'
         '  shape 3 "TextBox 2" text\n'
         '    p0 "+9%"\n',
+        "",
+    )
+    assert run(["outline", deck, "--json", "outline.json"], capsys) == (
+        0,
+        f"OUTLINE deck.pptx -> outline.json: 3 slides, sha256 {sha(deck)}\n",
         "",
     )
     assert json.loads(Path("outline.json").read_text()) == {
@@ -196,6 +201,19 @@ def test_outline_of_a_file_that_is_not_a_deck_exits_2(tmp_path: Path, capsys: py
     assert run(["outline", notes], capsys) == (2, "", f"error: cannot read deck {notes}: File is not a zip file\n")
 
 
+@pytest.mark.parametrize("json_path", ["deck.pptx", "./deck.pptx", "link.pptx"])
+def test_outline_refuses_to_write_its_json_over_the_deck(deck: Path, capsys: pytest.CaptureFixture[str], json_path: str) -> None:
+    Path("link.pptx").symlink_to("deck.pptx")
+    before = sha(deck)
+
+    assert run(["outline", deck, "--json", json_path], capsys) == (
+        2,
+        "",
+        f"error: --json {json_path.removeprefix('./')} is the deck; the engine never writes over it\n",
+    )
+    assert sha(deck) == before
+
+
 def test_a_hidden_shape_and_a_merged_cell_are_marked(deck: Path, capsys: pytest.CaptureFixture[str]) -> None:
     prs = Presentation(str(deck))
     frame = next(s for s in prs.slides[0].shapes if s.has_table)
@@ -203,7 +221,8 @@ def test_a_hidden_shape_and_a_merged_cell_are_marked(deck: Path, capsys: pytest.
     frame.table.cell(1, 1)._tc.set("hMerge", "1")
     prs.save(str(deck))
 
-    code, out, _ = run(["outline", deck, "--json", "outline.json"], capsys)
+    code, out, _ = run(["outline", deck], capsys)
+    run(["outline", deck, "--json", "outline.json"], capsys)
 
     assert (code, out.split("slide 2 ")[0].split("  shape 4 ")[1]) == (
         0,

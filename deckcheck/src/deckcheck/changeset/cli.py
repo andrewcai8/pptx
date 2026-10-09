@@ -21,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     listing = sub.add_parser("outline", help="list the slide, shape, paragraph, cell and chart point ids a ChangeSet can address")
     listing.add_argument("deck", type=Path)
-    listing.add_argument("--json", type=Path, dest="json_path", help="also write the outline as JSON here")
+    listing.add_argument("--json", type=Path, dest="json_path", help="write the outline as JSON here instead of printing it")
     validate = sub.add_parser("validate", help="check every change against the source deck")
     validate.add_argument("changeset", type=Path)
     run = sub.add_parser("execute", help="write the deck with every change as the maker wrote it")
@@ -60,10 +60,14 @@ def print_invalid(path: Path, problems: Sequence[Problem]) -> int:
 
 
 def cmd_outline(deck: Path, json_path: Path | None) -> int:
+    if json_path and _same(json_path, deck):
+        raise DeckError(f"--json {json_path} is the deck; the engine never writes over it")
     found = outline.read(deck.read_bytes(), str(deck))
-    print(outline.render(found), end="")
-    if json_path:
-        write_atomic(json_path, (found.model_dump_json(indent=2) + "\n").encode())
+    if not json_path:
+        print(outline.render(found), end="")
+        return OK
+    write_atomic(json_path, (found.model_dump_json(indent=2) + "\n").encode())
+    print(f"OUTLINE {deck} -> {json_path}: {plural(len(found.slides), 'slide', 'slides')}, sha256 {found.deck.sha256}")
     return OK
 
 

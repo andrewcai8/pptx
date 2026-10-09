@@ -9,22 +9,41 @@ You read a meeting and the deck it discussed, and you write one ChangeSet: what 
 
 You never edit the deck. You never write a `.pptx`, open the deck with python-pptx, or change any file outside the working folder. The ChangeSet is your only product.
 
+## Where you run
+
+`meeting process` runs you in a working folder it staged for this run, `<out>/stage/`. Everything you need is in it:
+
+- `transcript.md`, one turn per line as `[00:41:07] Name (Role, Org): text`, or `notes.md` as the recorder exported it
+- `data/*.csv`, the client files that new numbers come from, when the meeting has any
+- `before.pptx`, the source deck
+- this skill, and `docs/changeset.md`, which describes every op and field
+
+Your file tools reach nothing outside this folder, and nothing outside it is yours to read. Run every command from it.
+
 ## Confidentiality
 
 A client deck and its meeting are confidential, and everything you read leaves the machine.
 
-- For a client deck, follow the ask-first rule in the repo's `CLAUDE.md`. Ask the user whether the deck and the meeting may be shared with an AI service under their firm's policy before you read the meeting, run any command on the deck, or open any output. If the answer is no or unsure, stop. This skill cannot run without reading both.
-- When `meeting process --shareable` started you, the user already gave that answer. Its prompt says so. Do not ask again.
-- A golden scenario under `evals/` is public and needs no ask.
-- Work in one folder under `artifacts/` or `private/`, for example `private/meetings/q3-steerco/run1/`. A headless run names it in its prompt. Write every file there and nowhere else. Never commit anything from it.
+- When `meeting process --shareable` started you, the user already answered the ask-first question in the repo's `CLAUDE.md`. Its prompt says so. Do not ask again.
+- If you were started any other way, do not run these steps yourself. Ask the user whether the deck and the meeting may be shared with an AI service under their firm's policy. If they say yes, run `uv run --project deckcheck meeting process <meeting folder> --out <a folder under private/ or artifacts/> --shareable` from the repo root. If the answer is no or unsure, stop.
+- Never commit anything from the working folder.
 
-## Inputs
+## Tools
 
-- The meeting is `transcript.md`, one turn per line as `[00:04:10] Name (Role, Org): text`, or `notes.md` as the recorder exported it.
-- The source deck, usually `before.pptx` in the meeting folder.
-- Any `data/*.csv` in the meeting folder. These are the client files that new numbers come from.
+Use only these:
 
-Run every command from the repo root. In the commands below, `<deck>` is the deck's path relative to the repo root and `<work>` is the working folder.
+- Read to read a file, Grep to search one, and Glob to list files. Read a long file one part at a time.
+- Write to create or replace a file. Write only inside the working folder.
+- These four commands, each exactly as written, with nothing added before or after:
+
+```bash
+uv run --project deckcheck changeset outline before.pptx --json outline.json
+uv run --project deckcheck changeset validate changeset.json
+uv run --project deckcheck changeset execute changeset.json --out executed.pptx --review review.json
+uv run --project deckcheck deckcheck check executed.pptx --out check
+```
+
+Do not read or write files with shell commands such as `cat`, `sed`, `grep`, `python3`, or a `>` redirect, and do not set shell variables. A headless run denies every other command.
 
 ## Steps
 
@@ -33,10 +52,16 @@ Run every command from the repo root. In the commands below, `<deck>` is the dec
 Read the whole meeting and every data file. Then list the deck:
 
 ```bash
-uv run --project deckcheck changeset outline <deck> --json <work>/outline.json
+uv run --project deckcheck changeset outline before.pptx --json outline.json
 ```
 
-The outline prints the deck's path and sha256, the layouts `add_slide` accepts with their text placeholders, and every slide with its `index`, `id`, layout, and title. Under each slide it lists every shape by id and name, with numbered paragraphs (`p0`, `p1`, ...), table cells (`r1c4`), or chart series and points (`series 0 "Sales": p0 "2024" 120`). Every text is a JSON string literal.
+The command prints one line with the slide count and the deck's sha256, and writes the outline to `outline.json`. Read `outline.json` with Read, in parts, and search it with Grep. It holds:
+
+- `deck`, with the `path` and `sha256` the ChangeSet's `source` copies
+- `layouts`, each with a `name` and the `placeholders` an added slide can fill, by `id`
+- `slides`, each with its `index`, `id`, `layout`, `title`, and `shapes`. Each shape has an `id`, a `name`, and a `kind`. A text shape lists its `paragraphs` in order, so the first is paragraph 0. A table lists its `rows`, each a list of cell texts, with `null` for a merged cell. A chart lists its `series`, each with an `index`, a `name`, and `points` that hold a `point` number, a `category`, and a `value`.
+
+Every text is a JSON string, read the way the engine reads it, so a value copied from `outline.json` can go straight into `old`.
 
 People say slide numbers. "Slide five" is the slide whose `index` is 5. The ChangeSet names slides by `id`, so look each one up.
 
@@ -62,15 +87,15 @@ Each change is one op on one place in the deck. Copy every `old` value from the 
 
 - Change the smallest span that carries the edit. To update a figure, replace `ca. 25%` and leave the rest of the sentence alone. To reword a bullet, replace that bullet's text in its own paragraph. The review keeps every other clause on the slide, so a rewritten sentence that drops a clause fails.
 - `old` must occur exactly once in the shape. If it repeats across paragraphs, add `paragraph` with the index. If it repeats inside one paragraph, quote more of the text around it.
-- Find every place the changed fact appears. Search the outline for each spelling of the old value, such as `120`, `$120m`, `c.$120m`, and `+12%`. Check titles, headers, body text, table cells, chart labels, chart points, and footnotes on each slide the meeting named, and on any other slide where the meeting said the figure appears. A figure drawn as a chart bar needs `set_chart_value` as well as the label next to it, or the bar and the label disagree.
+- Find every place the changed fact appears. Grep `outline.json` for each spelling of the old value, such as `120`, `$120m`, `c.$120m`, and `+12%`. Check titles, headers, body text, table cells, chart labels, chart points, and footnotes on each slide the meeting named, and on any other slide where the meeting said the figure appears. A figure drawn as a chart bar needs `set_chart_value` as well as the label next to it, or the bar and the label disagree.
 - Edit only the slides the meeting asked to change. A slide the meeting did not ask about keeps every byte.
-- To delete a slide, use `delete_slide`. To move one, use `move_slide` with `after` set to the id of the slide it should follow, or null to make it first. "Move 7 up, straight after 3" is `{"slide": <id of 7>, "after": <id of 3>}`.
+- To delete a slide, use `delete_slide`. To move one, use `move_slide` with `after` set to the id of the slide it should follow, or null to make it first. "Put the summary first" is `{"slide": <id of the summary>, "after": null}`.
 - To add a slide, use `add_slide` with a layout name from the outline's layouts. When the meeting says "same look as slide N", use slide N's layout. Then write one `fill_placeholder` per placeholder you fill, using the placeholder ids listed under that layout: the title, and the body as one entry per bullet.
 - When the meeting gives the wording, use it as said. When it gives the content but not the words, write it in the deck's voice and use only facts from the meeting, a data file, or the slide itself.
 - Add only what the meeting asked for. Add no caveats, no extra bullets, no follow-ups, and no speaker notes. Never write a question, a placeholder, or "to be confirmed" into the deck. Questions go in `flags`.
 - When the meeting asks to cite a source, or a new figure comes from a data file and the slide already has a footnote or source line, add one line that names the source. Use `insert_paragraph` after the last footnote and follow the existing numbering.
 
-New text must meet the house style in `standards/house-style.yaml`. A bullet must not end in `.`, `;`, or `,`, so end no paragraph you write with one. A title stays under 150 characters. Never write `TBD`, `XX`, `[insert`, or `???`.
+New text must meet the house style, which `deckcheck check` enforces. A bullet must not end in `.`, `;`, or `,`, so end no paragraph you write with one. A title stays under 150 characters. Never write `TBD`, `XX`, `[insert`, or `???`.
 
 ### 4. Take numbers only from the meeting or a data file
 
@@ -80,19 +105,19 @@ Cite each number. Put the turn that states it in the change's `refs`. When it co
 
 ### 5. Write the ChangeSet and validate it
 
-Write `<work>/changeset.json` in this shape. `docs/changeset.md` describes every op and field.
+Write `changeset.json` with Write, in this shape. `docs/changeset.md` describes every op and field.
 
 ```json
 {
   "meeting": {"title": "<the meeting header's title>", "date": "YYYY-MM-DD"},
-  "source": {"path": "<deck path from the outline>", "sha256": "<sha256 from the outline>"},
+  "source": {"path": "before.pptx", "sha256": "<sha256 from the outline>"},
   "asks": [{"id": "new-price", "text": "What was asked, in one sentence.", "refs": [REF]}],
   "changes": [
     {"id": "title-price", "ask_id": "new-price", "rationale": "One sentence.", "refs": [REF],
      "op": {"kind": "replace_text", "slide": 260, "shape": 4, "old": "ca. 25%", "new": "ca. 28%"}}
   ],
   "flags": [{"id": "which-chart", "question": "The concrete question, with the options.", "slides": [262, 265], "refs": [REF]}],
-  "held": [{"id": "cover-date", "text": "What stays as it is, and why.", "slides": [256], "refs": [REF]}]
+  "held": [{"id": "logo-size", "text": "What stays as it is, and why.", "slides": [256], "refs": [REF]}]
 }
 ```
 
@@ -103,7 +128,7 @@ The ops are `replace_text` (`slide`, `shape`, `old`, `new`, optional `paragraph`
 Then validate:
 
 ```bash
-uv run --project deckcheck changeset validate <work>/changeset.json
+uv run --project deckcheck changeset validate changeset.json
 ```
 
 Exit 0 prints `VALID` and one line per change with the text it replaces. Exit 1 prints `INVALID` and one `<change id> <field>: <message>` line per problem. Fix every problem in the ChangeSet and validate again until it prints `VALID`. Each message names what exists, such as the deck's slide ids or a shape's text, so read it before you change anything.
@@ -111,13 +136,13 @@ Exit 0 prints `VALID` and one line per change with the text it replaces. Exit 1 
 ### 6. Execute and check the house style
 
 ```bash
-uv run --project deckcheck changeset execute <work>/changeset.json --out <work>/executed.pptx --review <work>/review.json
-uv run --project deckcheck deckcheck check <work>/executed.pptx --out <work>/check
+uv run --project deckcheck changeset execute changeset.json --out executed.pptx --review review.json
+uv run --project deckcheck deckcheck check executed.pptx --out check
 ```
 
-`execute` writes the edited copy and `review.json`, which lists each change's text before and after. Read the after text of every change. It must say what the meeting decided and read as a finished slide.
+`execute` writes the edited copy and `review.json`, which lists each change's text before and after. Read `review.json` and the after text of every change. It must say what the meeting decided and read as a finished slide.
 
-`check` exits 1 whenever the deck has any violation, and most source decks already have some. A violation is yours when it names a slide you changed or added and the text it quotes is text you wrote. Fix each one by changing the ChangeSet, then validate, execute, and check again. Leave the source deck's own violations alone.
+`check` exits 1 whenever the deck has any violation, and most source decks already have some. A violation is yours when it names a slide you changed or added and the text it quotes is text you wrote. Fix each one by writing the ChangeSet again, then validate, execute, and check again. Leave the source deck's own violations alone.
 
 ## Done
 
