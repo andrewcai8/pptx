@@ -21,6 +21,7 @@ async function route() {
   hideBubble();
   if (mid === null) {
     state.view = null;
+    state.notice = null;
     await refreshMeetings();
     state.poll = setInterval(refreshMeetings, 1000);
     return;
@@ -53,9 +54,10 @@ function select(token) {
 }
 
 async function refreshMeetings() {
-  const { body } = await call("GET", "/api/meetings");
-  const before = JSON.stringify(state.meetings);
-  state.meetings = body.meetings;
+  const { status, body } = await call("GET", "/api/meetings");
+  const before = JSON.stringify([state.meetings, state.offline]);
+  state.offline = status === 200 ? null : body.error ?? `The review server answered ${status}.`;
+  if (status === 200) state.meetings = body.meetings;
   for (const m of state.meetings) {
     if (!state.mine.has(m.id) || m.state.is === "processing") continue;
     state.mine.delete(m.id);
@@ -64,12 +66,13 @@ async function refreshMeetings() {
       return;
     }
   }
-  if (parseHash().mid === null && (before !== JSON.stringify(state.meetings) || !root.querySelector(".home"))) renderHome();
+  if (parseHash().mid === null && (before !== JSON.stringify([state.meetings, state.offline]) || !root.querySelector(".home"))) renderHome();
 }
 
 async function processMeeting(m, again) {
   if (again && !confirm("Process this meeting again? Your decisions on it are discarded.")) return;
   const { status, body } = await call("POST", `${meetingUrl(m.id)}/process`, again ? { again: true } : {});
+  state.notice = status === 202 ? null : body.error ?? `The review server answered ${status}.`;
   if (status === 202) {
     state.mine.add(m.id);
     state.meetings = state.meetings.map((x) => (x.id === m.id ? body : x));
@@ -86,6 +89,7 @@ function renderHome() {
       { class: "home" },
       h("h2", null, "Meetings"),
       h("p", { class: "lede" }, "Process a meeting to see what it changes in its deck, then decide each change."),
+      [state.offline, state.notice].filter(Boolean).map((text) => h("p", { class: "error notice", role: "alert" }, text)),
       h("ul", { class: "meetings" }, state.meetings.map(meetingRow)),
       state.meetings.length === 0 && h("p", { class: "muted" }, "No meetings found in evals/ or private/meetings/."),
     ),
@@ -349,7 +353,7 @@ async function applyDecisions() {
     state.stale = false;
     state.notice = null;
   } else {
-    state.notice = body.error ?? `Apply failed (${status}).`;
+    state.notice = body.error ?? body.problems?.map((p) => `${p.where}: ${p.message}`).join(" ") ?? `Apply failed (${status}).`;
   }
   renderReview();
 }

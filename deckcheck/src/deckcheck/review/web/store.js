@@ -18,6 +18,7 @@ export const state = {
   drafts: {},
   errors: {},
   notice: null,
+  offline: null,
   published: false,
 };
 
@@ -28,8 +29,17 @@ const images = new Map();
 export async function call(method, url, body) {
   const init = { method, headers: { "Content-Type": "application/json" } };
   if (body !== undefined) init.body = JSON.stringify(body);
-  const response = await fetch(url, init);
-  return { status: response.status, body: await response.json() };
+  let response;
+  try {
+    response = await fetch(url, init);
+  } catch {
+    return { status: 0, body: { error: "The review server did not answer. Check that it is still running, then try again." } };
+  }
+  try {
+    return { status: response.status, body: await response.json() };
+  } catch {
+    return { status: 0, body: { error: `The review server answered ${response.status} with something other than JSON.` } };
+  }
 }
 
 export const post = serial();
