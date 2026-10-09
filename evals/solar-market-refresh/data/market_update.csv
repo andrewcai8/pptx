@@ -1,0 +1,6 @@
+metric,value,unit,source_tab
+market_size_2022,410,$m,Market model v4
+market_size_2027,2000,$m,Market model v4
+cagr_2022_27,37,%,Market model v4
+ppa_tariff_2022,0.07,USD/kWh,Tariff assumptions
+grid_tariff_2022,0.11,USD/kWh,Tariff assumptions

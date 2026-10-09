@@ -1,0 +1,46 @@
+deck:
+  corpus: retail-analytics-2018
+  sha256: 05240a7c5d236fd9b5934219ca978fa44c1fb6be54945b52980677a6a568f951
+
+changes:
+  - id: c1
+    kind: edit-text
+    intent: Replace slide 15's topic title with an action title that states the Starbucks result using the engagement and revenue figures already on the slide.
+    said: ["00:01:34", "00:02:51", "00:03:04", "00:03:14", "00:06:17", "00:06:40", "00:06:46", "00:06:54"]
+    slides:
+      15:
+        require:
+          - percent: "150%"
+            where: title
+            from: {slide: 15}
+          - money: "$100M"
+            where: title
+            from: {slide: 15}
+        forbid:
+          - {text: "Significant impact was achieved", where: title}
+          - {text: ["tripled", "triple", "triples", "tripling", "trebled", "threefold", "3x", "3×"], superseded: "00:02:07"}
+          - {text: ["tripled", "triple", "triples", "tripling", "trebled", "threefold"], superseded: "00:06:54", where: deck}
+    intent_checks:
+      - The title reads as one sentence stating what personalization delivered, a result the board could repeat, not a claim that impact was significant.
+      - The 150% is attached to marketing engagement and the $100M to net incremental revenue in year 1; neither figure is described as a tripling.
+      - The title names Starbucks so the page stands on its own when read out of sequence.
+      - The title fits on one line, two at most, on the slide as rendered.
+      - Slide 15 adds nothing beyond the new title; the quotes, the result callouts and their figures stay as they were.
+
+non_changes:
+  - id: n1
+    kind: not-a-change
+    said: ["00:05:09", "00:05:23", "00:05:41"]
+    why: Slide 14's title is weak too, but the client wants to rework it next week after settling what the propensity table shows.
+    slides: [14]
+  - id: n2
+    kind: not-a-change
+    said: ["00:03:59", "00:04:39"]
+    why: Running the email-offer analysis on the client's own loyalty data is a follow-up scoping piece after the board, and the deck stays about the sector.
+    slides: [12]
+    absent: [{text: "Norrmark"}]
+  - id: n3
+    kind: not-a-change
+    said: ["00:05:50", "00:06:01", "00:06:09"]
+    why: The four-dot last bullets on slide 6 are deliberate continuation marks from the original; Pieter wondered about them and nobody asked for a change.
+    slides: [6]

@@ -1,0 +1,58 @@
+deck:
+  corpus: insurance-regulator-2017
+  sha256: 5dcf6300cfc6c95ab5f9ba184519835380fb60b30b0dea20a47eeb7739543352
+
+changes:
+  - id: c1
+    kind: update-number
+    intent: Replace the millennial share in the generations headline with the 2027 figure from the client's survey file.
+    said: ["00:01:16", "00:02:28", "00:06:11", "00:06:24", "00:06:30"]
+    slides:
+      5:
+        require:
+          - percent: "48%"
+            where: title
+            from: {data: data/client-survey.csv, row: millennials-2027, column: share_pct}
+        forbid:
+          - {percent: "50%"}
+          - {percent: "45%", superseded: "00:02:28"}
+    intent_checks:
+      - The headline still makes one argument about the new generations; only the figure changed.
+      - The footnotes attribute the headline figure to the client's member survey, by a new footnote, a source line, or by extending an existing one, and the curve keeps its US census source.
+      - Slide 5 adds nothing unrelated to the survey citation, such as a remark about the workshop, its lunch, or its logistics, and an extended footnote gains only words about the survey.
+
+  - id: c2
+    kind: delete-slide
+    slide: 2
+    intent: Drop the BCG credentials page; the association and the supervisor already know the team.
+    said: ["00:03:06", "00:03:36"]
+
+  - id: c3
+    kind: move-slide
+    slide: 14
+    after: 11
+    intent: Lead the three regulator roles with genuine innovation, straight after the roles overview.
+    said: ["00:03:45", "00:04:16"]
+
+non_changes:
+  - id: n1
+    kind: not-a-change
+    said: ["00:06:42", "00:06:56", "00:07:03"]
+    why: Inviting the Data Protection Oversight Office to the workshop is the client's own logistics action, and their name must not appear anywhere in the deck before they accept.
+    absent: [{text: "Oversight Office"}]
+  - id: n2
+    kind: ambiguous
+    said: ["00:08:05", "00:08:20", "00:08:38"]
+    why: Marko asked to make "the regulator slide" punchier without saying which of the three regulator pages he meant.
+    slides: [10, 16, 18]
+    flag: Which regulator slide should be punchier (10 the obstacles map, 16 the Singapore example, or 18 the closing call to cooperate), and in what direction?
+  - id: n3
+    kind: not-a-change
+    said: ["00:04:25", "00:04:41", "00:05:07"]
+    why: The client chose to keep the role numbers and the overview graphic as they are after the innovation page moves.
+    slides: [11, 12, 13, 14]
+  - id: n4
+    kind: not-a-change
+    said: ["00:07:40", "00:07:47", "00:07:55"]
+    why: Asked about the sandbox page, the client called it fine and its FCA wording what the supervisor expects; nobody asked for a change.
+    slides: [17]

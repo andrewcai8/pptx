@@ -1,0 +1,47 @@
+deck:
+  corpus: rcc-hq-reopening-pack-2020
+  sha256: 689bc16e857e35774999de835f755d3c1c4c31cc0e83ebd8129faf3e0e5a0052
+
+changes:
+  - id: c1
+    kind: edit-text
+    intent: Reword the flexibility principle on slide 4 so it says teams choose their own office days within the site cap, replacing "Flexibility to teams".
+    said: ["00:01:40", "00:03:03", "00:03:52", "00:04:05"]
+    slides:
+      4:
+        require:
+          - {text: "days"}
+          - {text: ["cap", "caps", "limit", "limits", "capacity", "maximum", "maximums", "ceiling", "ceilings"]}
+        forbid:
+          - {text: "Flexibility to teams"}
+          - {text: ["schedule", "schedules"], superseded: "00:03:03"}
+    intent_checks:
+      - The reworded bullet replaces "Flexibility to teams" in the same place in the illustrative principles list, between the customers bullet and the individual choice bullet, not as an extra bullet and not split into a bullet and a sub-bullet.
+      - Slide 4 adds nothing beyond the reworded bullet, such as a new principle, a caveat, or a site's cap figure.
+      - The bullet reads as a bounded choice (teams decide their days, inside a per-site limit), not as open-ended flexibility or flexible hours.
+
+non_changes:
+  - id: n1
+    kind: not-a-change
+    said: ["00:05:23", "00:05:39", "00:06:24"]
+    why: The team debated whether the timing slide still holds before the province's workplace guidance and decided to leave slide 7 as it is until the announcement.
+    slides: [7]
+    absent:
+      - {text: "province"}
+      - {text: "provincial"}
+  - id: n2
+    kind: not-a-change
+    said: ["00:07:25", "00:07:40"]
+    why: Whether to call out Calgary's later opening on the site page is parked until Daniel has seen real estate next week.
+    slides: [12]
+    absent: [{text: "Calgary"}]
+  - id: n3
+    kind: not-a-change
+    said: ["00:06:52", "00:07:02", "00:07:13", "00:07:19"]
+    why: Who sends the pre-read and when is logistics; Daniel sends it through Martine's assistant.
+    absent: [{text: "pre-read"}]
+  - id: n4
+    kind: not-a-change
+    said: ["00:02:36", "00:02:54"]
+    why: The Mississauga daily cap is facilities-plan detail that differs by site and will move, so Daniel and Claire kept the number off the slide.
+    absent: [{text: "380"}, {text: "Mississauga"}]

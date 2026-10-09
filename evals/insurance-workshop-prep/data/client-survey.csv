@@ -1,0 +1,10 @@
+segment_year,segment,year,basis,share_pct,policyholders_k,insurers_reporting
+baby-boomers-2017,Baby boomers,2017,observed,34,412,9
+gen-x-2017,Generation X,2017,observed,37,449,9
+millennials-2017,Millennials,2017,observed,29,352,9
+baby-boomers-2022,Baby boomers,2022,observed,28,351,11
+gen-x-2022,Generation X,2022,observed,34,426,11
+millennials-2022,Millennials,2022,observed,38,476,11
+baby-boomers-2027,Baby boomers,2027,projection,21,272,11
+gen-x-2027,Generation X,2027,projection,31,402,11
+millennials-2027,Millennials,2027,projection,48,622,11
