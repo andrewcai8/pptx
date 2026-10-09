@@ -98,6 +98,7 @@ class View:
     row: Row
     review: Review
     slide: tuple[int, int]
+    stamp: str
     final: Final | None
 
 
@@ -195,8 +196,12 @@ class _Workdir:
     def applied(self) -> Path:
         return self.dir / "applied.json"
 
+    @property
+    def renders(self) -> Path:
+        return self.dir / "render"
+
     def render(self, side: Side) -> Path:
-        return self.dir / "render" / side
+        return self.renders / side
 
     def final(self) -> Final | None:
         try:
@@ -265,8 +270,9 @@ class Reviews:
             checked = load(work.changeset)
             doc = review(checked, work.executed, work.executed.read_bytes())
             final = work.final()
+            stamp = _sha(f"{doc.executed.sha256} {work.renders.stat().st_mtime_ns}".encode())[:12]
         deck = Presentation(io.BytesIO(checked.source))
-        return View(self._row(meeting), doc, (deck.slide_width, deck.slide_height), final)
+        return View(self._row(meeting), doc, (deck.slide_width, deck.slide_height), stamp, final)
 
     def decide(self, mid: str, decisions: Mapping[str, Decision]) -> tuple[dict[str, Decision], Final | None]:
         work = self._ready(self._find(mid))

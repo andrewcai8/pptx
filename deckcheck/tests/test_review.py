@@ -5,6 +5,7 @@ import hashlib
 import http.client
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -200,14 +201,22 @@ def test_process_executes_and_renders_both_decks(repo: Path, app: Client) -> Non
     assert view["slide"] == {"w": 9144000, "h": 6858000}
     assert view["fonts"] == [{"font": "Nonexistent Sans QA", "family": "DejaVu Sans"}]
     assert view["final"] is None
-    stamp = sha(executed)[:12]
-    assert view["images"] == {
-        "old": f"/api/meetings/evals/demo/render/old/slide-{{n}}.png?v={stamp}",
-        "new": f"/api/meetings/evals/demo/render/new/slide-{{n}}.png?v={stamp}",
-    }
+    assert re.fullmatch(r"/api/meetings/evals/demo/render/old/slide-\{n\}\.png\?v=[0-9a-f]{12}", view["images"]["old"])
+    assert view["images"]["new"] == view["images"]["old"].replace("/old/", "/new/")
     assert app.get(view["images"]["old"].replace("{n}", "3")) == (200, b"\x89PNG old 3")
     assert app.get(view["images"]["new"].replace("{n}", "4")) == (200, b"\x89PNG new 4")
     assert app.get("/api/meetings/evals/demo/render/old/slide-4.png") == (404, {"error": "not found"})
+
+
+def test_processing_again_gives_the_slide_pictures_new_urls(repo: Path, app: Client) -> None:
+    app.ready()
+    first = app.get("/api/meetings/evals/demo")[1]
+    app.post("/api/meetings/evals/demo/process", {"again": True})
+    app.settle("evals/demo")
+    second = app.get("/api/meetings/evals/demo")[1]
+
+    assert second["review"]["executed"] == first["review"]["executed"]
+    assert second["images"]["new"] != first["images"]["new"]
 
 
 def test_processing_a_ready_meeting_again_needs_asking(repo: Path, app: Client) -> None:

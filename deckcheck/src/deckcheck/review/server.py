@@ -181,13 +181,12 @@ def final_json(final: Final | None, mid: str) -> dict | None:
 
 def view_json(view: View) -> dict:
     mid = view.row.meeting.id
-    stamp = view.review.executed.sha256[:12]
     w, h = view.slide
     return {
         **row_json(view.row),
         "review": view.review.model_dump(mode="json"),
         "slide": {"w": w, "h": h},
-        "images": {side: f"/api/meetings/{mid}/render/{side}/slide-{{n}}.png?v={stamp}" for side in ("old", "new")},
+        "images": {side: f"/api/meetings/{mid}/render/{side}/slide-{{n}}.png?v={view.stamp}" for side in ("old", "new")},
         "final": final_json(view.final, mid),
     }
 
