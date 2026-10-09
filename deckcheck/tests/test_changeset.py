@@ -261,6 +261,17 @@ def test_untouched_runs_in_an_edited_paragraph_keep_their_formatting(deck: Path,
     assert [rpr for _, rpr in after] == [rpr for _, rpr in before]
 
 
+@pytest.mark.parametrize("order", [("grew", "pct"), ("pct", "grew")], ids=["text-order", "reverse-order"])
+def test_abutting_quotes_that_both_insert_at_their_shared_edge_keep_text_order(
+    deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], order: tuple[str, str]
+) -> None:
+    ops = {"grew": {**REVENUE, "old": "grew ", "new": "grew by "}, "pct": {**REVENUE, "old": "12%", "new": "c.12%"}}
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, [change(cid, ops[cid]) for cid in order]), "--out", out], capsys)
+
+    assert paragraphs(out, 256, 4) == ["Revenue grew by c.12% in 2025"]
+
+
 def test_inserted_paragraphs_follow_their_anchor_in_changeset_order_styled_like_it(
     deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

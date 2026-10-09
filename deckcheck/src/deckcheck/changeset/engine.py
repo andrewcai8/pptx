@@ -620,7 +620,9 @@ def _build(checked: Checked, ops: Sequence[tuple[str, Op]]) -> bytes:
     ctx = Context.of(checked.changeset)
     located = [(cid, op, locate(pkg, deck, ctx, cid, op)) for cid, op in ops]
     spans = [t for _, _, t in located if isinstance(t, TextAt)]
-    for t in sorted(spans, key=lambda t: (t.splice.start, t.splice.end), reverse=True):
+    # Quotes in one paragraph never overlap, so their starts order them. Splice offsets do not: two abutting
+    # quotes can both trim to an insertion at their shared edge, and the later quote's must be written first.
+    for t in sorted(spans, key=lambda t: t.at, reverse=True):
         text.write_splice(t.p, t.splice)
     tails: dict[etree._Element, etree._Element] = {}
     rids: dict[int, str] = {s.id: s.rid for s in deck.slides}
