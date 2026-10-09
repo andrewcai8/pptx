@@ -54,6 +54,8 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 - `execute` writes a new deck with every change applied, for review. It never edits the source.
 - `apply` writes the final deck from a fresh copy of the source and the review decisions. Exit 1 means some decisions are still pending, and nothing is written.
 
+`uv run --project deckcheck review serve` starts the review app on 127.0.0.1, where a consultant decides each change in a browser. It shows client slides and quotes, so the same rules apply to every page you read from it. `docs/review.md` describes it.
+
 The `verify-pptx` skill in `.claude/skills/verify-pptx/` is the full procedure, including the audit. Follow it when asked to verify, fix, or audit a deck.
 
 The `process-meeting` skill in `.claude/skills/process-meeting/` is the maker. It reads a meeting folder and writes a ChangeSet, and the engine makes the edits. Follow it when asked to turn a meeting into deck changes. `meeting process` runs it headless through `claude -p`:
