@@ -591,6 +591,8 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
             "c1 op.shape: slide 1 (id 256) has no shape 9; shapes with text: 2 'Title 1' ('Market outlook'), "
             "3 'Content Placeholder 2' ('Demand grows 4% a year Prices…'), 4 'TextBox 3' ('Revenue grew 12% in 2025')",
         ),
+        (lambda d: changeset(d, [change("c1", {**CELL, "shape": 9})]), "c1 op.shape: slide 1 (id 256) has no shape 9; tables: 5 'Table 4'"),
+        (lambda d: changeset(d, [change("c1", {**POINT, "shape": 9})]), "c1 op.shape: slide 2 (id 257) has no shape 9; charts: 3 'Chart 2'"),
         (lambda d: changeset(d, [change("c1", {**REVENUE, "old": "13%"})]), "c1 op.old: '13%' is not in shape 4 'TextBox 3'; its text is 'Revenue grew 12% in 2025'"),
         (
             lambda d: changeset(d, [change("c1", {**REVENUE, "shape": 3, "old": "s "})]),
@@ -656,6 +658,8 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
     ids=[
         "unknown-slide",
         "unknown-shape",
+        "unknown-table",
+        "unknown-chart",
         "old-not-in-shape",
         "old-occurs-twice",
         "overlapping-quotes",

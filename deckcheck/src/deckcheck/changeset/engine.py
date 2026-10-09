@@ -5,6 +5,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from lxml import etree
 from pptx.oxml.ns import qn
@@ -297,7 +298,7 @@ def locate(pkg: Package, deck: slides.Deck, ctx: Context, cid: str, op: Op) -> T
             return _locate_cell(pkg, deck, op)
         case SetChartValue():
             slide = _slide(deck, op.slide, "op.slide")
-            shape = _shape(pkg, slide, op.shape)
+            shape = _shape(pkg, slide, op.shape, "chart")
             try:
                 point = chart.locate_point(pkg, slide.part, shape, op.series, op.point)
             except chart.ChartError as e:
@@ -350,7 +351,7 @@ def _locate_text(pkg: Package, deck: slides.Deck, op: ReplaceText) -> TextAt:
 
 def _locate_cell(pkg: Package, deck: slides.Deck, op: SetCell) -> CellAt:
     slide = _slide(deck, op.slide, "op.slide")
-    shape = _shape(pkg, slide, op.shape)
+    shape = _shape(pkg, slide, op.shape, "table")
     tbl = shape.find(f".//{qn('a:tbl')}") if shape.tag == qn("p:graphicFrame") else None
     if tbl is None:
         raise Miss("op.shape", f"shape {op.shape} {slides.shape_name(shape)!r} is not a table")
@@ -422,24 +423,36 @@ def _no_slide(deck: slides.Deck, slide_id: int) -> str:
     return f"no slide {slide_id}; slide ids: {_list(f'{s.id} (slide {s.index})' for s in deck.slides)}"
 
 
-def _shape(pkg: Package, slide: slides.SourceSlide, shape_id: int) -> etree._Element:
+ShapeKind = Literal["text", "table", "chart"]
+
+
+def _shape(pkg: Package, slide: slides.SourceSlide, shape_id: int, kind: ShapeKind) -> etree._Element:
     found = [s for s in slides.shapes(slides.shape_tree(pkg.xml(slide.part))) if slides.shape_id(s) == shape_id]
     if len(found) == 1:
         return found[0]
     if found:
         raise Miss("op.shape", f"{slide.name} has {len(found)} shapes with id {shape_id}, so the id does not say which")
-    listed = []
-    for s in slides.shapes(slides.shape_tree(pkg.xml(slide.part))):
-        body = s.find(qn("p:txBody"))
-        words = " ".join(text.paragraph_text(p) for p in body.iterfind(qn("a:p"))).strip() if body is not None else ""
-        if words:
-            listed.append(f"{slides.shape_id(s)} {slides.shape_name(s)!r} ({_clip(words, 30)!r})")
-    raise Miss("op.shape", f"{slide.name} has no shape {shape_id}; shapes with text: {_list(listed)}")
+    listed = [_describe(s, kind) for s in slides.shapes(slides.shape_tree(pkg.xml(slide.part)))]
+    label = {"text": "shapes with text", "table": "tables", "chart": "charts"}[kind]
+    raise Miss("op.shape", f"{slide.name} has no shape {shape_id}; {label}: {_list(d for d in listed if d) or 'none'}")
+
+
+def _describe(shape: etree._Element, kind: ShapeKind) -> str | None:
+    """How a bad shape id's message lists `shape` as a candidate, or None when an op of `kind` cannot address it."""
+    name = f"{slides.shape_id(shape)} {slides.shape_name(shape)!r}"
+    match kind:
+        case "table":
+            return name if shape.find(f".//{qn('a:tbl')}") is not None else None
+        case "chart":
+            return name if shape.find(f".//{{{chart.C_NS}}}chart") is not None else None
+    body = shape.find(qn("p:txBody"))
+    words = " ".join(text.paragraph_text(p) for p in body.iterfind(qn("a:p"))).strip() if body is not None else ""
+    return f"{name} ({_clip(words, 30)!r})" if words else None
 
 
 def _paragraphs(pkg: Package, deck: slides.Deck, slide_id: int, shape_id: int):
     slide = _slide(deck, slide_id, "op.slide")
-    shape = _shape(pkg, slide, shape_id)
+    shape = _shape(pkg, slide, shape_id, "text")
     body = shape.find(qn("p:txBody"))
     if body is None:
         hint = "; use set_cell" if shape.find(f".//{qn('a:tbl')}") is not None else ""
