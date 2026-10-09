@@ -167,10 +167,15 @@ def state_json(state: State) -> dict:
             return {"is": "new"}
         case Processing(step):
             return {"is": "processing", "step": step}
-        case Failed(message, problems):
-            return {"is": "failed", "message": message, "problems": [asdict(p) for p in problems]}
-        case Ready(decided, total, applied):
-            return {"is": "ready", "decided": decided, "total": total, "applied": applied}
+        case Failed():
+            return {"is": "failed", **failure_json(state)}
+        case Ready(decided, total, applied, failed):
+            ready = {"is": "ready", "decided": decided, "total": total, "applied": applied}
+            return {**ready, "failed": failure_json(failed)} if failed else ready
+
+
+def failure_json(failed: Failed) -> dict:
+    return {"message": failed.message, "problems": [asdict(p) for p in failed.problems]}
 
 
 def final_json(final: Final | None, mid: str) -> dict | None:

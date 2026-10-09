@@ -383,6 +383,34 @@ def test_start_converges_on_what_a_crash_left_behind(repo: Path, app: Client) ->
     assert sorted(p.name for p in work.parent.iterdir()) == ["demo", "other"]
 
 
+def test_a_failed_process_again_keeps_the_review_on_disk(repo: Path, app: Client) -> None:
+    app.ready()
+    app.decide(c1="keep_old")
+    committed = repo / "evals/demo/changeset.json"
+    committed.write_text(committed.read_text().replace('"shape": 4', '"shape": 99'))
+
+    app.post("/api/meetings/evals/demo/process", {"again": True})
+
+    assert app.settle("evals/demo")["state"] == {
+        "is": "ready",
+        "decided": 1,
+        "total": 5,
+        "applied": False,
+        "failed": {
+            "message": "The engine refused the ChangeSet: 1 problem.",
+            "problems": [
+                {
+                    "where": "c1 op.shape",
+                    "message": "slide 1 (id 256) has no shape 99; shapes with text: 2 'Title 1' ('Market outlook'), "
+                    "3 'Content Placeholder 2' ('Demand grows 4% a year Prices…'), 4 'TextBox 3' ('Revenue grew 12% in 2025')",
+                }
+            ],
+        },
+    }
+    assert app.get("/api/meetings/evals/demo")[1]["review"]["changes"][0]["decision"] == "keep_old"
+    assert app.post("/api/meetings/evals/demo/process")[1]["state"]["is"] == "ready"
+
+
 def test_a_changeset_the_engine_refuses_fails_with_its_problems(repo: Path, app: Client) -> None:
     write_meeting("bad", [("c1", {**REVENUE, "shape": 99})])
 

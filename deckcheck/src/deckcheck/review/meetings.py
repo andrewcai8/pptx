@@ -69,6 +69,7 @@ class Ready:
     decided: int
     total: int
     applied: bool
+    failed: Failed | None = None
 
 
 State = New | Processing | Failed | Ready
@@ -258,7 +259,7 @@ class Reviews:
             raise Conflict("this meeting needs the maker, which is not built yet")
         with self._lock:
             idle = mid not in self._jobs
-            start = idle and (again or mid in self._failed or not _Workdir.of(meeting).dir.is_dir())
+            start = idle and (again or not _Workdir.of(meeting).dir.is_dir())
             if start:
                 self._failed.pop(mid, None)
                 job = self._jobs[mid] = _Job()
@@ -339,14 +340,12 @@ class Reviews:
             job, failed = self._jobs.get(meeting.id), self._failed.get(meeting.id)
         if job:
             return Processing(job.step)
-        if failed:
-            return failed
         try:
             changes = json.loads(work.changeset.read_text(encoding="utf-8-sig"))["changes"]
         except FileNotFoundError:
-            return New()
+            return failed or New()
         decided = sum(c.get("decision", "pending") != "pending" for c in changes)
-        return Ready(decided, len(changes), work.final() is not None)
+        return Ready(decided, len(changes), work.final() is not None, failed)
 
     def _ready(self, meeting: Meeting) -> _Workdir:
         work = _Workdir.of(meeting)

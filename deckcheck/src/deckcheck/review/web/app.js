@@ -125,17 +125,12 @@ function stateBlock(m) {
     case "processing":
       return h("div", { class: "progress" }, h("span", { class: "spinner" }), STEPS[s.step]);
     case "failed":
-      return h(
-        "div",
-        { class: "failed" },
-        h("p", { class: "error" }, s.message),
-        s.problems.length > 0 && h("ul", { class: "problems" }, s.problems.map((p) => h("li", null, `${p.where}: ${p.message}`))),
-        processButton("Process meeting"),
-      );
+      return h("div", { class: "failed" }, failure(s.message, s.problems), processButton("Process meeting"));
     case "ready":
       return h(
         "div",
         { class: "ready" },
+        s.failed && h("div", { class: "failed" }, failure(`Process again failed, so this is the earlier review. ${s.failed.message}`, s.failed.problems)),
         h("span", { class: "count" }, `${s.decided} of ${s.total} decided`, s.applied ? " · applied" : ""),
         h("a", { class: "button primary", href: `#/m/${m.id}`, "data-act": "open" }, "Open review"),
         h("button", { class: "quiet", "data-act": "again", onclick: () => processMeeting(m, true) }, "Process again"),
@@ -143,6 +138,13 @@ function stateBlock(m) {
     default:
       return processButton("Process meeting");
   }
+}
+
+function failure(message, problems) {
+  return [
+    h("p", { class: "error" }, message),
+    problems.length > 0 && h("ul", { class: "problems" }, problems.map((p) => h("li", null, `${p.where}: ${p.message}`))),
+  ];
 }
 
 function renderMissing() {

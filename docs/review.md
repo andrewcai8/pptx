@@ -26,7 +26,7 @@ The home screen lists each folder under `evals/` and `private/meetings/` that ho
 2. The engine checks it and writes the deck with every change applied.
 3. The old deck and the new deck are rendered to slide pictures, about 40 seconds.
 
-If the engine refuses the ChangeSet, the row shows each problem the way `changeset validate` prints it. **Process again** starts over and discards the decisions made so far.
+If the engine refuses the ChangeSet, the row shows each problem the way `changeset validate` prints it. **Process again** starts over and discards the decisions made so far. If it fails, the row shows why and still opens the earlier review with its decisions.
 
 ## Deciding
 

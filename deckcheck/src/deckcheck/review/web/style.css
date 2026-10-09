@@ -235,8 +235,14 @@ button.quiet {
 
 .meeting-side .ready {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 10px;
+}
+
+.meeting-side .ready .failed {
+  flex-basis: 100%;
 }
 
 .meeting-side .count {
