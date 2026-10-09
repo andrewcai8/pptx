@@ -319,6 +319,15 @@ def test_a_think_cell_label_rewrites_its_field_format_with_its_text(deck: Path, 
     assert (field.findtext(qn("a:t")), field.get("type")[8:].replace("'", "")) == ("+10%", "+10%")
 
 
+@pytest.mark.parametrize("new", ["+10%", "+9% p.a."], ids=["rewritten", "appended"])
+def test_a_think_cell_label_edit_carries_a_note_that_its_format_is_rewritten(
+    deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], new: str
+) -> None:
+    out = run(["execute", changeset(deck, [change("c1", {**LABEL_OP, "new": new})]), "--out", tmp_path / "executed.pptx"], capsys)[1]
+
+    assert "  c1: a think-cell label: its field format is rewritten too, so a refresh keeps the new text\n" in out
+
+
 def test_text_typed_into_an_empty_think_cell_label_is_quoted_in_its_field_format(
     deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

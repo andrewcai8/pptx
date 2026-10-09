@@ -171,14 +171,13 @@ class TextAt(OnShape):
 
     def describe(self, change: Change, pkg: Package) -> Item:
         end = self.at + len(self.old)
-        touched = [x for x in text.atoms(self.p) if x.lo < self.splice.end and x.hi > self.splice.start]
         return self._item(
             change,
             before=self.before,
             after=self.before[: self.at] + self.new + self.before[end:],
             quote=(self.old, self.new),
             span=(self.at, end),
-            notes=(FIELD_NOTE,) if any(x.el.tag == text.A_FLD for x in touched) else (),
+            notes=(FIELD_NOTE,) if any(w.atom.el.tag == text.A_FLD for w in text.splice_writes(text.atoms(self.p), self.splice)) else (),
         )
 
 

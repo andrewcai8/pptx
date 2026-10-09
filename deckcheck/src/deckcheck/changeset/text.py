@@ -98,7 +98,7 @@ def plan_splice(p: etree._Element, at: int, old: str, new: str) -> Splice:
     if LINE_BREAK in core or (LINE_BREAK in old[a:b]):
         raise SpliceError("adding or removing a line break (\\v) is not supported; keep the line breaks where they are")
     xs = atoms(p)
-    writes = _writes(xs, s)
+    writes = splice_writes(xs, s)
     if s.start == s.end and core and xs and not writes:
         raise SpliceError(f"no run holds character {s.start} to write into; quote text from a run")
     fields = [w.atom.el for w in writes if w.atom.el.tag == A_FLD]
@@ -121,7 +121,7 @@ class Write:
     piece: str
 
 
-def _writes(xs: Sequence[Atom], s: Splice) -> list[Write]:
+def splice_writes(xs: Sequence[Atom], s: Splice) -> list[Write]:
     if s.start == s.end:
         target = _insertion_target(xs, s.start)
         return [Write(target, s.start - target.lo, s.start - target.lo, s.new)] if target and s.new else []
@@ -146,7 +146,7 @@ def _field_type(el: etree._Element, w: Write) -> str:
 
 
 def write_splice(p: etree._Element, s: Splice) -> None:
-    writes = _writes(atoms(p), s)
+    writes = splice_writes(atoms(p), s)
     if not writes and s.new:
         _new_run(p, s.new)
     for w in writes:
