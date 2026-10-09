@@ -16,10 +16,10 @@ from scenario import ROOT
 
 PASSES = {
     "fmcg-diagnostic-timeline": "SCENARIO PASS fmcg-diagnostic-timeline (26 checks, 7 intent checks deferred)",
-    "insurance-workshop-prep": "SCENARIO PASS insurance-workshop-prep (26 checks, 4 intent checks deferred)",
+    "insurance-workshop-prep": "SCENARIO PASS insurance-workshop-prep (26 checks, 5 intent checks deferred)",
     "rcc-flexibility-wording": "SCENARIO PASS rcc-flexibility-wording (28 checks, 3 intent checks deferred)",
     "retail-impact-title": "SCENARIO PASS retail-impact-title (36 checks, 5 intent checks deferred)",
-    "solar-market-refresh": "SCENARIO PASS solar-market-refresh (41 checks, 6 intent checks deferred)",
+    "solar-market-refresh": "SCENARIO PASS solar-market-refresh (41 checks, 7 intent checks deferred)",
 }
 TURN = re.compile(r"^\[(\d\d:\d\d:\d\d)\] ([^(]+?) \([^)]*\): (.*)$")
 SOLAR_MARKET_SLIDE = 2147478638
