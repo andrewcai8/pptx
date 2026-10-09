@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import hashlib
 import io
 import json
@@ -322,6 +323,38 @@ def test_a_chart_edit_writes_the_cache_and_the_embedded_xlsx(deck: Path, tmp_pat
         chart = z.read("ppt/charts/chart1.xml").decode()
         book = openpyxl.load_workbook(io.BytesIO(z.read("ppt/embeddings/Microsoft_Excel_Sheet1.xlsx")))
     assert ('<c:pt idx="1"><c:v>130</c:v></c:pt>' in chart, book.active["B3"].value) == (True, 130)
+
+
+@pytest.mark.parametrize(
+    ("value", "held"),
+    [
+        ("n/a", "holds text"),
+        (True, "holds a true/false value"),
+        ("#N/A", "holds an error"),
+        (datetime.datetime(2025, 1, 1), "holds a date"),
+        (None, "is blank"),
+    ],
+    ids=["text", "boolean", "error", "date", "blank"],
+)
+def test_a_chart_point_whose_workbook_cell_is_not_a_number_is_refused(
+    deck: Path, capsys: pytest.CaptureFixture[str], value: object, held: str
+) -> None:
+    prs = Presentation(str(deck))
+    workbook = next(s for s in prs.slides[1].shapes if s.has_chart).chart.part.chart_workbook
+    book = openpyxl.load_workbook(io.BytesIO(workbook.xlsx_part.blob))
+    book.iso_dates = True
+    book.active["B3"] = value
+    buf = io.BytesIO()
+    book.save(buf)
+    workbook.update_from_xlsx_blob(buf.getvalue())
+    prs.save(str(deck))
+    cs = changeset(deck, [change("c1", POINT)])
+
+    assert run(["validate", cs], capsys) == (
+        1,
+        f"INVALID {cs}: 1 problem\n  c1 op: shape 3 'Chart 2': workbook cell Sheet1!B3 {held}, not a number\n",
+        "",
+    )
 
 
 def test_delete_drops_the_slide_its_parts_and_its_custom_show_entry(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

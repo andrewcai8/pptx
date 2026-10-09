@@ -120,20 +120,57 @@ def _workbook(pkg: Package, chart: str, space: etree._Element) -> tuple[str, str
     return ext.get(R_ID), part
 
 
+XLSX_HELD = {"s": "holds text", "str": "holds text", "inlineStr": "holds text", "b": "holds a true/false value", "e": "holds an error", "d": "holds a date"}
+
+
 def _check_cell(blob: bytes, part: str, cell: Cell) -> None:
+    """One rule for both workbook formats: the cell exists and holds a number, so writing one keeps it true."""
     if part.endswith(".xlsb"):
         values = _xlsb_values(blob)
         if cell.sheet not in values:
             raise ChartError(f"the workbook has no sheet {cell.sheet!r}")
-        return
-    c = _xlsx_cell(Package(blob), cell)
+        held = _xlsb_held(values[cell.sheet].get(_coordinates(cell.ref)))
+    else:
+        held = _xlsx_held(_xlsx_cell(Package(blob), cell))
+    if held:
+        raise ChartError(f"workbook cell {cell.sheet}!{cell.ref} {held}, not a number")
+
+
+def _xlsx_held(c: etree._Element | None) -> str | None:
+    if c is None:
+        return "is blank"
     if c.find(f"{{{S_NS}}}f") is not None:
-        raise ChartError(f"workbook cell {cell.sheet}!{cell.ref} is a formula")
-    if c.get("t") in ("s", "str", "inlineStr"):
-        raise ChartError(f"workbook cell {cell.sheet}!{cell.ref} holds text")
+        return "is a formula"
+    if c.get("t", "n") != "n":
+        return XLSX_HELD.get(c.get("t"), f"holds a {c.get('t')!r} value")
+    if c.find(f"{{{S_NS}}}v") is None:
+        return "is blank"
+    try:
+        float(c.findtext(f"{{{S_NS}}}v"))
+    except ValueError:
+        return "holds text"
+    return None
 
 
-def _xlsx_cell(book: Package, cell: Cell) -> etree._Element:
+def _xlsb_held(value: object) -> str | None:
+    match value:
+        case None:
+            return "is blank"
+        case bool():
+            return "holds a true/false value"
+        case int() | float():
+            return None
+        case str():
+            return "holds text"
+    return f"holds a {type(value).__name__} value"
+
+
+def _coordinates(ref: str) -> tuple[int, int]:
+    m = re.fullmatch(r"([A-Z]+)(\d+)", ref)
+    return int(m.group(2)) - 1, _col(m.group(1)) - 1
+
+
+def _xlsx_cell(book: Package, cell: Cell) -> etree._Element | None:
     rels = book.xml("_rels/.rels")
     main = next((r.get("Target").lstrip("/") for r in rels if r.get("Type") == RT_DOCUMENT), None)
     if main is None:
@@ -141,10 +178,7 @@ def _xlsx_cell(book: Package, cell: Cell) -> etree._Element:
     sheet = next((s for s in book.xml(main).iter(f"{{{S_NS}}}sheet") if s.get("name") == cell.sheet), None)
     if sheet is None:
         raise ChartError(f"the workbook has no sheet {cell.sheet!r}")
-    found = book.xml(book.related(main, sheet.get(R_ID))).find(f".//{{{S_NS}}}c[@r='{cell.ref}']")
-    if found is None:
-        raise ChartError(f"the workbook has no cell {cell.sheet}!{cell.ref}")
-    return found
+    return book.xml(book.related(main, sheet.get(R_ID))).find(f".//{{{S_NS}}}c[@r='{cell.ref}']")
 
 
 def _xlsb_values(blob: bytes) -> dict[str, dict[tuple[int, int], object]]:
@@ -157,16 +191,13 @@ def _xlsb_values(blob: bytes) -> dict[str, dict[tuple[int, int], object]]:
 
 
 def set_point(pkg: Package, point: Point, value: float) -> None:
+    """locate_point proved the cell holds a number, so it has a <v> and no type that contradicts one."""
     point.cache.text = number_text(value)
     part = pkg.related(point.chart, point.workbook_rid)
     if part.endswith(".xlsb"):
         part = _convert(pkg, point.chart, point.workbook_rid, part)
     book = Package(pkg.blob(part))
-    c = _xlsx_cell(book, point.cell)
-    v = c.find(f"{{{S_NS}}}v")
-    if v is None:
-        v = etree.SubElement(c, f"{{{S_NS}}}v")
-    v.text = number_text(value)
+    _xlsx_cell(book, point.cell).find(f"{{{S_NS}}}v").text = number_text(value)
     pkg.put(part, book.to_bytes())
 
 

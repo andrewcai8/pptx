@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import re
+import zipfile
 from pathlib import Path
 
 import openpyxl
@@ -123,3 +124,23 @@ def test_the_solar_think_cell_label_reads_37_in_its_text_and_its_field_format(tm
     label = next(s for s in market_slide(out).shapes if s.shape_id == 69)
     field = label.text_frame.paragraphs[0]._p.find(qn("a:fld"))
     assert (field.findtext(qn("a:t")), field.get("type")[8:].replace("'", "")) == ("+37%", "+37%")
+
+
+def test_a_solar_chart_point_whose_xlsb_cell_is_blank_is_refused(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    doc = json.loads(fixture("solar-market-refresh").read_text())
+    deck = tmp_path / "blank-cell.pptx"
+    with zipfile.ZipFile(ROOT / doc["source"]["path"]) as src, zipfile.ZipFile(deck, "w") as dst:
+        for info in src.infolist():
+            body = src.read(info)
+            if info.filename == "ppt/charts/chart1.xml":
+                body = body.replace(b"Sheet1!$A$1:$C$1", b"Sheet1!$D$1:$F$1")
+            dst.writestr(info, body)
+    doc["source"] = {"path": str(deck), "sha256": sha(deck)}
+    doc["changes"] = [c for c in doc["changes"] if c["id"] == "chart-2022-bar"]
+    cs = tmp_path / "changeset.json"
+    cs.write_text(json.dumps(doc))
+
+    assert run(["validate", cs], capsys) == (
+        1,
+        f"INVALID {cs}: 1 problem\n  chart-2022-bar op: shape 8 'Chart 7': workbook cell Sheet1!D1 is blank, not a number\n",
+    )

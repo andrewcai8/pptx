@@ -49,7 +49,7 @@ A slide is named by its slide id (`p:sldId/@id`) and a shape by its id on that s
 | `delete_slide` | deletes slide `slide` | structural |
 | `move_slide` | moves slide `slide` after source slide `after`, or first when `after` is null | structural |
 
-Paragraph indexes count every paragraph in the shape, blank ones included. Text reads the way python-pptx's `paragraph.text` reads it, with a line break as `\v`. A slide placed after another follows it wherever that slide ends up. Several slides placed after one slide follow it in ChangeSet order.
+A chart point's workbook cell must hold a plain number. A blank cell, a formula, text, a true/false value, an error, or a date is refused. Paragraph indexes count every paragraph in the shape, blank ones included. Text reads the way python-pptx's `paragraph.text` reads it, with a line break as `\v`. A slide placed after another follows it wherever that slide ends up. Several slides placed after one slide follow it in ChangeSet order.
 
 The engine reads each change's old text from the source deck and decides from the op whether it is text-only or structural. A maker never writes either. A field such as `before` is refused.
 
