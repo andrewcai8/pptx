@@ -12,6 +12,7 @@ import pytest
 from lxml import etree
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
+from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE
 from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
@@ -21,7 +22,7 @@ from deckcheck.changeset.cli import main
 from deckcheck.changeset.model import SCHEMA_DIR, schemas
 from deckcheck.package import Package
 
-TITLE_AND_CONTENT, TITLE_ONLY = 1, 5
+TITLE_AND_CONTENT, TITLE_ONLY, BLANK = 1, 5, 6
 REF = {"t": "00:01:00", "speaker": "Ana Ruiz", "quote": "Use the new figures."}
 ASK = {"id": "a1", "text": "Refresh the figures.", "refs": [REF]}
 FLAG = {"id": "f1", "question": "Which year do the prices start?", "slides": [256], "refs": [REF]}
@@ -206,6 +207,16 @@ def test_edited_decisions_write_the_reviewers_text(deck: Path, tmp_path: Path, c
     assert [(p.text, p.level) for p in body.text_frame.paragraphs] == [("Raise prices", 0), ("Hold discounts", 1), ("Review in May", 1)]
 
 
+def test_an_empty_cell_takes_its_text_in_a_new_run(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prs = Presentation(str(deck))
+    next(s for s in prs.slides[0].shapes if s.shape_id == 5).table.cell(1, 1).text = ""
+    prs.save(str(deck))
+    out = tmp_path / "executed.pptx"
+
+    assert run(["execute", changeset(deck, [change("c1", {**CELL, "old": "", "new": "$130m\nnet"})]), "--out", out], capsys)[0] == 0
+    assert cell(out) == "$130m\nnet"
+
+
 def test_keep_old_leaves_a_change_out_and_keep_new_writes_it(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     cs = changeset(deck, [change("c1", REVENUE, "keep_old"), change("c2", CELL, "keep_new"), change("c3", POINT, "keep_old")])
     out = tmp_path / "final.pptx"
@@ -234,6 +245,14 @@ def test_a_fill_is_dropped_when_its_added_slide_is_kept_old(deck: Path, tmp_path
         "",
     )
     assert out.read_bytes() == deck.read_bytes()
+
+
+def test_a_tab_is_written_as_a_tab(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cs = changeset(deck, [change("c1", {**REVENUE, "new": "15%\t"}, {"edited": "\t18%"}), change("c2", CELL, {"edited": "$125m\tnet"})])
+    out = tmp_path / "final.pptx"
+
+    assert run(["apply", cs, "--out", out], capsys)[0] == 0
+    assert (paragraphs(out, 256, 4), cell(out)) == (["Revenue grew \t18% in 2025"], "$125m\tnet")
 
 
 ALL_OPS = [change("c1", REVENUE), change("c2", CELL), change("c3", POINT), change("add", ADD), change("fill", FILL), change("c4", MOVE), change("c5", LABEL_OP)]
@@ -275,6 +294,105 @@ def test_untouched_runs_in_an_edited_paragraph_keep_their_formatting(deck: Path,
     assert [rpr for _, rpr in after] == [rpr for _, rpr in before]
 
 
+@pytest.mark.parametrize(
+    ("old", "new", "runs"),
+    [
+        ("grew 12%", "grew by 12%", [("Revenue grew by ", 14.0, False), ("12%", 18.0, True), (" in 2025", 12.0, False)]),
+        ("12% in 2025", "15%", [("Revenue grew ", 14.0, False), ("15%", 18.0, True)]),
+        ("12% in 2025", "12% net in 2025", [("Revenue grew ", 14.0, False), ("12%", 18.0, True), (" net in 2025", 12.0, False)]),
+    ],
+    ids=["word-inserted-at-a-run-edge", "run-emptied", "word-inserted-after-a-formatted-run"],
+)
+def test_a_word_added_beside_a_run_edge_keeps_the_formatting_around_it(
+    deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], old: str, new: str, runs: list[tuple[str, float, bool]]
+) -> None:
+    out = tmp_path / "executed.pptx"
+    run(["execute", changeset(deck, [change("c1", {**REVENUE, "old": old, "new": new})]), "--out", out], capsys)
+
+    slide = next(s for s in Presentation(str(out)).slides if s.slide_id == 256)
+    p = next(s for s in slide.shapes if s.shape_id == 4).text_frame.paragraphs[0]
+    assert [(r.text, r.font.size.pt, r.font.bold) for r in p.runs] == runs
+
+
+GREEN = "29BA74"
+
+
+def styled_deck(path: Path, runs: list[tuple[str, dict]]) -> Path:
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[BLANK])
+    p = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(8), Inches(1)).text_frame.paragraphs[0]
+    for text, style in runs:
+        run = p.add_run()
+        run.text, run.font.bold = text, style.get("bold")
+        if "color" in style:
+            run.font.color.rgb = RGBColor.from_string(style["color"])
+        if "baseline" in style:
+            run._r.get_or_add_rPr().set("baseline", style["baseline"])
+    prs.save(str(path))
+    return path
+
+
+def styled_runs(path: Path) -> list[tuple[str, dict]]:
+    p = Presentation(str(path)).slides[0].shapes[0].text_frame.paragraphs[0]
+    out = []
+    for r in p.runs:
+        style = {"bold": r.font.bold, "color": str(r.font.color.rgb) if r.font.color.type else None, "baseline": r._r.get_or_add_rPr().get("baseline")}
+        out.append((r.text, {k: v for k, v in style.items() if v is not None}))
+    return out
+
+
+@pytest.mark.parametrize(
+    ("runs", "old", "new", "expected"),
+    [
+        (
+            [("found ", {}), ("44%", {"color": GREEN}), (" savings in markdown costs", {})],
+            "found 44% savings in markdown costs",
+            "found 44% gross savings in markdown costs",
+            [("found ", {}), ("44%", {"color": GREEN}), (" gross savings in markdown costs", {})],
+        ),
+        (
+            [("orders placed through 3", {}), ("rd", {"baseline": "30000"}), (" party delivery services", {})],
+            "3rd party delivery services",
+            "3rd and 4th party delivery services",
+            [("orders placed through 3", {}), ("rd", {"baseline": "30000"}), (" and 4th party delivery services", {})],
+        ),
+        (
+            [("Model found ", {}), ("44%", {"color": GREEN}), (" savings in markdown costs, ", {}), ("~€20M", {"color": GREEN}), (" in single market", {})],
+            "Model found 44% savings in markdown costs, ~€20M in single market",
+            "Model found 44% savings in markdown costs",
+            [("Model found ", {}), ("44%", {"color": GREEN}), (" savings in markdown costs", {})],
+        ),
+        (
+            [("Prices fell 80% in the last decade", {}), ("1", {"baseline": "30000"}), (" across markets", {})],
+            "in the last decade",
+            "since 2012",
+            [("Prices fell 80% since 2012", {}), ("1", {"baseline": "30000"}), (" across markets", {})],
+        ),
+        (
+            [("Prices fell 80% in the last decade", {}), ("1", {"baseline": "30000"}), (" across markets", {})],
+            "Prices fell 80% in the last decade1 across markets",
+            "Prices fell 80% since 20121 across markets",
+            [("Prices fell 80% since 2012", {}), ("1", {"baseline": "30000"}), (" across markets", {})],
+        ),
+    ],
+    ids=[
+        "word-inserted-after-a-coloured-number",
+        "words-inserted-after-a-superscript",
+        "tail-cut-after-a-comma",
+        "words-rewritten-before-a-footnote-marker",
+        "sentence-rewritten-around-a-footnote-marker",
+    ],
+)
+def test_text_written_beside_a_formatted_run_leaves_that_run_as_it_was(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], runs: list[tuple[str, dict]], old: str, new: str, expected: list[tuple[str, dict]]
+) -> None:
+    source = styled_deck(tmp_path / "deck.pptx", runs)
+    out = tmp_path / "executed.pptx"
+    assert run(["execute", changeset(source, [change("c1", {"kind": "replace_text", "slide": 256, "shape": 2, "old": old, "new": new})]), "--out", out], capsys)[0] == 0
+
+    assert styled_runs(out) == expected
+
+
 @pytest.mark.parametrize("order", [("grew", "pct"), ("pct", "grew")], ids=["text-order", "reverse-order"])
 def test_abutting_quotes_that_both_insert_at_their_shared_edge_keep_text_order(
     deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], order: tuple[str, str]
@@ -309,6 +427,15 @@ def test_a_think_cell_label_rewrites_its_field_format_with_its_text(deck: Path, 
     slide = next(s for s in Presentation(str(out)).slides if s.slide_id == 258)
     field = next(s for s in slide.shapes if s.shape_id == 3).text_frame.paragraphs[0]._p.find(qn("a:fld"))
     assert (field.findtext(qn("a:t")), field.get("type")[8:].replace("'", "")) == ("+10%", "+10%")
+
+
+@pytest.mark.parametrize("new", ["+10%", "+9% p.a."], ids=["rewritten", "appended"])
+def test_a_think_cell_label_edit_carries_a_note_that_its_format_is_rewritten(
+    deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], new: str
+) -> None:
+    out = run(["execute", changeset(deck, [change("c1", {**LABEL_OP, "new": new})]), "--out", tmp_path / "executed.pptx"], capsys)[1]
+
+    assert "  c1: a think-cell label: its field format is rewritten too, so a refresh keeps the new text\n" in out
 
 
 def test_text_typed_into_an_empty_think_cell_label_is_quoted_in_its_field_format(
@@ -525,6 +652,24 @@ SECTIONS = (
 )
 
 
+def test_two_added_slides_get_their_own_ids_and_parts(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    changes = [
+        change("add", ADD, "keep_old"),
+        change("fill", FILL, "keep_new"),
+        change("lead", {**ADD, "after": None}, "keep_new"),
+        change("lead-fill", {**FILL, "slide": "lead", "paragraphs": [{"text": "Agenda"}]}, "keep_new"),
+    ]
+    executed, final = tmp_path / "executed.pptx", tmp_path / "final.pptx"
+
+    run(["execute", changeset(deck, changes), "--out", executed], capsys)
+    run(["apply", changeset(deck, changes), "--out", final], capsys)
+
+    with zipfile.ZipFile(executed) as z:
+        added = sorted(n for n in z.namelist() if n in ("ppt/slides/slide4.xml", "ppt/slides/slide5.xml"))
+    assert (slide_ids(executed), added) == ([260, 256, 257, 259, 258], ["ppt/slides/slide4.xml", "ppt/slides/slide5.xml"])
+    assert (paragraphs(executed, 259, 3), paragraphs(executed, 260, 3)) == (["Raise list prices", "Hold discounts"], ["Agenda"])
+    assert (slide_ids(final), paragraphs(final, 260, 3)) == ([260, 256, 257, 258], ["Agenda"])
+
 def test_added_moved_and_deleted_slides_keep_the_sections_in_step(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     prs = Presentation(str(deck))
     prs.slides.add_slide(prs.slide_layouts[TITLE_ONLY]).shapes.title.text = "Appendix"
@@ -680,6 +825,26 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
             "c1 op: shape 3 'Chart 2': the workbook ppt/embeddings/Microsoft_Excel_Sheet1.xlsx cannot be read: File is not a zip file",
         ),
         (lambda d: changeset(rezip(d, "ppt/charts/chart1.xml", None), [change("c1", POINT)]), "c1 op: cannot read the deck: ppt/charts/chart1.xml is missing"),
+        (lambda d: changeset(d, [change("c1", {**REVENUE, "new": "15%\f"})]), "c1 op.new: holds the control character '\\x0c' at index 3, which a deck cannot hold; remove it"),
+        (lambda d: changeset(d, [change("c1", {**INSERT, "text": "Up\x07"})]), "c1 op.text: holds the control character '\\x07' at index 2, which a deck cannot hold; remove it"),
+        (lambda d: changeset(d, [change("c1", {**CELL, "new": "$1\r30m"})]), "c1 op.new: holds the control character '\\r' at index 2, which a deck cannot hold; remove it"),
+        (lambda d: changeset(d, [change("c1", {**REVENUE, "new": "15\ufffe%"})]), "c1 op.new: holds the control character '\\ufffe' at index 2, which a deck cannot hold; remove it"),
+        (
+            lambda d: changeset(d, [change("add", ADD), change("fill", {**FILL, "paragraphs": [{"text": "a\x1fb"}]})]),
+            "fill op.paragraphs.0.text: holds the control character '\\x1f' at index 1, which a deck cannot hold; remove it",
+        ),
+        (
+            lambda d: changeset(d, [change("c1", REVENUE, {"edited": "15%\x1f"})]),
+            "c1 decision: edited text '15%\\x1f': holds the control character '\\x1f' at index 3, which a deck cannot hold; remove it",
+        ),
+        (
+            lambda d: changeset(d, [change("add", ADD), change("fill", FILL, {"edited": "Raise prices\r\nHold discounts"})]),
+            "fill decision: edited text 'Raise prices\\r\\nHold discounts': holds the control character '\\r' at index 12, which a deck cannot hold; remove it",
+        ),
+        (
+            lambda d: changeset(d, [change("add", ADD), change("fill", FILL, {"edited": "Raise prices\nHold\x07discounts"})]),
+            "fill decision: edited text 'Raise prices\\nHold\\x07discounts': holds the control character '\\x07' at index 17, which a deck cannot hold; remove it",
+        ),
     ],
     ids=[
         "unknown-slide",
@@ -717,6 +882,14 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
         "nul-in-source-path",
         "workbook-not-a-zip",
         "chart-part-missing",
+        "form-feed-in-new",
+        "bell-in-inserted-text",
+        "carriage-return-in-a-cell",
+        "noncharacter-in-new",
+        "unit-separator-in-a-fill",
+        "unit-separator-in-an-edit",
+        "windows-line-ending-in-an-edited-fill",
+        "bell-on-the-second-line-of-an-edited-fill",
     ],
 )
 def test_a_bad_changeset_names_each_problem_and_exits_1(deck: Path, capsys: pytest.CaptureFixture[str], write, problem) -> None:
@@ -748,3 +921,32 @@ def test_no_output_overwrites_an_input_or_the_other_output(
 
     assert run(argv, capsys) == (2, "", f"error: {message}\n")
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()} == files
+
+
+
+def not_a_deck(path: Path, kind: str) -> Path:
+    match kind:
+        case "workbook":
+            openpyxl.Workbook().save(path)
+        case "zip":
+            with zipfile.ZipFile(path, "w") as z:
+                z.writestr("notes.txt", "hello")
+        case _:
+            path.write_text("hello")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("kind", "message"),
+    [
+        ("workbook", "xl/workbook.xml is not a presentation"),
+        ("zip", "_rels/.rels is missing"),
+        ("text", "File is not a zip file"),
+    ],
+    ids=["workbook", "zip-without-parts", "not-a-zip"],
+)
+def test_a_source_that_is_not_a_deck_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: str, message: str) -> None:
+    source = not_a_deck(tmp_path / "source.pptx", kind)
+    cs = changeset(source, [change("c1", REVENUE)])
+
+    assert run(["validate", cs], capsys) == (2, "", f"error: cannot read deck {source}: {message}\n")

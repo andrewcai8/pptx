@@ -76,7 +76,10 @@ class Deck:
 
 def read_deck(pkg: Package) -> Deck:
     pres = next(r for r in pkg.xml("_rels/.rels") if r.get("Type") == RT_DOCUMENT).get("Target").lstrip("/")
-    sld_ids = pkg.xml(pres).find(qn("p:sldIdLst"))
+    root = pkg.xml(pres)
+    if root.tag != qn("p:presentation"):
+        raise PartError(f"{pres} is not a presentation")
+    sld_ids = root.find(qn("p:sldIdLst"))
     slides = tuple(
         SourceSlide(int(s.get("id")), s.get(R_ID), pkg.related(pres, s.get(R_ID)), i)
         for i, s in enumerate(sld_ids if sld_ids is not None else (), start=1)

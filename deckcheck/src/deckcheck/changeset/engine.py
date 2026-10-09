@@ -171,14 +171,13 @@ class TextAt(OnShape):
 
     def describe(self, change: Change, pkg: Package) -> Item:
         end = self.at + len(self.old)
-        touched = [x for x in text.atoms(self.p) if x.lo < self.splice.end and x.hi > self.splice.start]
         return self._item(
             change,
             before=self.before,
             after=self.before[: self.at] + self.new + self.before[end:],
             quote=(self.old, self.new),
             span=(self.at, end),
-            notes=(FIELD_NOTE,) if any(x.el.tag == text.A_FLD for x in touched) else (),
+            notes=(FIELD_NOTE,) if any(w.atom.el.tag == text.A_FLD for w in text.splice_writes(text.atoms(self.p), self.splice)) else (),
         )
 
 
@@ -385,8 +384,11 @@ def parse(raw_text: str) -> ChangeSet:
     try:
         return ChangeSet.model_validate_json(raw_text)
     except ValidationError as e:
+        errors = e.errors()
         problems: dict[str, Problem] = {}
-        for err in e.errors():
+        for err in errors:
+            if any(len(o["loc"]) > len(err["loc"]) and o["loc"][: len(err["loc"])] == err["loc"] for o in errors):
+                continue
             where = _where(err["loc"], raw)
             problems.setdefault(where, Problem(where, _message(err)))
         raise Invalid(list(problems.values())) from e

@@ -23,8 +23,8 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 | exit | meaning |
 |---|---|
 | 0 | done |
-| 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. Nothing is written. |
-| 2 | the ChangeSet file cannot be read, the deck given to `outline` or named as the source is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
+| 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. A ChangeSet that is not JSON is listed as `changeset: not JSON`. A source deck that is missing or cannot be read is listed under `source.path`, and one with another hash under `source.sha256`. Nothing is written. |
+| 2 | the ChangeSet file is missing, is a folder, cannot be read, or is not UTF-8 text, the deck given to `outline` or named as the source is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
 
 ## The ChangeSet
 
@@ -50,6 +50,8 @@ A slide is named by its slide id (`p:sldId/@id`) and a shape by its id on that s
 | `fill_placeholder` | fills placeholder `shape` on the slide that the `add_slide` change `slide` adds, one entry per paragraph with an optional `level` | structural |
 | `delete_slide` | deletes slide `slide` | structural |
 | `move_slide` | moves slide `slide` after source slide `after`, or first when `after` is null | structural |
+
+The text a change writes is `new`, `text`, a fill's paragraphs, or an `edited` decision. It may hold a tab, which the deck keeps as a tab. It may not hold any other control character, such as `\f`, `\r`, or `\x1f`, and a change with one is refused with the character and its index, counted from the start of that text. A line feed and a line break keep their rules. `\n` splits paragraphs in `set_cell` and in an edited `fill_placeholder` and is refused elsewhere, and `\v` is a line break. So a review app turns a pasted `\r\n` into `\n` before it writes a decision.
 
 A chart point's workbook cell must hold a plain number. A blank cell, a formula, text, a true/false value, an error, or a date is refused. Paragraph indexes count every paragraph in the shape, blank ones included. Text reads the way python-pptx's `paragraph.text` reads it, with a line break as `\v`. A slide placed after another follows it wherever that slide ends up. Several slides placed after one slide follow it in ChangeSet order.
 
@@ -102,6 +104,8 @@ The flags were checked against `claude --help` for Claude Code 2.1.293, and `dec
 
 ## Known limits
 
-- A chart whose workbook is `.xlsb` gets a new `.xlsx` workbook that holds the old workbook's values only. Formulas and formatting in that workbook are lost. The solar deck's six charts are the only `.xlsb` charts in the corpus.
+- A chart whose workbook is `.xlsb` gets a new `.xlsx` workbook that holds the old workbook's values only. Formulas, defined names, cell styles, and date formats in that workbook are lost, and a text cell that begins with `=` becomes a formula. The solar deck's six charts are the only `.xlsb` charts in the corpus.
+- `delete_slide` leaves a slide's part in the package when another slide links to it, for example through a click action that jumps to it. The part drops out of the slide list, and the link still points at it. No corpus deck has such a link, and it is not known whether PowerPoint asks to repair the file. Agenda decks often have them.
 - `replace_text` cannot add or remove a line break, and no op changes fonts, sizes, colors, or positions.
+- A `replace_text` that rewrites text across differently formatted runs puts the new text in the first run it touches. So rewriting a bold lead-in can leave new plain words bold. `Luxury casualwear: keeps increasing` rewritten to `Luxury streetwear: keeps growing` shows bold up to "keeps grow". The review app shows every change, so the consultant can fix it with Edit myself.
 - Some decks hold a line feed inside a paragraph's text. `replace_text` cannot quote across one, and `set_cell` refuses a cell that holds one, because `\n` there would not say where the cell's paragraphs split.
