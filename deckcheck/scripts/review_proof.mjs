@@ -1,7 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { get } from "node:http";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const OUT = process.argv[2] ?? "artifacts/review-proof";
 const PORT = 8790 + Math.floor(Math.random() * 100);
@@ -16,15 +17,47 @@ const check = (ok, msg) => {
 };
 
 const SCENARIOS = ["insurance-workshop-prep", "solar-market-refresh", "fmcg-diagnostic-timeline"];
+const PRIVATE = "private/meetings/my meeting";
+const PRIVATE_ID = "private/my%20meeting";
+const PRIVATE_WORK = "artifacts/review/private/my meeting";
+const MAKER = "uv run --project deckcheck meeting process {meeting} --out {dir} --shareable";
+const CONSENT = "This sends the meeting notes, data and deck to Claude (Anthropic). Only continue if your firm allows sharing this deck with an AI service.";
+const SOLAR = JSON.parse(readFileSync("evals/solar-market-refresh/changeset.json", "utf8"));
+if (existsSync(PRIVATE)) {
+  console.log(`REVIEW PROOF FAIL (${PRIVATE} already exists; this proof creates and deletes it, so move it away first)`);
+  process.exit(1);
+}
 rmSync(OUT, { recursive: true, force: true });
-mkdirSync(OUT, { recursive: true });
+mkdirSync(join(OUT, "bin"), { recursive: true });
+rmSync(PRIVATE_WORK, { recursive: true, force: true });
+mkdirSync(PRIVATE, { recursive: true });
+copyFileSync(SOLAR.source.path, join(PRIVATE, "before.pptx"));
+writeFileSync(join(PRIVATE, "notes.md"), "# Solar update call\n\nDate: 2026-10-08\n\nAna Ruiz: The market is now $400m, not $360m. Keep the growth rate as it is.\n");
+const fakeClaude = join(OUT, "bin", "claude");
+writeFileSync(fakeClaude, `#!/usr/bin/env node
+const fs = require("node:fs");
+if (process.argv[2] === "auth") { console.log('{"loggedIn": true}'); process.exit(0); }
+const cs = JSON.parse(fs.readFileSync(${JSON.stringify(resolve("evals/solar-market-refresh/changeset.json"))}, "utf8"));
+cs.source.path = "before.pptx";
+fs.writeFileSync("changeset.json", JSON.stringify(cs, null, 2));
+console.log('{"type": "result", "result": "fake claude wrote changeset.json"}');
+`);
+chmodSync(fakeClaude, 0o755);
 
-const server = spawn("uv", ["run", "--quiet", "--project", "deckcheck", "review", "serve", "--port", String(PORT)], { stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn("uv", ["run", "--quiet", "--project", "deckcheck", "review", "serve", "--port", String(PORT), "--maker", MAKER], {
+  stdio: ["ignore", "pipe", "pipe"],
+  env: { ...process.env, PATH: `${resolve(OUT, "bin")}:${process.env.PATH}` },
+});
 let serverLog = "";
 server.stderr.on("data", (d) => (serverLog += d));
 const chrome = spawn(process.env.CHROME ?? "/usr/bin/google-chrome", ["--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", `--remote-debugging-port=${CDP}`,
   `--user-data-dir=/tmp/review-proof-chrome-${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
-const stop = () => { server.kill(); chrome.kill(); };
+const stop = () => {
+  server.kill();
+  chrome.kill();
+  rmSync(PRIVATE, { recursive: true, force: true });
+  rmSync(PRIVATE_WORK, { recursive: true, force: true });
+};
 process.on("exit", stop);
 const abort = (why) => {
   console.log(`REVIEW PROOF FAIL (${why})`);
@@ -52,10 +85,14 @@ const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r) => ws.addEventListener("open", r));
 let seq = 0;
 const waiting = new Map();
+const dialogs = { accept: true, seen: [] };
 ws.addEventListener("message", (e) => {
   const m = JSON.parse(e.data);
   if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
-  if (m.method === "Page.javascriptDialogOpening") send("Page.handleJavaScriptDialog", { accept: true });
+  if (m.method === "Page.javascriptDialogOpening") {
+    dialogs.seen.push(m.params.message);
+    send("Page.handleJavaScriptDialog", { accept: dialogs.accept });
+  }
 });
 const send = (method, params = {}) => new Promise((r) => { const id = ++seq; waiting.set(id, r); ws.send(JSON.stringify({ id, method, params })); });
 const js = async (expr) => {
@@ -263,6 +300,57 @@ try {
 
   await click('#bar [data-act="publish"]');
   check(/IT/.test((await text("#publish-note")) ?? ""), "publish is a labelled stub");
+
+  await go("#/");
+  const row = `[data-meeting=${q(PRIVATE_ID)}]`;
+  await waitFor(row);
+  check(/Solar update call/.test(await text(row)) && /Maker: uv run/.test(await text(row)), `a notes-only meeting in a folder with a space is listed with its maker (${await text(row)})`);
+  await shot("09-private-listed");
+  dialogs.accept = false;
+  await click(`${row} [data-act="process"]`);
+  await sleep(1500);
+  check(dialogs.seen.at(-1) === CONSENT, `Process meeting asks for consent first (${dialogs.seen.at(-1)})`);
+  check((await attr(row, "data-state")) === "new" && !existsSync(`${PRIVATE_WORK}.partial`) && !existsSync(PRIVATE_WORK), "cancel sends nothing and the meeting stays unprocessed");
+  await shot("10-consent-cancelled");
+  dialogs.accept = true;
+  await click(`${row} [data-act="process"]`);
+  check(dialogs.seen.length === 2 && dialogs.seen[1] === CONSENT, "confirm asks once more on the second click");
+  await until(async () => (await js("location.hash")).startsWith(`#/m/${PRIVATE_ID}`) && exists("#rail [data-slide]"), "the private review opens", 240000);
+  check(/fake claude wrote changeset\.json/.test(readFileSync(join(PRIVATE_WORK, "claude.json"), "utf8")), "meeting process ran the fake claude in its staged folder");
+  await selectSlide("s2147478638", "structural");
+  await shot("11-private-review");
+
+  renameSync(join(PRIVATE, "before.pptx"), join(OUT, "before.pptx.away"));
+  await click(`${block("title-market-size")} [data-decide="keep_new"]`);
+  await until(() => exists(`${block("title-market-size")} [data-error]`), "a message for a refused click", 5000).catch(() => {});
+  const refused = await text(`${block("title-market-size")} [data-error]`);
+  check(/cannot read .*before\.pptx/.test(refused ?? ""), `a Keep click the engine refuses shows its message (${refused})`);
+  check((await attr(block("title-market-size"), "data-decision")) === "pending", "a refused click leaves the change undecided");
+  await shot("12-refused-click");
+  renameSync(join(OUT, "before.pptx.away"), join(PRIVATE, "before.pptx"));
+  await decide("title-market-size", "keep_new");
+  check(!(await exists(`${block("title-market-size")} [data-error]`)), "the message clears once the click succeeds");
+  await decide("title-cagr", "keep_old");
+  await decide("header-market-size", "edited", "$400m market set to grow");
+  await decide("table-market-size", "keep_new");
+  await decide("chart-2022-bar", "keep_new");
+  await decide("cagr-label", "keep_old");
+  await selectSlide("s2147480153", "text");
+  await click(mark("contents-cagr"));
+  await decide("contents-cagr", "keep_new");
+  await click('#bar [data-act="apply"]');
+  await until(async () => ((await text("#final-path")) ?? "").includes(`${PRIVATE_WORK}/final.pptx`), "private final path", 60000);
+  await shot("13-private-applied");
+  copyFileSync(join(PRIVATE_WORK, "changeset.json"), join(OUT, "private-changeset.json"));
+  const cli = spawnSync("uv", ["run", "--quiet", "--project", "deckcheck", "changeset", "apply", join(OUT, "private-changeset.json"), "--out", join(OUT, "private-cli.pptx")], { encoding: "utf8" });
+  check(cli.status === 0, `changeset apply on the private review's ChangeSet exits 0 (${cli.stdout.trim()})`);
+  check(sha(join(PRIVATE_WORK, "final.pptx")) === sha(join(OUT, "private-cli.pptx")), "the private final.pptx is byte-identical to changeset apply");
+  const res = await fetch(new URL(await attr("a#download", "href"), BASE));
+  check(res.ok && res.headers.get("content-disposition") === 'attachment; filename="my-meeting-final.pptx"', `the download is named my-meeting-final.pptx (${res.headers.get("content-disposition")})`);
+  for (const probe of ["private/..", "private/%2E%2E", "private/..%2Fmeetings%2Fmy%20meeting", "private/%2Fetc%2Fpasswd", "private/my%20meeting.partial", "evals/solar-market-refresh.partial", "evals/..%2F..%2Fdeckcheck"]) {
+    const status = await new Promise((done, fail) => get({ host: "127.0.0.1", port: PORT, path: `/api/meetings/${probe}` }, (r) => (r.resume(), done(r.statusCode))).on("error", fail));
+    check(status === 404, `${probe} sent verbatim answers 404 (got ${status})`);
+  }
 } catch (e) {
   check(false, `drive crashed: ${e.message}`);
   await shot("crash").catch(() => {});
