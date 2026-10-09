@@ -143,6 +143,7 @@ class Item:
     span: tuple[int, int] | None
     depends_on: str | None
     notes: tuple[str, ...]
+    target: Target
 
 
 @dataclass(frozen=True)
@@ -561,34 +562,35 @@ def _item(c: Change, target: Target, deck: slides.Deck, pkg: Package) -> Item:
             notes = ()
             if any(x.el.tag == text.A_FLD for x in text.atoms(target.p) if x.lo < target.splice.end and x.hi > target.splice.start):
                 notes = ("a think-cell label: its field format is rewritten too, so a refresh keeps the new text",)
-            return _at(c, target.slide, target.shape, target.before, after, (target.at, target.at + len(op.old)), notes)
+            return _at(c, target, target.before, after, (target.at, target.at + len(op.old)), notes)
         case ParagraphAt():
-            return _at(c, target.slide, target.shape, None, op.text)
+            return _at(c, target, None, op.text)
         case CellAt():
-            return _at(c, target.slide, target.shape, op.old, op.new)
+            return _at(c, target, op.old, op.new)
         case PointAt():
             book = target.point.workbook
             notes = (f"workbook cell {target.point.cell.sheet}!{target.point.cell.ref} in {book}",)
             if book.endswith(".xlsb"):
                 notes += ("the .xlsb workbook is rewritten as .xlsx, values only",)
-            return _at(c, target.slide, target.shape, chart.number_text(op.old), chart.number_text(op.new), None, notes)
+            return _at(c, target, chart.number_text(op.old), chart.number_text(op.new), None, notes)
         case PlaceholderAt():
             after = "\n".join(p.text for p in op.paragraphs)
-            return Item(c, op.slide, None, (target.placeholder.id, target.placeholder.name), None, after, None, op.slide, ())
+            return Item(c, op.slide, None, (target.placeholder.id, target.placeholder.name), None, after, None, op.slide, (), target)
         case SlideAt():
-            return Item(c, target.slide.id, target.slide.index, None, slides.title(pkg.xml(target.slide.part)), None, None, None, ())
+            return Item(c, target.slide.id, target.slide.index, None, slides.title(pkg.xml(target.slide.part)), None, None, None, (), target)
         case MoveTo():
             before = f"after {deck.slides[target.slide.index - 2].name}" if target.slide.index > 1 else "first"
             after = f"after {target.after.name}" if target.after else "first"
-            return Item(c, target.slide.id, target.slide.index, None, before, after, None, None, ())
+            return Item(c, target.slide.id, target.slide.index, None, before, after, None, None, (), target)
         case NewSlide():
             where = f"after {target.after.name}" if target.after else "first"
-            return Item(c, c.id, None, None, None, f"new slide on layout {target.layout.name!r}, {where}", None, None, ())
+            return Item(c, c.id, None, None, None, f"new slide on layout {target.layout.name!r}, {where}", None, None, (), target)
     raise AssertionError(target)
 
 
-def _at(c, slide, shape, before, after, span=None, notes=()) -> Item:
-    return Item(c, slide.id, slide.index, (slides.shape_id(shape), slides.shape_name(shape)), before, after, span, None, notes)
+def _at(c, target, before, after, span=None, notes=()) -> Item:
+    slide, shape = target.slide, target.shape
+    return Item(c, slide.id, slide.index, (slides.shape_id(shape), slides.shape_name(shape)), before, after, span, None, notes, target)
 
 
 def execute(checked: Checked) -> bytes:
@@ -664,30 +666,22 @@ def _build(checked: Checked, ops: Sequence[tuple[str, Op]]) -> bytes:
 
 
 def review(checked: Checked, executed_path: Path, executed: bytes) -> Review:
+    """The review view of `executed`, the deck execute wrote: positions and added slides' titles are read from
+    it, everything else from what check resolved on the source."""
     cs = checked.changeset
-    pkg = Package(checked.source)
-    deck = slides.read_deck(pkg)
-    adds = {i.change.id: i for i in checked.items if isinstance(i.change.op, AddSlide)}
-    placements = [
-        (i.change.id if isinstance(i.change.op, AddSlide) else i.change.op.slide, i.change.op.after)
-        for i in checked.items
-        if isinstance(i.change.op, AddSlide | MoveSlide)
-    ]
-    deleted = {i.change.op.slide for i in checked.items if isinstance(i.change.op, DeleteSlide)}
-    order = slides.final_order([s.id for s in deck.slides], deleted, placements)
-    executed_index = {key: n for n, key in enumerate(order, start=1)}
-    ctx = Context.of(cs)
-    titles = {
-        i.change.op.slide: (i.after or "").split("\n")[0]
-        for i in checked.items
-        if isinstance(i.change.op, FillPlaceholder)
-        and _locate_fill(pkg, deck, ctx, i.change.op).placeholder.type in slides.TITLE_TYPES
-    }
+    source = Package(checked.source)
+    built = Package(executed)
+    placed = {s.id: s for s in slides.read_deck(built).slides}
+    adds = {i.change.id: i.target.id for i in checked.items if isinstance(i.target, NewSlide)}
+    executed_index = {sid: s.index for sid, s in placed.items()} | {cid: placed[sid].index for cid, sid in adds.items()}
     boxes = _boxes(checked.source, cs.source.path)
     slide_rows = [
-        ReviewSlide(key=s.id, source_index=s.index, executed_index=executed_index.get(s.id), title=slides.title(pkg.xml(s.part)))
-        for s in deck.slides
-    ] + [ReviewSlide(key=cid, source_index=None, executed_index=executed_index[cid], title=titles.get(cid, "")) for cid in adds]
+        ReviewSlide(key=s.id, source_index=s.index, executed_index=executed_index.get(s.id), title=slides.title(source.xml(s.part)))
+        for s in slides.read_deck(source).slides
+    ] + [
+        ReviewSlide(key=cid, source_index=None, executed_index=placed[sid].index, title=slides.title(built.xml(placed[sid].part)))
+        for cid, sid in adds.items()
+    ]
     changes = [
         ReviewChange(
             id=i.change.id,

@@ -374,6 +374,166 @@ def test_delete_drops_the_slide_its_parts_and_its_custom_show_entry(deck: Path, 
     assert len(shown) == 1
 
 
+def test_the_review_view_reads_each_change_and_slide_from_the_source_and_executed_decks(
+    deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prs = Presentation(str(deck))
+    group = prs.slides[0].shapes.add_group_shape()
+    group.shapes.add_textbox(Inches(1), Inches(1), Inches(3), Inches(1)).text_frame.text = "Pilot in Q3"
+    group.left = Inches(2)
+    prs.save(str(deck))
+    changes = [
+        change("text", {"kind": "replace_text", "slide": 256, "shape": 7, "old": "Q3", "new": "Q4"}),
+        change("move", MOVE),
+        change("add", ADD),
+        change("title", {**FILL, "shape": 2, "paragraphs": [{"text": "Pricing"}, {"text": "actions"}]}),
+        change("body", FILL),
+        change("drop", {**DELETE, "slide": 258}),
+    ]
+    cs = changeset(deck, changes, lists={"flags": [FLAG], "held": [HELD]})
+    out, review = tmp_path / "executed.pptx", tmp_path / "review.json"
+
+    assert run(["execute", cs, "--out", out, "--review", review], capsys)[0] == 0
+
+    common = {"ask_id": "a1", "decision": "pending", "rationale": "The figures moved.", "refs": [REF], "notes": []}
+    edit, slide_only = ["keep_new", "keep_old", "edited"], ["keep_new", "keep_old"]
+    assert json.loads(review.read_text()) == {
+        "source": {"path": str(deck), "sha256": sha(deck)},
+        "executed": {"path": str(out), "sha256": sha(out)},
+        "meeting": {"title": "Pricing review", "date": "2026-10-01"},
+        "asks": [ASK],
+        "flags": [FLAG],
+        "held": [HELD],
+        "slides": [
+            {"key": 256, "source_index": 1, "executed_index": 2, "title": "Market outlook"},
+            {"key": 257, "source_index": 2, "executed_index": 1, "title": "Sales by year"},
+            {"key": 258, "source_index": 3, "executed_index": None, "title": "Next steps"},
+            {"key": "add", "source_index": None, "executed_index": 3, "title": "Pricing actions"},
+        ],
+        "changes": [
+            {
+                **common,
+                "id": "text",
+                "kind": "replace_text",
+                "structural": False,
+                "slide": 256,
+                "source_index": 1,
+                "executed_index": 2,
+                "shape": {"id": 7, "name": "TextBox 6", "box": {"x": 1828800, "y": 914400, "w": 2743200, "h": 914400}},
+                "before": "Pilot in Q3",
+                "after": "Pilot in Q4",
+                "span": [9, 11],
+                "depends_on": None,
+                "admits": edit,
+            },
+            {
+                **common,
+                "id": "move",
+                "kind": "move_slide",
+                "structural": True,
+                "slide": 256,
+                "source_index": 1,
+                "executed_index": 2,
+                "shape": None,
+                "before": "first",
+                "after": "after slide 2 (id 257)",
+                "span": None,
+                "depends_on": None,
+                "admits": slide_only,
+            },
+            {
+                **common,
+                "id": "add",
+                "kind": "add_slide",
+                "structural": True,
+                "slide": "add",
+                "source_index": None,
+                "executed_index": 3,
+                "shape": None,
+                "before": None,
+                "after": "new slide on layout 'Title and Content', after slide 2 (id 257)",
+                "span": None,
+                "depends_on": None,
+                "admits": slide_only,
+            },
+            {
+                **common,
+                "id": "title",
+                "kind": "fill_placeholder",
+                "structural": True,
+                "slide": "add",
+                "source_index": None,
+                "executed_index": 3,
+                "shape": {"id": 2, "name": "Title 1", "box": None},
+                "before": None,
+                "after": "Pricing\nactions",
+                "span": None,
+                "depends_on": "add",
+                "admits": edit,
+            },
+            {
+                **common,
+                "id": "body",
+                "kind": "fill_placeholder",
+                "structural": True,
+                "slide": "add",
+                "source_index": None,
+                "executed_index": 3,
+                "shape": {"id": 3, "name": "Content Placeholder 2", "box": None},
+                "before": None,
+                "after": "Raise list prices\nHold discounts",
+                "span": None,
+                "depends_on": "add",
+                "admits": edit,
+            },
+            {
+                **common,
+                "id": "drop",
+                "kind": "delete_slide",
+                "structural": True,
+                "slide": 258,
+                "source_index": 3,
+                "executed_index": None,
+                "shape": None,
+                "before": "Next steps",
+                "after": None,
+                "span": None,
+                "depends_on": None,
+                "admits": slide_only,
+            },
+        ],
+    }
+
+
+SECTIONS = (
+    '<p:extLst xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+    '<p:ext uri="{521415D9-36F7-43E2-AB2F-B90AF26B5E84}">'
+    '<p14:sectionLst xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main">'
+    '<p14:section name="Intro" id="{00000000-0000-0000-0000-00000000000A}">'
+    '<p14:sldIdLst><p14:sldId id="256"/><p14:sldId id="257"/></p14:sldIdLst></p14:section>'
+    '<p14:section name="Body" id="{00000000-0000-0000-0000-00000000000B}">'
+    '<p14:sldIdLst><p14:sldId id="258"/><p14:sldId id="259"/></p14:sldIdLst></p14:section>'
+    "</p14:sectionLst></p:ext></p:extLst>"
+)
+
+
+def test_added_moved_and_deleted_slides_keep_the_sections_in_step(deck: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prs = Presentation(str(deck))
+    prs.slides.add_slide(prs.slide_layouts[TITLE_ONLY]).shapes.title.text = "Appendix"
+    prs.part._element.append(parse_xml(SECTIONS))
+    prs.save(str(deck))
+    changes = [change("move", {**MOVE, "after": 258}), change("add", ADD), change("drop", {**DELETE, "slide": 259})]
+    out = tmp_path / "executed.pptx"
+
+    run(["execute", changeset(deck, changes), "--out", out], capsys)
+
+    with zipfile.ZipFile(out) as z:
+        pres = etree.fromstring(z.read("ppt/presentation.xml"))
+    p14 = "{http://schemas.microsoft.com/office/powerpoint/2010/main}"
+    sections = [(s.get("name"), [int(i.get("id")) for i in s.iter(f"{p14}sldId")]) for s in pres.iter(f"{p14}section")]
+    assert (slide_ids(out), sections) == ([257, 260, 258, 256], [("Intro", [257, 260]), ("Body", [258, 256])])
+
+
 @pytest.mark.parametrize(
     ("changes", "order"),
     [
