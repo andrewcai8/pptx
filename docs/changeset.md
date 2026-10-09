@@ -65,6 +65,41 @@ The engine checks every change against every other whatever the decisions, so an
 
 `execute --review` writes a JSON file in the shape of `deckcheck/src/deckcheck/changeset/review.schema.json`. It lists every slide with its source and executed positions, and every change with its shape, the text before and after, the quoted span, what it depends on, and the decisions it admits.
 
+## Run the maker headless
+
+`meeting process` runs the `process-meeting` skill without a person at the keyboard, then validates what it wrote.
+
+```bash
+uv run --project deckcheck meeting process private/meetings/q3 --out private/meetings/q3/run1 --shareable
+```
+
+It reads `transcript.md`, or else `notes.md`, and any `data/*.csv` in the meeting folder. The deck is `before.pptx` there unless `--deck` names another. `--out` must sit inside `artifacts/` or `private/`. `--shareable` answers the ask-first question in `CLAUDE.md`, and the command refuses to start without it. Before the run it checks `claude auth status --json`, and afterwards it writes Claude's JSON result to `claude.json` in the working folder. For the example above it runs this, from the repo root:
+
+```bash
+claude -p '<prompt>' --tools Read,Write,Edit,Bash --permission-mode dontAsk \
+  --allowedTools 'Read(./private/meetings/q3/**)' 'Read(./.claude/skills/process-meeting/**)' 'Read(./docs/changeset.md)' \
+    'Read(./private/meetings/q3/run1/**)' 'Write(./private/meetings/q3/run1/**)' 'Edit(./private/meetings/q3/run1/**)' \
+    'Bash(uv run --project deckcheck changeset outline private/meetings/q3/before.pptx --json private/meetings/q3/run1/outline.json)' \
+    'Bash(uv run --project deckcheck changeset validate private/meetings/q3/run1/changeset.json)' \
+    'Bash(uv run --project deckcheck changeset execute private/meetings/q3/run1/changeset.json --out private/meetings/q3/run1/executed.pptx --review private/meetings/q3/run1/review.json)' \
+    'Bash(uv run --project deckcheck deckcheck check private/meetings/q3/run1/executed.pptx --out private/meetings/q3/run1/check)' \
+  --output-format json --no-session-persistence
+```
+
+- `--tools` leaves Claude no tool that reaches the network.
+- `--permission-mode dontAsk` denies every tool call that no `--allowedTools` rule allows, so a headless run never waits on a prompt.
+- The `Write` and `Edit` rules confine writes to the working folder. The `Bash` rules allow exactly the four commands the skill runs, and the prompt lists the same four.
+- The prompt names the meeting, the deck, the data files, the working folder, and the ChangeSet path. It also says the user passed `--shareable` and that open questions go in `flags`.
+
+| exit | meaning |
+|---|---|
+| 0 | the ChangeSet is valid, and the command prints what `changeset validate` prints |
+| 1 | Claude wrote no ChangeSet, or it is invalid or names another deck |
+| 2 | bad input, such as a missing transcript, a missing deck, `--out` outside `artifacts/` and `private/`, or no `--shareable` |
+| 3 | the `claude` CLI is missing or not logged in, and the command prints ``claude CLI not found or not logged in; run `claude` once to log in`` |
+
+The flags were checked against `claude --help` for Claude Code 2.1.293, and `deckcheck/tests/test_meeting.py` pins the argv. No live `claude -p` run has tested them.
+
 ## Known limits
 
 - A chart whose workbook is `.xlsb` gets a new `.xlsx` workbook that holds the old workbook's values only. Formulas and formatting in that workbook are lost. The solar deck's six charts are the only `.xlsb` charts in the corpus.
