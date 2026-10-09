@@ -84,16 +84,26 @@ def _show(value: str | None) -> str:
     return repr(value if len(value) <= 80 else value[:79] + "…")
 
 
-def _refuse_source(checked: Checked, out: Path) -> None:
-    source = Path(checked.changeset.source.path)
-    if out.is_dir():
-        raise DeckError(f"--out {out} is a directory; pass the path of the new deck")
-    if out.exists() and os.path.samefile(out, source):
-        raise DeckError(f"--out {out} is the source deck; the engine never writes over it")
+def _same(a: Path, b: Path) -> bool:
+    if a.exists() and b.exists():
+        return os.path.samefile(a, b)
+    return a.resolve() == b.resolve()
+
+
+def _refuse_overwrites(checked: Checked, outputs: dict[str, Path]) -> None:
+    inputs = {"the source deck": Path(checked.changeset.source.path), "the ChangeSet": checked.path}
+    for flag, path in outputs.items():
+        if path.is_dir():
+            raise DeckError(f"{flag} {path} is a directory; pass the path of a new file")
+        for what, source in inputs.items():
+            if _same(path, source):
+                raise DeckError(f"{flag} {path} is {what}; the engine never writes over it")
+    if "--review" in outputs and _same(outputs["--out"], outputs["--review"]):
+        raise DeckError(f"--review {outputs['--review']} is also --out; give each its own path")
 
 
 def cmd_execute(checked: Checked, out: Path, review_path: Path | None) -> int:
-    _refuse_source(checked, out)
+    _refuse_overwrites(checked, {"--out": out} | ({"--review": review_path} if review_path else {}))
     data = execute(checked)
     write_atomic(out, data)
     print(f"EXECUTED {checked.path} -> {out}: {_counts(checked)} written, sha256 {hashlib.sha256(data).hexdigest()}")
@@ -108,7 +118,7 @@ def cmd_execute(checked: Checked, out: Path, review_path: Path | None) -> int:
 
 
 def cmd_apply(checked: Checked, out: Path) -> int:
-    _refuse_source(checked, out)
+    _refuse_overwrites(checked, {"--out": out})
     result = apply(checked)
     write_atomic(out, result.data)
     print(

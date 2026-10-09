@@ -395,7 +395,25 @@ def test_a_bad_changeset_names_each_problem_and_exits_1(deck: Path, capsys: pyte
     assert run(["validate", cs], capsys) == (1, f"INVALID {cs}: 1 problem\n  {expected}\n", "")
 
 
-def test_out_may_not_be_the_source_deck(deck: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    cs = changeset(deck, [change("c1", REVENUE)])
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["execute", "changeset.json", "--out", "deck.pptx"], "--out deck.pptx is the source deck; the engine never writes over it"),
+        (["execute", "changeset.json", "--out", "new.pptx", "--review", "deck.pptx"], "--review deck.pptx is the source deck; the engine never writes over it"),
+        (["execute", "changeset.json", "--out", "./changeset.json"], "--out changeset.json is the ChangeSet; the engine never writes over it"),
+        (["execute", "changeset.json", "--out", "new.pptx", "--review", "changeset.json"], "--review changeset.json is the ChangeSet; the engine never writes over it"),
+        (["execute", "changeset.json", "--out", "new.pptx", "--review", "sub/../new.pptx"], "--review sub/../new.pptx is also --out; give each its own path"),
+        (["apply", "changeset.json", "--out", "changeset.json"], "--out changeset.json is the ChangeSet; the engine never writes over it"),
+    ],
+    ids=["out-is-source", "review-is-source", "out-is-changeset", "review-is-changeset", "review-is-out", "apply-out-is-changeset"],
+)
+def test_no_output_overwrites_an_input_or_the_other_output(
+    deck: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], argv: list[str], message: str
+) -> None:
+    changeset(deck, [change("c1", REVENUE, "keep_new")])
+    (tmp_path / "sub").mkdir()
+    monkeypatch.chdir(tmp_path)
+    files = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
 
-    assert run(["execute", cs, "--out", deck], capsys) == (2, "", f"error: --out {deck} is the source deck; the engine never writes over it\n")
+    assert run(argv, capsys) == (2, "", f"error: {message}\n")
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()} == files

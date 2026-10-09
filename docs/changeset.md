@@ -22,7 +22,7 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 |---|---|
 | 0 | done |
 | 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. Nothing is written. |
-| 2 | the ChangeSet file cannot be read, the source file is not a deck, or `--out` is the source deck or a folder |
+| 2 | the ChangeSet file cannot be read, the source file is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
 
 ## The ChangeSet
 
