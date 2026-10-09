@@ -10,15 +10,26 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from deckcheck.changeset.cli import cmd_validate, print_invalid
-from deckcheck.changeset.engine import Invalid, Problem, load
+from deckcheck.changeset.engine import Invalid, Problem, load, parse
 from deckcheck.cli import write_atomic
 from deckcheck.model import DeckError
 
 OK, PROBLEMS, USAGE, NO_CLAUDE = 0, 1, 2, 3
 SKILL = ".claude/skills/process-meeting/SKILL.md"
+DOC = "docs/changeset.md"
+ENGINE = "deckcheck"
 OUT_ROOTS = ("artifacts", "private")
 NOT_LOGGED_IN = "claude CLI not found or not logged in; run `claude` once to log in"
-UV = "uv run --project deckcheck"
+DECK = "before.pptx"
+CHANGESET = "changeset.json"
+COMMANDS = (
+    f"uv run --project {ENGINE} changeset outline {DECK} --json outline.json",
+    f"uv run --project {ENGINE} changeset validate {CHANGESET}",
+    f"uv run --project {ENGINE} changeset execute {CHANGESET} --out executed.pptx --review review.json",
+    f"uv run --project {ENGINE} deckcheck check executed.pptx --out check",
+)
+TOOLS = "Read,Write,Grep,Glob,Bash"
+ALLOWED = ("Edit(./**)", *(f"Bash({c})" for c in COMMANDS))
 
 
 class Refused(ValueError):
@@ -27,44 +38,22 @@ class Refused(ValueError):
 
 @dataclass(frozen=True)
 class Job:
-    meeting: str
     transcript: str
     data: tuple[str, ...]
     deck: str
     out: str
 
     @property
+    def stage(self) -> str:
+        return f"{self.out}/stage"
+
+    @property
     def changeset(self) -> str:
-        return f"{self.out}/changeset.json"
-
-    @property
-    def executed(self) -> str:
-        return f"{self.out}/executed.pptx"
-
-    @property
-    def check(self) -> str:
-        return f"{self.out}/check"
-
-    @property
-    def outline(self) -> str:
-        return f"{self.out}/outline.json"
-
-    @property
-    def review(self) -> str:
-        return f"{self.out}/review.json"
+        return f"{self.out}/{CHANGESET}"
 
     @property
     def claude_output(self) -> str:
         return f"{self.out}/claude.json"
-
-    @property
-    def commands(self) -> tuple[str, ...]:
-        return (
-            f"{UV} changeset outline {self.deck} --json {self.outline}",
-            f"{UV} changeset validate {self.changeset}",
-            f"{UV} changeset execute {self.changeset} --out {self.executed} --review {self.review}",
-            f"{UV} deckcheck check {self.executed} --out {self.check}",
-        )
 
 
 def job(root: Path, meeting: Path, out: Path, deck: Path | None, shareable: bool) -> Job:
@@ -81,14 +70,17 @@ def job(root: Path, meeting: Path, out: Path, deck: Path | None, shareable: bool
     transcript = next((f"{meeting_dir}/{n}" for n in ("transcript.md", "notes.md") if (root / meeting_dir / n).is_file()), None)
     if transcript is None:
         raise Refused(f"{meeting_dir} holds neither transcript.md nor notes.md")
-    source = _inside(root, deck if deck is not None else root / meeting_dir / "before.pptx", "the deck")
+    source = _inside(root, deck if deck is not None else root / meeting_dir / DECK, "the deck")
     if not (root / source).is_file():
         raise Refused(f"no deck at {source}; pass --deck")
     out_dir = _inside(root, out, "--out")
     if out_dir.split("/")[0] not in OUT_ROOTS or "/" not in out_dir:
         raise Refused(f"--out {out_dir} must sit inside artifacts/ or private/, which git ignores, so client files stay out of git")
     data = tuple(p.relative_to(root).as_posix() for p in sorted((root / meeting_dir / "data").glob("*.csv")))
-    return Job(meeting=meeting_dir, transcript=transcript, data=data, deck=source, out=out_dir)
+    run = Job(transcript=transcript, data=data, deck=source, out=out_dir)
+    if any(_within(p, run.stage) for p in (meeting_dir, source)):
+        raise Refused(f"{run.stage} is replaced on every run, so the meeting and the deck cannot sit inside it")
+    return run
 
 
 def _inside(root: Path, path: Path, what: str) -> str:
@@ -98,18 +90,44 @@ def _inside(root: Path, path: Path, what: str) -> str:
     return full.relative_to(root).as_posix()
 
 
+def _within(path: str, folder: str) -> bool:
+    return path == folder or path.startswith(folder + "/")
+
+
+def stage(root: Path, job: Job) -> Path:
+    folder = root / job.stage
+    if folder.exists():
+        shutil.rmtree(folder)
+    copies = {
+        posixpath.basename(job.transcript): job.transcript,
+        **{f"data/{posixpath.basename(d)}": d for d in job.data},
+        DECK: job.deck,
+        SKILL: SKILL,
+        DOC: DOC,
+    }
+    for name, source in copies.items():
+        (folder / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / source, folder / name)
+    (folder / ENGINE).symlink_to(root / ENGINE, target_is_directory=True)
+    return folder
+
+
 def prompt(job: Job) -> str:
-    commands = "\n".join(f"- `{c}`" for c in job.commands)
+    data = ", ".join(f"data/{posixpath.basename(d)}" for d in job.data) or "none"
+    commands = "\n".join(f"- `{c}`" for c in COMMANDS)
     return f"""Follow the skill at {SKILL} to turn this meeting into a ChangeSet for its deck.
 
-- Meeting folder: {job.meeting}
-- Transcript: {job.transcript}
-- Data files: {", ".join(job.data) or "none"}
-- Source deck: {job.deck}
-- Working folder: {job.out}
-- ChangeSet: write it to {job.changeset}
+Your working folder was staged for this run. It holds:
+- the meeting: {posixpath.basename(job.transcript)}
+- data files: {data}
+- the source deck: {DECK}
+- the skill, and {DOC}, which describes every op and field
 
-These are the only commands you can run. Run each exactly as written:
+Write the ChangeSet to {CHANGESET}.
+
+Read files with Read, Grep, and Glob. Write files with Write. Every file you need is in the working folder, and you can read and write nothing outside it.
+
+These are the only commands you can run. Run each exactly as written, from the working folder:
 {commands}
 
 The user ran `meeting process --shareable`, which says this deck and meeting may be shared with an AI service under their firm's policy. Do not ask again.
@@ -119,35 +137,36 @@ Nobody can answer questions during this run. Put anything you cannot settle in t
 
 
 def argv(job: Job) -> list[str]:
-    allowed = [
-        f"Read(./{job.meeting}/**)",
-        f"Read(./{posixpath.dirname(SKILL)}/**)",
-        "Read(./docs/changeset.md)",
-        f"Read(./{job.out}/**)",
-        f"Write(./{job.out}/**)",
-        f"Edit(./{job.out}/**)",
-        *(f"Bash({c})" for c in job.commands),
-    ]
     return [
         "claude",
         "-p",
         prompt(job),
         "--tools",
-        "Read,Write,Edit,Bash",
+        TOOLS,
+        "--restricted",
+        "--strict-mcp-config",
         "--permission-mode",
         "dontAsk",
         "--allowedTools",
-        *allowed,
+        *ALLOWED,
         "--output-format",
         "json",
         "--no-session-persistence",
     ]
 
 
-def source_problems(named: str, job: Job) -> list[Problem]:
-    if posixpath.normpath(named) == job.deck:
-        return []
-    return [Problem("source.path", f"{named!r} is not the deck this meeting edits; name {job.deck}")]
+# Every other tool reads source.path from the repo root, so the published ChangeSet names the deck there.
+def publish(staged: Path, published: Path, deck: str) -> None:
+    try:
+        raw = staged.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        raise Invalid([Problem("changeset", f"cannot read it: {e}")]) from e
+    named = parse(raw).source.path
+    if posixpath.normpath(named) != DECK:
+        raise Invalid([Problem("source.path", f"{named!r} is not the deck this meeting edits; name {DECK}")])
+    doc = json.loads(raw)
+    doc["source"]["path"] = deck
+    write_atomic(published, (json.dumps(doc, indent=2, ensure_ascii=False) + "\n").encode())
 
 
 def logged_in() -> bool:
@@ -178,22 +197,23 @@ def main(argv_: list[str] | None = None) -> int:
     if not logged_in():
         print(f"error: {NOT_LOGGED_IN}", file=sys.stderr)
         return NO_CLAUDE
-    changeset = root / run.changeset
     # A ChangeSet left by an earlier run would otherwise pass for this run's output.
-    changeset.unlink(missing_ok=True)
-    (root / run.out).mkdir(parents=True, exist_ok=True)
-    claude = subprocess.run(argv(run), cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
+    (root / run.changeset).unlink(missing_ok=True)
+    folder = stage(root, run)
+    claude = subprocess.run(argv(run), cwd=folder, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
     write_atomic(root / run.claude_output, claude.stdout)
     if claude.returncode:
         print(f"error: claude -p exited {claude.returncode}", file=sys.stderr)
-    if not changeset.is_file():
-        print(f"error: claude wrote no ChangeSet at {run.changeset}", file=sys.stderr)
+    staged = folder / CHANGESET
+    if not staged.is_file():
+        print(f"error: claude wrote no ChangeSet at {run.stage}/{CHANGESET}", file=sys.stderr)
         return PROBLEMS
     try:
-        checked = load(Path(run.changeset))
-        if problems := source_problems(checked.changeset.source.path, run):
-            raise Invalid(problems)
-        return cmd_validate(checked)
+        publish(staged, root / run.changeset, run.deck)
+    except Invalid as e:
+        return print_invalid(Path(f"{run.stage}/{CHANGESET}"), e.problems)
+    try:
+        return cmd_validate(load(Path(run.changeset)))
     except Invalid as e:
         return print_invalid(Path(run.changeset), e.problems)
     except (DeckError, OSError) as e:

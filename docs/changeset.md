@@ -75,32 +75,44 @@ The engine checks every change against every other whatever the decisions, so an
 uv run --project deckcheck meeting process private/meetings/q3 --out private/meetings/q3/run1 --shareable
 ```
 
-It reads `transcript.md`, or else `notes.md`, and any `data/*.csv` in the meeting folder. The deck is `before.pptx` there unless `--deck` names another. `--out` must sit inside `artifacts/` or `private/`. `--shareable` answers the ask-first question in `CLAUDE.md`, and the command refuses to start without it. Before the run it checks `claude auth status --json`, and afterwards it writes Claude's JSON result to `claude.json` in the working folder. For the example above it runs this, from the repo root:
+`--out` must sit inside `artifacts/` or `private/`. `--shareable` answers the ask-first question in `CLAUDE.md`, and the command refuses to start without it. Before the run it checks `claude auth status --json`.
+
+The run sees only a staged copy of what it needs. The command replaces `<out>/stage/` on every run and copies these into it:
+
+- `transcript.md`, or `notes.md` when the folder has no transcript
+- every `data/*.csv`
+- the deck, as `before.pptx`. It is `before.pptx` in the meeting folder unless `--deck` names another.
+- the skill, at `.claude/skills/process-meeting/SKILL.md`, and this file, at `docs/changeset.md`
+- `deckcheck`, a link to the engine, so `uv run --project deckcheck` works there
+
+Nothing else in the meeting folder is staged, so `after.pptx`, `expected.yaml`, `changeset.json`, `build.py`, and other meetings stay out of reach. The command then runs this from `<out>/stage/`:
 
 ```bash
-claude -p '<prompt>' --tools Read,Write,Edit,Bash --permission-mode dontAsk \
-  --allowedTools 'Read(./private/meetings/q3/**)' 'Read(./.claude/skills/process-meeting/**)' 'Read(./docs/changeset.md)' \
-    'Read(./private/meetings/q3/run1/**)' 'Write(./private/meetings/q3/run1/**)' 'Edit(./private/meetings/q3/run1/**)' \
-    'Bash(uv run --project deckcheck changeset outline private/meetings/q3/before.pptx --json private/meetings/q3/run1/outline.json)' \
-    'Bash(uv run --project deckcheck changeset validate private/meetings/q3/run1/changeset.json)' \
-    'Bash(uv run --project deckcheck changeset execute private/meetings/q3/run1/changeset.json --out private/meetings/q3/run1/executed.pptx --review private/meetings/q3/run1/review.json)' \
-    'Bash(uv run --project deckcheck deckcheck check private/meetings/q3/run1/executed.pptx --out private/meetings/q3/run1/check)' \
+claude -p '<prompt>' --tools Read,Write,Grep,Glob,Bash --restricted --strict-mcp-config --permission-mode dontAsk \
+  --allowedTools 'Edit(./**)' \
+    'Bash(uv run --project deckcheck changeset outline before.pptx --json outline.json)' \
+    'Bash(uv run --project deckcheck changeset validate changeset.json)' \
+    'Bash(uv run --project deckcheck changeset execute changeset.json --out executed.pptx --review review.json)' \
+    'Bash(uv run --project deckcheck deckcheck check executed.pptx --out check)' \
   --output-format json --no-session-persistence
 ```
 
-- `--tools` leaves Claude no tool that reaches the network.
-- `--permission-mode dontAsk` denies every tool call that no `--allowedTools` rule allows, so a headless run never waits on a prompt.
-- The `Write` and `Edit` rules confine writes to the working folder. The `Bash` rules allow exactly the four commands the skill runs, and the prompt lists the same four.
-- The prompt names the meeting, the deck, the data files, the working folder, and the ChangeSet path. It also says the user passed `--shareable` and that open questions go in `flags`.
+- `--tools` gives Claude five built-in tools and no tool that reaches the network.
+- `--restricted` keeps Read, Write, Grep, and Glob inside `<out>/stage/`, and a file reached through a link that leads out of it counts as outside. It also ignores the user, project, and local settings files, so their permission rules and hooks do not load. Managed settings, which an organization's admin sets, still apply.
+- `--strict-mcp-config` loads no MCP server, because the command passes no `--mcp-config`.
+- `--permission-mode dontAsk` denies every call that no rule allows, so a headless run never waits on a prompt. `Edit(./**)` lets Write create files in `<out>/stage/`. The `Bash` rules allow the four commands as written, which the prompt and the skill name. Claude Code also accepts them followed by `2>&1` or by a redirect into a file in `<out>/stage/`, and it runs plain read-only commands such as `ls` on files there without a rule. Any other command, a variable, or a path outside `<out>/stage/` is denied.
+- The commands name only files inside `<out>/stage/`, so a meeting or `--out` path with spaces does not change them.
+
+Afterwards the command writes Claude's JSON result to `<out>/claude.json` and copies `<out>/stage/changeset.json` to `<out>/changeset.json`, naming the deck by its path from the repo root, as every other command expects. `outline.json`, `executed.pptx`, `review.json`, and `check/` stay in `<out>/stage/`.
 
 | exit | meaning |
 |---|---|
 | 0 | the ChangeSet is valid, and the command prints what `changeset validate` prints |
-| 1 | Claude wrote no ChangeSet, or it is invalid or names another deck |
-| 2 | bad input, such as a missing transcript, a missing deck, `--out` outside `artifacts/` and `private/`, or no `--shareable` |
+| 1 | Claude wrote no ChangeSet, or it is invalid or names another deck than `before.pptx` |
+| 2 | bad input, such as a missing transcript, a missing deck, `--out` outside `artifacts/` and `private/`, a meeting or deck inside `<out>/stage/`, or no `--shareable` |
 | 3 | the `claude` CLI is missing or not logged in, and the command prints ``claude CLI not found or not logged in; run `claude` once to log in`` |
 
-The flags were checked against `claude --help` for Claude Code 2.1.293, and `deckcheck/tests/test_meeting.py` pins the argv. No live `claude -p` run has tested them.
+The flags were checked against Claude Code 2.1.293, and `deckcheck/tests/test_meeting.py` pins the argv and the staged files. No live `claude -p` run has tested them.
 
 ## Known limits
 
