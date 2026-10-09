@@ -334,7 +334,7 @@ def _locate_text(pkg: Package, deck: slides.Deck, op: ReplaceText) -> TextAt:
     if not mine:
         where = f" paragraph {op.paragraph}" if op.paragraph is not None else ""
         elsewhere = f"; it occurs in {_paragraph_list({i for i, _ in hits})}" if hits else ""
-        raise Miss("op.old", f"{op.old!r} is not in {name}{where}{elsewhere}; its text is {_clip(chr(10).join(texts))!r}")
+        raise Miss("op.old", f"{op.old!r} is not in {name}{where}{elsewhere}; its text is {text.clip(chr(10).join(texts))!r}")
     if len(mine) > 1:
         raise Miss(
             "op.old",
@@ -447,7 +447,7 @@ def _describe(shape: etree._Element, kind: ShapeKind) -> str | None:
             return name if shape.find(f".//{{{chart.C_NS}}}chart") is not None else None
     body = shape.find(qn("p:txBody"))
     words = " ".join(text.paragraph_text(p) for p in body.iterfind(qn("a:p"))).strip() if body is not None else ""
-    return f"{name} ({_clip(words, 30)!r})" if words else None
+    return f"{name} ({text.clip(words, 30)!r})" if words else None
 
 
 def _paragraphs(pkg: Package, deck: slides.Deck, slide_id: int, shape_id: int):
@@ -476,10 +476,6 @@ def _count(n: int) -> str:
 
 def _list(items) -> str:
     return ", ".join(str(i) for i in items)
-
-
-def _clip(s: str, n: int = 120) -> str:
-    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 def _conflicts(cs: ChangeSet, deck: slides.Deck, targets: Mapping[str, Target]) -> list[Problem]:

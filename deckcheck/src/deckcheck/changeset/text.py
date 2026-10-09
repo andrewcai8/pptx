@@ -59,6 +59,10 @@ def paragraph_text(p: etree._Element) -> str:
     return "".join((a.el.findtext(A_T) or "") if a.el.tag != A_BR else LINE_BREAK for a in atoms(p))
 
 
+def clip(s: str, n: int = 120) -> str:
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
 def occurrences(text: str, quote: str) -> list[int]:
     return [i for i in range(len(text) - len(quote) + 1) if text.startswith(quote, i)]
 
@@ -109,7 +113,7 @@ def plan_splice(p: etree._Element, at: int, old: str, new: str) -> Splice:
     fields = [w.atom.el for w in writes if w.atom.el.tag == A_FLD]
     for el in fields:
         if not is_literal_field(el):
-            raise SpliceError(f"the change touches a {el.get('type', 'field')!r} field, which only PowerPoint fills in")
+            raise SpliceError(f"the change touches a {clip(el.get('type', 'field'), 40)!r} field, which only PowerPoint fills in")
     if fields and len(writes) > 1:
         raise SpliceError("the change crosses the edge of a field; change the field's text or the run's text, not both")
     for w in writes:
@@ -151,7 +155,7 @@ def _field_type(el: etree._Element, w: Write) -> str:
     old = el.findtext(A_T) or ""
     kind = retype(el.get("type"), w.a, w.b, w.piece)
     if decode(kind) != old[: w.a] + w.piece + old[w.b :]:
-        raise SpliceError(f"the field's format {kind!r} would not spell its new text; change the label in think-cell")
+        raise SpliceError(f"the field's format {clip(kind, 40)!r} would not spell its new text; change the label in think-cell")
     return kind
 
 

@@ -568,6 +568,15 @@ def bad_json(deck: Path) -> Path:
     return path
 
 
+def date_field(deck: Path) -> Path:
+    """The deck with a date field on slide 258 whose format is longer than a message should print."""
+    prs = Presentation(str(deck))
+    p = prs.slides[2].shapes.add_textbox(Inches(4), Inches(2), Inches(2), Inches(1)).text_frame.paragraphs[0]
+    p._p.append(parse_xml(LABEL.replace("'''+''''9''''%'''", "yyyy" + "''''" * 70).replace("+9%", "2025")))
+    prs.save(str(deck))
+    return deck
+
+
 def first_text(deck: Path, shape_id: int, text: str) -> Path:
     """The deck with the first a:t of shape `shape_id` on slide 256 set to `text`, such as one holding a literal
     line feed, which some decks have."""
@@ -648,6 +657,10 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
         (lambda d: changeset(d, [change("c1", REVENUE)], lists={"flags": [FLAG, FLAG]}), "f1 id: flags[0] and flags[1] share this id"),
         (lambda d: changeset(d, [change("c1", REVENUE)], lists={"held": [HELD, HELD]}), "h1 id: held[0] and held[1] share this id"),
         (
+            lambda d: changeset(date_field(d), [change("c1", {**LABEL_OP, "shape": 4, "old": "2025", "new": "2026"})]),
+            "c1 op.new: the change touches a " + repr("datetimeyyyy" + "'" * 27 + "…") + " field, which only PowerPoint fills in",
+        ),
+        (
             lambda d: changeset(first_text(d, 4, "Revenue\ngrew "), [change("c1", {**REVENUE, "old": "Revenue\ngrew", "new": "Revenue\nrose"})]),
             "c1 op.old: shape 4 'TextBox 3' holds a line feed (\"\\n\") inside the text of paragraph 0, which no op can write; "
             "quote the text on one side of it",
@@ -692,6 +705,7 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
         "duplicate-ask-ids",
         "duplicate-flag-ids",
         "duplicate-held-ids",
+        "long-field-format",
         "line-feed-in-the-source-quote",
         "line-feed-in-a-cell",
         "nul-in-source-path",
