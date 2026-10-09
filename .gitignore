@@ -57,6 +57,9 @@ diff.json
 audit.json
 fonts.json
 score.json
+outline.json
+flags.json
+claude.json
 
 # Synthetic eval data is made up and safe to commit.
 !evals/*/data/*.csv

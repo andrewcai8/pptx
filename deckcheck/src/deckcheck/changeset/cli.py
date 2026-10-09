@@ -4,9 +4,11 @@ import argparse
 import hashlib
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
-from deckcheck.changeset.engine import Checked, Invalid, Item, Undecided, apply, execute, load, review
+from deckcheck.changeset import outline
+from deckcheck.changeset.engine import Checked, Invalid, Item, Problem, Undecided, apply, execute, load, review
 from deckcheck.cli import write_atomic
 from deckcheck.fix import plural
 from deckcheck.model import DeckError
@@ -15,8 +17,11 @@ OK, PROBLEMS, USAGE = 0, 1, 2
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="changeset", description="Check a ChangeSet against its deck, run it, and apply review decisions.")
+    parser = argparse.ArgumentParser(prog="changeset", description="List a deck's ids, check a ChangeSet against its deck, run it, and apply review decisions.")
     sub = parser.add_subparsers(dest="command", required=True)
+    listing = sub.add_parser("outline", help="list the slide, shape, paragraph, cell and chart point ids a ChangeSet can address")
+    listing.add_argument("deck", type=Path)
+    listing.add_argument("--json", type=Path, dest="json_path", help="also write the outline as JSON here")
     validate = sub.add_parser("validate", help="check every change against the source deck")
     validate.add_argument("changeset", type=Path)
     run = sub.add_parser("execute", help="write the deck with every change as the maker wrote it")
@@ -28,25 +33,38 @@ def main(argv: list[str] | None = None) -> int:
     final.add_argument("--out", type=Path, required=True, help="the final deck, a new .pptx path")
     args = parser.parse_args(argv)
     try:
-        checked = load(args.changeset)
         match args.command:
+            case "outline":
+                return cmd_outline(args.deck, args.json_path)
             case "validate":
-                return cmd_validate(checked)
+                return cmd_validate(load(args.changeset))
             case "execute":
-                return cmd_execute(checked, args.out, args.review)
+                return cmd_execute(load(args.changeset), args.out, args.review)
             case _:
-                return cmd_apply(checked, args.out)
+                return cmd_apply(load(args.changeset), args.out)
     except Invalid as e:
-        print(f"INVALID {args.changeset}: {plural(len(e.problems), 'problem', 'problems')}")
-        for p in e.problems:
-            print(f"  {p.where}: {p.message}")
-        return PROBLEMS
+        return print_invalid(args.changeset, e.problems)
     except Undecided as e:
         print(f"PENDING {args.changeset}: {plural(len(e.pending), 'decision', 'decisions')} pending ({', '.join(e.pending)}); nothing written")
         return PROBLEMS
     except (DeckError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return USAGE
+
+
+def print_invalid(path: Path, problems: Sequence[Problem]) -> int:
+    print(f"INVALID {path}: {plural(len(problems), 'problem', 'problems')}")
+    for p in problems:
+        print(f"  {p.where}: {p.message}")
+    return PROBLEMS
+
+
+def cmd_outline(deck: Path, json_path: Path | None) -> int:
+    found = outline.read(deck.read_bytes(), str(deck))
+    print(outline.render(found), end="")
+    if json_path:
+        write_atomic(json_path, (found.model_dump_json(indent=2) + "\n").encode())
+    return OK
 
 
 def cmd_validate(checked: Checked) -> int:

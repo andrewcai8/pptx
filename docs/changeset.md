@@ -1,6 +1,6 @@
 # The edit engine
 
-The edit engine is the first piece of meeting-to-slides. A maker reads a meeting and writes a ChangeSet, a JSON file of edits to one source deck. The engine checks the ChangeSet against the deck, writes a copy with every change applied for review, and then writes the final deck from the reviewer's decisions. It never writes to the source deck.
+The edit engine is the first piece of meeting-to-slides. A maker, the `process-meeting` skill, reads a meeting and writes a ChangeSet, a JSON file of edits to one source deck. The engine checks the ChangeSet against the deck, writes a copy with every change applied for review, and then writes the final deck from the reviewer's decisions. It never writes to the source deck.
 
 These commands print slide text, so the confidentiality rules in `CLAUDE.md` apply to every deck you run them on.
 
@@ -9,11 +9,13 @@ These commands print slide text, so the confidentiality rules in `CLAUDE.md` app
 Run every command from the repo root. A ChangeSet names its source deck by a path relative to the repo root.
 
 ```bash
+uv run --project deckcheck changeset outline private/meeting/before.pptx --json private/meeting/outline.json
 uv run --project deckcheck changeset validate private/meeting/changeset.json
 uv run --project deckcheck changeset execute private/meeting/changeset.json --out private/meeting/executed.pptx --review artifacts/meeting/review.json
 uv run --project deckcheck changeset apply private/meeting/changeset.json --out private/meeting/final.pptx
 ```
 
+- `outline` lists what a ChangeSet can address. It prints the deck's path and sha256, the layouts `add_slide` accepts with their text placeholders, and each slide's index, id, layout, and title. Under each slide it lists every shape by id, name, and kind, with numbered paragraphs (`p0`), table cells (`r1c4`, or `merged`), or chart series and points. Every text is a JSON string literal read the way the engine reads it, so it can be pasted into `old`. `--json` also writes the same outline as JSON.
 - `validate` checks every change against the source deck and prints one line per change with the text it replaces.
 - `execute` writes the deck with every change as the maker wrote it. `--review` also writes the review view, described below.
 - `apply` writes the final deck from a fresh copy of the source. It replays the changes marked `keep_new` or `edited` and leaves out the ones marked `keep_old`. It refuses to run while any decision is pending.
@@ -22,7 +24,7 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 |---|---|
 | 0 | done |
 | 1 | the ChangeSet has problems, listed one per line as `<change id> <field>: <message>`, or `apply` found pending decisions. Nothing is written. |
-| 2 | the ChangeSet file cannot be read, the source file is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
+| 2 | the ChangeSet file cannot be read, the deck given to `outline` or named as the source is not a deck, or an output path (`--out` or `--review`) is the source deck, the ChangeSet, a folder, or the other output |
 
 ## The ChangeSet
 
@@ -66,6 +68,5 @@ The engine checks every change against every other whatever the decisions, so an
 ## Known limits
 
 - A chart whose workbook is `.xlsb` gets a new `.xlsx` workbook that holds the old workbook's values only. Formulas and formatting in that workbook are lost. The solar deck's six charts are the only `.xlsb` charts in the corpus.
-- There is no `outline` command yet that lists the slide, shape, and paragraph ids a maker can address. Until there is, a bad id's error message lists the ids that exist.
 - `replace_text` cannot add or remove a line break, and no op changes fonts, sizes, colors, or positions.
 - Some decks hold a line feed inside a paragraph's text. `replace_text` cannot quote across one, and `set_cell` refuses a cell that holds one, because `\n` there would not say where the cell's paragraphs split.
