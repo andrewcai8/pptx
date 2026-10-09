@@ -1,9 +1,3 @@
-"""The maker seam. A maker reads a meeting and writes a ChangeSet; the engine checks it next.
-
-Piece 3 plugs in here without touching the server: `review serve --maker 'claude -p ... {meeting} ... {out}'`
-runs that command for every meeting. Without `--maker`, a golden scenario replays its committed changeset.json.
-"""
-
 from __future__ import annotations
 
 import shlex

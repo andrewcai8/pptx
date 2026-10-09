@@ -1,5 +1,3 @@
-// Pure view model over the engine's Review. No DOM here, so node --test covers it.
-
 const CONTEXT = 60;
 
 export const KIND = {
@@ -20,7 +18,6 @@ const WORDS = {
   move_slide: ["Keep new order", "Move back"],
 };
 
-// Slide ids are numbers and add_slide ids are strings, and an add id may itself be "301".
 export const token = (key) => (typeof key === "number" ? `s${key}` : `a-${key}`);
 
 export const decisionOf = (decisions, change) => decisions[change.id] ?? "pending";
@@ -50,7 +47,6 @@ export function deck(review, decisions) {
     return {
       token: t,
       key: s.key,
-      // The engine reads titles from the source deck, so a changed slide's title may say what the change undid.
       title: changes.length ? null : s.title,
       view: viewOf(changes),
       frame,
@@ -71,7 +67,6 @@ export function slideLabel(e) {
   return e.oldIndex === e.newIndex ? `Slide ${e.newIndex}` : `Slide ${e.newIndex}, slide ${e.oldIndex} in the old deck`;
 }
 
-// Meeting text names slides by their old numbers, so a chip shows both when they differ.
 export function chipLabel(e) {
   if (e.frame === "added") return `New slide ${e.newIndex}`;
   if (e.frame === "deleted") return `Old slide ${e.oldIndex} (deleted)`;

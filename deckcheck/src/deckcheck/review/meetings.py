@@ -31,7 +31,6 @@ Render = Callable[[Path, Path], object]
 
 ROOTS: dict[Origin, Path] = {"evals": Path("evals"), "private": Path("private/meetings")}
 WORK = Path("artifacts/review")
-# The suffixes are refused so a meeting can never be mistaken for a job's build dir and swept on start.
 NAME = re.compile(r"^(?!.*\.(?:partial|discard)$)[A-Za-z0-9][A-Za-z0-9_.-]*$")
 DATE = re.compile(r"^Date:\s*(\d{4}-\d{2}-\d{2})")
 CORPUS = "download the corpus decks with `uv run --project deckcheck python .claude/skills/verify-pptx/scripts/corpus.py`"
@@ -148,8 +147,6 @@ def _changeset_meeting(path: Path) -> dict[str, str]:
 
 
 def cascade(changes: Sequence[Mapping], batch: Mapping[str, Decision]) -> dict[str, Decision]:
-    """The batch plus the fills of each add_slide it decides. Dropping a slide drops its fills; restoring it asks
-    for them again, because apply refuses a pending fill and a silently empty slide must not come back."""
     out = dict(batch)
     for c in changes:
         op = c["op"]
@@ -225,8 +222,6 @@ class _Job:
 
 
 class Reviews:
-    """The only writer under artifacts/review/. Paths are relative to the CWD, the repo root, because the engine
-    reads a ChangeSet's source.path from there."""
 
     def __init__(self, *, render: Render, maker_for: Callable[[Meeting], Maker | None]) -> None:
         self._render = render
@@ -429,7 +424,6 @@ def _set_decision(change: dict, decision: Decision) -> None:
 
 
 def _write_checked(path: Path, raw: dict) -> None:
-    """Validate the new decisions exactly as apply will, by loading the would-be file, before it replaces the old one."""
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".part")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:

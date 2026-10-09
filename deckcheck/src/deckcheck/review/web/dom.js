@@ -1,4 +1,3 @@
-// The only way the client builds DOM. Text goes in as text nodes, so slide text can never become markup.
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs ?? {})) {

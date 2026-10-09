@@ -1,7 +1,3 @@
-// Drives the review app in headless Chrome over CDP, sets decisions through the UI, applies, and checks
-// that each final deck is byte-identical to `changeset apply` run on the committed ChangeSet with the same decisions.
-// Run from the repo root: node deckcheck/scripts/review_proof.mjs [out-dir]. CHROME overrides the browser path.
-// It starts over the three golden meetings it drives, so their decisions under artifacts/review/ are discarded.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -22,7 +18,8 @@ const check = (ok, msg) => {
 const SCENARIOS = ["insurance-workshop-prep", "solar-market-refresh", "fmcg-diagnostic-timeline"];
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
-for (const name of SCENARIOS) rmSync(`artifacts/review/evals/${name}`, { recursive: true, force: true });
+const discardGoldenDecisions = () => SCENARIOS.forEach((name) => rmSync(`artifacts/review/evals/${name}`, { recursive: true, force: true }));
+discardGoldenDecisions();
 
 const server = spawn("uv", ["run", "--quiet", "--project", "deckcheck", "review", "serve", "--port", String(PORT)], { stdio: ["ignore", "pipe", "inherit"] });
 const chrome = spawn(process.env.CHROME ?? "/usr/bin/google-chrome", ["--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", `--remote-debugging-port=${CDP}`,
@@ -166,7 +163,6 @@ try {
   check(/simulated/i.test(await text('[data-meeting="evals/solar-market-refresh"]')), "home labels the golden maker as simulated");
   await shot("01-home");
 
-  // insurance: text-only bubble, edit myself, flags, delete and move
   const ins = "insurance-workshop-prep";
   await processThroughHome(ins);
   const railCount = await js(`document.querySelectorAll("#rail [data-slide]").length`);
@@ -220,7 +216,6 @@ try {
   await shot("07-post-apply");
   proveApply(ins, { "headline-share": "keep_new", "survey-footnote": { edited: "3. Insurers' Association member survey 2026" }, "delete-credentials": "keep_old", "innovation-after-overview": "keep_new" });
 
-  // solar: a mixed slide routes structural, highlights on both sides
   const sol = "solar-market-refresh";
   await processThroughHome(sol);
   await selectSlide("s2147478638", "structural");
@@ -241,7 +236,6 @@ try {
   await applyThroughBar(sol);
   proveApply(sol, { "title-market-size": "keep_new", "title-cagr": "keep_old", "header-market-size": { edited: "$410m market set to grow" }, "table-market-size": "keep_new", "chart-2022-bar": { edited: "405" }, "cagr-label": "keep_old", "contents-cagr": "keep_new" });
 
-  // fmcg: an added slide shows an empty old side
   const fm = "fmcg-diagnostic-timeline";
   await processThroughHome(fm);
   await selectSlide("a-diagnostic-slide", "structural");

@@ -41,5 +41,4 @@ export function img(url, role) {
 
 export const render = (side, n) => state.view.images[side].replace("{n}", String(n));
 
-// app.js sets this to its review renderer, so slide.js can redraw without importing app.js.
 export const ui = { rerender: () => {} };

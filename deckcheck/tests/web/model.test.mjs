@@ -20,7 +20,6 @@ const change = (id, kind, slide, extra = {}) => ({
   ...extra,
 });
 
-// Shaped on the insurance review: source slide 2 deleted, source 6 moved after source 3, a slide added at the end.
 const review = {
   flags: [{ id: "f1", question: "Which year?", slides: [13], refs: [] }],
   held: [{ id: "h1", text: "Keep the wording.", slides: [14], refs: [] }],
