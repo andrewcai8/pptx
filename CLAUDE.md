@@ -58,7 +58,7 @@ uv run --project deckcheck changeset apply private/meeting/changeset.json --out 
 
 The `verify-pptx` skill in `.claude/skills/verify-pptx/` is the full procedure, including the audit. Follow it when asked to verify, fix, or audit a deck.
 
-The `process-meeting` skill in `.claude/skills/process-meeting/` is the maker. It reads a meeting folder and writes a ChangeSet, and the engine makes the edits. Follow it when asked to turn a meeting into deck changes. `meeting process` runs it headless through `claude -p`:
+The `process-meeting` skill in `.claude/skills/process-meeting/` is the maker. It reads a meeting and writes a ChangeSet, and the engine makes the edits. When asked to turn a meeting into deck changes, ask the ask-first question, then run `meeting process`. It copies the meeting, its data, and its deck into `<out>/stage/` and runs the skill there through `claude -p`, whose file tools reach nothing outside that folder:
 
 ```bash
 uv run --project deckcheck meeting process private/meetings/q3-steerco --out private/meetings/q3-steerco/run1 --shareable
