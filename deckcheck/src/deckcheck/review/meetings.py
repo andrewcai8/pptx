@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import itertools
 import json
 import os
@@ -14,13 +15,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
-from pptx.oxml.ns import qn
+from pptx import Presentation
 
-from deckcheck.changeset import Invalid, Problem, Review, apply, check, execute, load, parse, review, slides
+from deckcheck.changeset import Invalid, Problem, Review, apply, check, execute, load, parse, review
 from deckcheck.changeset.model import Decision, Edited
 from deckcheck.cli import write_atomic
 from deckcheck.fix import plural
-from deckcheck.package import Package
 from deckcheck.review.maker import Maker
 
 Origin = Literal["evals", "private"]
@@ -265,9 +265,8 @@ class Reviews:
             checked = load(work.changeset)
             doc = review(checked, work.executed, work.executed.read_bytes())
             final = work.final()
-        pkg = Package(checked.source)
-        size = pkg.xml(slides.read_deck(pkg).presentation).find(qn("p:sldSz"))
-        return View(self._row(meeting), doc, (int(size.get("cx")), int(size.get("cy"))), final)
+        deck = Presentation(io.BytesIO(checked.source))
+        return View(self._row(meeting), doc, (deck.slide_width, deck.slide_height), final)
 
     def decide(self, mid: str, decisions: Mapping[str, Decision]) -> tuple[dict[str, Decision], Final | None]:
         work = self._ready(self._find(mid))
