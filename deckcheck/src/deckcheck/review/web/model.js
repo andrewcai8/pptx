@@ -117,10 +117,14 @@ function replacement(change) {
   return after.slice(s, after.length - (before.length - e)).join("");
 }
 
+const breaks = (change, text) => (change.kind === "replace_text" ? text.replaceAll("\v", "\n") : text);
+
 export function editable(change, decision) {
-  if (kindOf(decision) === "edited") return decision.edited;
-  return change.kind === "replace_text" ? replacement(change) : change.after ?? "";
+  if (kindOf(decision) === "edited") return breaks(change, decision.edited);
+  return breaks(change, change.kind === "replace_text" ? replacement(change) : change.after ?? "");
 }
+
+export const edited = (change, text) => ({ edited: change.kind === "replace_text" ? text.replaceAll("\n", "\v") : text });
 
 function outcome(change, decision) {
   const kind = kindOf(decision);

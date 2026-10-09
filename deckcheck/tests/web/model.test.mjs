@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { chipLabel, choices, deck, editable, marks, segments, slideLabel, viewOf } from "../../src/deckcheck/review/web/model.js";
+import { chipLabel, choices, deck, editable, edited, marks, segments, slideLabel, viewOf } from "../../src/deckcheck/review/web/model.js";
 
 const SLIDE = { w: 12192000, h: 6858000 };
 const TITLE = { id: 2, name: "Title 2", box: { x: 630000, y: 622800, w: 10933350, h: 664797 } };
@@ -134,6 +134,21 @@ test("editable slices the replacement by code points", () => {
   assert.equal(editable(c, "pending"), "15.5%");
   assert.equal(editable(c, { edited: "16%" }), "16%");
   assert.equal(editable(change("p", "fill_placeholder", "add", { after: "Raise prices\nHold discounts" }), "keep_old"), "Raise prices\nHold discounts");
+});
+
+test("a line break in a replacement is a newline in the editor and a vertical tab in the decision", () => {
+  const c = change("t", "replace_text", 1, {
+    before: "Revenue grew\v12% in 2025",
+    after: "Revenue grew\vabout 15%\vup in 2025",
+    span: [13, 16],
+    admits: ["keep_new", "keep_old", "edited"],
+  });
+  const fill = change("p", "fill_placeholder", "add", { after: "Raise prices\nHold discounts" });
+
+  assert.equal(editable(c, "pending"), "about 15%\nup");
+  assert.equal(editable(c, { edited: "16%\vin" }), "16%\nin");
+  assert.deepEqual(edited(c, "16%\nin"), { edited: "16%\vin" });
+  assert.deepEqual(edited(fill, "Raise prices\nHold discounts"), { edited: "Raise prices\nHold discounts" });
 });
 
 test("a slide with a change the engine could not place is structural", () => {

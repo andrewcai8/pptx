@@ -282,7 +282,7 @@ function editor(c) {
 async function save(c) {
   const text = document.querySelector(`textarea[data-edit="${CSS.escape(c.id)}"]`)?.value ?? state.drafts[c.id];
   state.drafts[c.id] = text;
-  if (await decide(c.id, { edited: text })) {
+  if (await decide(c.id, M.edited(c, text))) {
     state.editing = null;
     delete state.drafts[c.id];
     delete state.errors[c.id];
