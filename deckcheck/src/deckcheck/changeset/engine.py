@@ -313,13 +313,16 @@ def locate(pkg: Package, deck: slides.Deck, ctx: Context, cid: str, op: Op) -> T
 
 
 def _locate_text(pkg: Package, deck: slides.Deck, op: ReplaceText) -> TextAt:
-    _no_newline(op.old, "op.old")
-    _no_newline(op.new, "op.new")
     slide, shape, paras = _paragraphs(pkg, deck, op.slide, op.shape)
     name = f"shape {op.shape} {slides.shape_name(shape)!r}"
+    texts = [text.paragraph_text(p) for p in paras]
+    fed = {i for i, t in enumerate(texts) if "\n" in t}
+    if "\n" in op.old and fed:
+        raise Miss("op.old", f'{name} holds a line feed ("\\n") inside the text of {_paragraph_list(fed)}, which no op can write; quote the text on one side of it')
+    _no_newline(op.old, "op.old")
+    _no_newline(op.new, "op.new")
     if op.paragraph is not None and op.paragraph >= len(paras):
         raise Miss("op.paragraph", f"{name} has {_count(len(paras))}")
-    texts = [text.paragraph_text(p) for p in paras]
     hits = [(i, at) for i, t in enumerate(texts) for at in text.occurrences(t, op.old)]
     mine = [(i, at) for i, at in hits if op.paragraph in (None, i)]
     if not mine:
@@ -355,6 +358,8 @@ def _locate_cell(pkg: Package, deck: slides.Deck, op: SetCell) -> CellAt:
     tc = cells[op.col]
     if tc.get("hMerge") in ("1", "true") or tc.get("vMerge") in ("1", "true"):
         raise Miss("op.col", f"row {op.row} col {op.col} is merged into a neighbouring cell; set that cell")
+    if any("\n" in text.paragraph_text(p) for p in text.cell_paragraphs(tc)):
+        raise Miss("op", f'row {op.row} col {op.col} holds a line feed ("\\n") inside a paragraph, so "\\n" cannot mark where its paragraphs split')
     source = text.cell_text(tc)
     if source != op.old:
         raise Miss("op.old", f"row {op.row} col {op.col} reads {source!r}, not {op.old!r}")

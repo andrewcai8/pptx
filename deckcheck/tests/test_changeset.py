@@ -560,6 +560,16 @@ def bad_json(deck: Path) -> Path:
     return path
 
 
+def first_text(deck: Path, shape_id: int, text: str) -> Path:
+    """The deck with the first a:t of shape `shape_id` on slide 256 set to `text`, such as one holding a literal
+    line feed, which some decks have."""
+    prs = Presentation(str(deck))
+    shape = next(s for s in prs.slides[0].shapes if s.shape_id == shape_id)
+    shape._element.find(f".//{qn('a:t')}").text = text
+    prs.save(str(deck))
+    return deck
+
+
 def rezip(deck: Path, part: str, body: bytes | None) -> Path:
     """The deck with `part` replaced by `body`, or left out when `body` is None."""
     data = deck.read_bytes()
@@ -626,6 +636,15 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
         ),
         (lambda d: changeset(d, [change("c1", REVENUE)], lists={"flags": [FLAG, FLAG]}), "f1 id: flags[0] and flags[1] share this id"),
         (lambda d: changeset(d, [change("c1", REVENUE)], lists={"held": [HELD, HELD]}), "h1 id: held[0] and held[1] share this id"),
+        (
+            lambda d: changeset(first_text(d, 4, "Revenue\ngrew "), [change("c1", {**REVENUE, "old": "Revenue\ngrew", "new": "Revenue\nrose"})]),
+            "c1 op.old: shape 4 'TextBox 3' holds a line feed (\"\\n\") inside the text of paragraph 0, which no op can write; "
+            "quote the text on one side of it",
+        ),
+        (
+            lambda d: changeset(first_text(d, 5, "Year\nended"), [change("c1", {**CELL, "row": 0, "col": 0, "old": "Year\nended", "new": "Years\nended"})]),
+            "c1 op: row 0 col 0 holds a line feed (\"\\n\") inside a paragraph, so \"\\n\" cannot mark where its paragraphs split",
+        ),
         (lambda d: changeset(d, [change("c1", REVENUE)], path="deck\x00.pptx"), "source.path: 'deck\\x00.pptx' is not a path: embedded null byte"),
         (
             lambda d: changeset(rezip(d, "ppt/embeddings/Microsoft_Excel_Sheet1.xlsx", b"not a workbook"), [change("c1", POINT)]),
@@ -659,6 +678,8 @@ def rezip(deck: Path, part: str, body: bytes | None) -> Path:
         "duplicate-ask-ids",
         "duplicate-flag-ids",
         "duplicate-held-ids",
+        "line-feed-in-the-source-quote",
+        "line-feed-in-a-cell",
         "nul-in-source-path",
         "workbook-not-a-zip",
         "chart-part-missing",

@@ -68,3 +68,4 @@ The engine checks every change against every other whatever the decisions, so an
 - A chart whose workbook is `.xlsb` gets a new `.xlsx` workbook that holds the old workbook's values only. Formulas and formatting in that workbook are lost. The solar deck's six charts are the only `.xlsb` charts in the corpus.
 - There is no `outline` command yet that lists the slide, shape, and paragraph ids a maker can address. Until there is, a bad id's error message lists the ids that exist.
 - `replace_text` cannot add or remove a line break, and no op changes fonts, sizes, colors, or positions.
+- Some decks hold a line feed inside a paragraph's text. `replace_text` cannot quote across one, and `set_cell` refuses a cell that holds one, because `\n` there would not say where the cell's paragraphs split.
